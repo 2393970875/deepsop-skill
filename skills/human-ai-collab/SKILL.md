@@ -170,6 +170,8 @@ Content-Type: application/json
 x-api-key: $DEEPSOP_API_KEY
 ```
 
+> ⚠️ **强制规则：** 请求体根级必须包含 `"completed": true`（布尔字面量）。**严禁省略、写成 `null`、`"true"` 字符串或 `false`**，否则后端会直接返回 500。该字段与 `collaborationSubmitTaskParam` 同级，不在其内部。
+
 **参数构建规则：**
 
 **前置 A：Fran 号码池与场景库查询（当 employeeList 包含 Fran 时必须先执行）**
@@ -746,7 +748,7 @@ curl -s -H "x-api-key: $DEEPSOP_API_KEY" 'https://ai.deepsop.com/prod-api/ai/use
 - `collaborationSubmitTaskParam.executionMode`：值为 `1`
 - `collaborationSubmitTaskParam.employeeParams`：对象，包含至少一个员工
 - `collaborationSubmitTaskParam.sourceSettings`：仅含 AiWa+Frank 时可为 `null`；含 Fran 或 Lisa 时必须为完整对象（见 Fran/Lisa 示例）
-- `completed`：值为 `true`
+- `completed`：**必传**，布尔字面量 `true`，与 `collaborationSubmitTaskParam` 同级；不得为 `null`、缺省、字符串 `"true"` 或 `false`，否则接口返回 500
 
 **AiWa（当 employeeList 包含 AiWa 时）：**
 - `totalTarget`：用户指定的目标数量（正整数）
