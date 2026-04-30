@@ -559,9 +559,20 @@ def send_feishu_message(prompt, result, media_type="image"):
 # After the payload is built, fields not in the active model's whitelist are
 # stripped so we don't send parameters the model does not understand.
 # ---------------------------------------------------------------------------
-# Image-side: webSearch only applies to S5.0L (mt=4) and 3.1Nano2-Evo (mt=8).
+# Image-side parameter whitelist (mirrors frontend `handleImgParameterVisibility`).
+#   webSearch       → S5.0L (mt=4) + 3.1Nano2-Evo (mt=8)
+#   imageSearch     → 3.1Nano2-Evo (mt=8)
+#   ratiocination   → Image2 (mt=10)
+#   n               → Image2 (mt=10)  [图片生成数量 1-10]
 IMAGE_FIELD_SUPPORT = {
-    "webSearch": {"S5.0L", "3.1Nano2-Evo"},
+    "webSearch":     {"S5.0L", "3.1Nano2-Evo"},
+    "imageSearch":   {"3.1Nano2-Evo"},
+    "ratiocination": {"Image2"},
+    "n":             {"Image2"},
+    # Image2 Beta-Evo (mt=11) does NOT submit `quality` (frontend noField.quality=['11']).
+    # Models listed here may submit `quality`; others are stripped before POST.
+    "quality": {"N2", "S5.0L", "W2.7", "W2.7Pro", "3.1Nano2-Evo", "Nano2-Beta-Evo",
+                "Image2", "S4.5", "N1", "N2-147", "N2Pro-147"},
 }
 
 # Video-side: each key = optional field; value = set of model keys that accept it.
@@ -672,7 +683,9 @@ VIDEO_RESOLUTIONS = {
     "W2.7r":       ["720p", "1080p"],
 }
 
-# Image quality whitelist (matchImageQualityOptions, active models only)
+# Image quality whitelist (matchImageQualityOptions, active models only).
+# `Image2-Beta-Evo` (mt=11) intentionally absent: the frontend hides quality for it
+# and the field is stripped via IMAGE_FIELD_SUPPORT["quality"] before POST.
 IMAGE_QUALITIES = {
     "N2":             ["1K", "2K", "4K"],
     "S5.0L":          ["2K", "3K"],
@@ -680,6 +693,7 @@ IMAGE_QUALITIES = {
     "W2.7Pro":        ["1K", "2K"],
     "3.1Nano2-Evo":   ["1K", "2K", "4K"],
     "Nano2-Beta-Evo": ["1K", "2K", "4K"],
+    "Image2":         ["1K", "2K", "4K"],
 }
 
 # Image ratio/size exclusions (matchImageRatioOptions excludedRatios).
@@ -687,12 +701,14 @@ IMAGE_QUALITIES = {
 # Note: only relevant when the user passes a ratio-style size (e.g. "16:9");
 # pixel-size strings like "2048x2048" / "2048*2048" pass through unchecked.
 IMAGE_SIZE_EXCLUDED = {
-    "N2":             [],
-    "S5.0L":          ["auto"],
-    "W2.7":           ["auto", "21:9"],
-    "W2.7Pro":        ["auto", "21:9"],
-    "3.1Nano2-Evo":   [],
-    "Nano2-Beta-Evo": [],
+    "N2":              ["1:2", "2:1", "1:3", "3:1", "1:4", "4:1", "1:8", "8:1", "9:21"],
+    "S5.0L":           ["auto"],
+    "W2.7":            ["auto", "9:21", "21:9"],
+    "W2.7Pro":         ["auto", "9:21", "21:9"],
+    "3.1Nano2-Evo":    ["1:2", "2:1", "1:3", "3:1", "9:21"],
+    "Nano2-Beta-Evo":  ["1:2", "2:1", "1:3", "3:1", "9:21"],
+    "Image2":          ["1:4", "4:1", "1:8", "8:1"],
+    "Image2-Beta-Evo": ["1:4", "4:1", "1:8", "8:1", "4:5", "5:4"],
 }
 
 
@@ -730,13 +746,19 @@ VIDEO_RESTRICTIONS = {
 }
 
 IMAGE_RESTRICTIONS = {
-    "N2":             {"textLength": 1000, "targetMaxSize": 10, "targetMaxLength": 6000},
-    "S5.0L":          {"textLength": 300,  "targetMaxSize": 10, "targetMaxLength": 6000},
-    "W2.7":           {"textLength": 2500, "targetMaxSize": 20, "targetMaxLength": 8000, "targetMinLength": 240},
-    "W2.7Pro":        {"textLength": 2500, "targetMaxSize": 20, "targetMaxLength": 8000, "targetMinLength": 240},
-    "3.1Nano2-Evo":   {"textLength": 1000, "targetMaxSize": 20, "targetMaxLength": 6000},
-    "Nano2-Beta-Evo": {"textLength": 1000, "targetMaxSize": 10, "targetMaxLength": 6000},
+    "N2":              {"textLength": 1000, "targetMaxSize": 10, "targetMaxLength": 6000},
+    "S5.0L":           {"textLength": 300,  "targetMaxSize": 10, "targetMaxLength": 6000},
+    "W2.7":            {"textLength": 2500, "targetMaxSize": 20, "targetMaxLength": 8000, "targetMinLength": 240},
+    "W2.7Pro":         {"textLength": 2500, "targetMaxSize": 20, "targetMaxLength": 8000, "targetMinLength": 240},
+    "3.1Nano2-Evo":    {"textLength": 1000, "targetMaxSize": 20, "targetMaxLength": 6000},
+    "Nano2-Beta-Evo":  {"textLength": 1000, "targetMaxSize": 10, "targetMaxLength": 6000},
+    # GPT Image2 series: large prompt window, no max/min length constraint on refs.
+    "Image2":          {"textLength": 16000, "targetMaxSize": 50},
+    "Image2-Beta-Evo": {"textLength": 16000, "targetMaxSize": 50},
 }
+
+# Render-quality (ratiocination) whitelist for Image2 (imageRenderQualityList).
+IMAGE_RATIOCINATION_OPTIONS = ["low", "medium", "high"]
 
 
 def _apply_restriction(parameter, restriction):
@@ -820,6 +842,28 @@ MODEL_CONFIGS = {
         "default_size": "1:1",
         "default_quality": "2K",
         "extra_params": {}
+    },
+    "Image2": {
+        "media_type": "image",
+        "type": "10",
+        "methodType": "10",
+        "source_name": "DeepSop·Image2",
+        "description": "Image2 支持多模态图像生成 精准控图 细节丰富 角色一致性更优（GPTimage-2）",
+        "default_size": "auto",
+        "default_quality": "2K",
+        # ratiocination/imageSearch/n 均为 Image2 专属；默认不开启 imageSearch
+        "extra_params": {"ratiocination": "medium", "imageSearch": True, "n": 1},
+    },
+    "Image2-Beta-Evo": {
+        "media_type": "image",
+        "type": "10",
+        "methodType": "11",
+        "source_name": "DeepSop·Image2 Beta-Evo",
+        "description": "Image2 Beta（服务端当前 hiddenState=1，待启用）",
+        "default_size": "auto",
+        # mt=11 不提交 quality 字段，但保留 default 以防调用者误传
+        "default_quality": "2K",
+        "extra_params": {},
     },
     # ----- Image models currently hiddenState=1 (kept for future reactivation) -----
     "S4.5": {
@@ -1529,16 +1573,23 @@ def generate_video(prompt, model="V3.1FB", ratio=None, resolution=None,
 
 
 def create_generation_task(prompt, quality="2K", size=None, model="3.1Nano2-Evo",
-                           reference_image_url=None, web_search=None):
+                           reference_image_url=None, web_search=None,
+                           image_search=None, ratiocination=None, n=None):
     """Create an image generation task.
-    
+
     Args:
         prompt: Text description of the image
         quality: Image quality (2K/4K)
         size: Image dimensions. S5.0L / W2.7 / W2.7Pro use e.g. '2048x2048';
-              N2 / 3.1Nano2-Evo / Nano2-Beta-Evo use e.g. '1:1'
-        model: Image model key (N2, S5.0L, W2.7, W2.7Pro, 3.1Nano2-Evo, Nano2-Beta-Evo)
+              N2 / 3.1Nano2-Evo / Nano2-Beta-Evo use e.g. '1:1';
+              Image2 / Image2-Beta-Evo use 'auto' or a ratio string (e.g. '1:1').
+        model: Image model key (N2, S5.0L, W2.7, W2.7Pro, 3.1Nano2-Evo,
+               Nano2-Beta-Evo, Image2, Image2-Beta-Evo)
         reference_image_url: Optional reference image URL for image-to-image generation
+        web_search: Toggle webSearch (S5.0L / 3.1Nano2-Evo)
+        image_search: Toggle imageSearch (3.1Nano2-Evo only)
+        ratiocination: Render-quality preset for Image2 (low/medium/high)
+        n: Image count for Image2 (1-10)
     """
     url = f"{BASE_URL}/AiArtistRecord"
     
@@ -1600,8 +1651,32 @@ def create_generation_task(prompt, quality="2K", size=None, model="3.1Nano2-Evo"
         "targetMaxSize": 10,
         "targetMaxLength": 6000,
     }
-    # Merge model-specific extra params
+    # Merge model-specific extra params (defaults for ratiocination / imageSearch / n etc.)
     parameter.update(config["extra_params"])
+
+    # ----- Image2 / Nano2 explicit overrides from caller -----
+    if image_search is not None:
+        parameter["imageSearch"] = bool(image_search)
+    if ratiocination is not None:
+        ratiocination = _coerce_value(
+            ratiocination, IMAGE_RATIOCINATION_OPTIONS,
+            "medium", "ratiocination", model,
+        )
+        parameter["ratiocination"] = ratiocination
+    if n is not None:
+        try:
+            n_int = int(n)
+        except (TypeError, ValueError):
+            print(f"{model} 参数 n={n!r} 非法，已忽略", file=sys.stderr)
+            n_int = None
+        if n_int is not None:
+            if n_int < 1 or n_int > 10:
+                print(
+                    f"{model} n={n_int} 超出范围 [1,10]，已截断到合法区间",
+                    file=sys.stderr,
+                )
+                n_int = max(1, min(10, n_int))
+            parameter["n"] = n_int
 
     # Overwrite targetMaxSize / targetMinLength / targetMaxLength per model
     _apply_restriction(parameter, image_restriction)
@@ -1702,7 +1777,8 @@ def poll_task_status(task_id, interval=5, max_wait=1200):
 def generate_image(prompt, quality="2K", size=None, poll_interval=5,
                    download=False, output_dir=None, model="3.1Nano2-Evo",
                    reference_image_path=None, reference_image_url=None,
-                   web_search=None, max_wait=1200):
+                   web_search=None, image_search=None, ratiocination=None,
+                   n=None, max_wait=1200):
     """
     Main function to generate an image from a prompt.
     
@@ -1735,8 +1811,13 @@ def generate_image(prompt, quality="2K", size=None, poll_interval=5,
         _progress(f"   参考图：{reference_image_url}")
 
     # Step 1: Create task
-    task_id = create_generation_task(prompt, quality, size, model, reference_image_url,
-                                     web_search=web_search)
+    task_id = create_generation_task(
+        prompt, quality, size, model, reference_image_url,
+        web_search=web_search,
+        image_search=image_search,
+        ratiocination=ratiocination,
+        n=n,
+    )
     if not task_id:
         return None
 
@@ -1804,6 +1885,13 @@ if __name__ == "__main__":
                         help="[图片] 启用联网搜索 (仅 S5.0L / 3.1Nano2-Evo)")
     parser.add_argument("--no-web-search", dest="web_search", action="store_false",
                         help="[图片] 关闭联网搜索")
+    parser.add_argument("--image-search", dest="image_search", action="store_true", default=None,
+                        help="[图片] 启用图像搜索 (仅 3.1Nano2-Evo)")
+    parser.add_argument("--no-image-search", dest="image_search", action="store_false",
+                        help="[图片] 关闭图像搜索")
+    parser.add_argument("--ratiocination", default=None,
+                        choices=["low", "medium", "high"],
+                        help="[图片] 渲染质量预设 (仅 Image2)：low=最快 / medium=平衡 / high=质量")
     # 视频专属参数
     parser.add_argument("--ratio", default=None, help="[视频] 画面比例，如 16:9、9:16、1:1 (默认：16:9)")
     parser.add_argument("--resolution", default=None, help="[视频] 分辨率，如 720p、1080p (默认：720p)")
@@ -1824,7 +1912,8 @@ if __name__ == "__main__":
     parser.add_argument("--mode", default=None, help="[视频] 生成模式：std/pro (仅 klingV3Omni)")
     parser.add_argument("--keep-original-sound", default=None, help="[视频] yes/no (仅 klingV3Omni)")
     parser.add_argument("--multi-shot", action="store_true", default=None, help="[视频] 多镜头模式 (仅 klingV3Omni)")
-    parser.add_argument("--n", type=int, default=None, help="[视频] 生成数量 1-4 (仅 V3.1Fast)")
+    parser.add_argument("--n", type=int, default=None,
+                        help="[视频] 生成数量 1-4 (仅 V3.1Fast) | [图片] 生成数量 1-10 (仅 Image2)")
     parser.add_argument("--person-generation", default=None, help="[视频] allow_adult/dont_allow (仅 V3.1Fast)")
     parser.add_argument("--resize-mode", default=None, help="[视频] pad/crop (仅 V3.1Fast)")
     parser.add_argument("--duration-switch", default=None, help="[视频] 1=手选秒数, 2=智能时长 (仅 S1.5Pro)")
@@ -1911,6 +2000,9 @@ if __name__ == "__main__":
             reference_image_path=args.reference_image,
             reference_image_url=args.reference_image_url,
             web_search=args.web_search,
+            image_search=args.image_search,
+            ratiocination=args.ratiocination,
+            n=args.n,
             max_wait=args.max_wait
         )
 
