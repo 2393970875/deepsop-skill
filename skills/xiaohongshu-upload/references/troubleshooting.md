@@ -1,40 +1,20 @@
-# 故障排查
+﻿# 故障排查
 
-## 找不到 `sau` 命令
+> 所有 `python sau_cli.py xiaohongshu ...` 命令都需要在 `<SAU_HOME>` (即 `~/.openclaw/social-auto-upload`) 上下文里跑，前缀为 `uv run --project <SAU_HOME>`。详见 `runtime-requirements.md`。
 
-可以尝试以下方式：
-
-```powershell
-.\.venv\Scripts\Activate.ps1
-sau xiaohongshu --help
-```
-
-```powershell
-.\.venv\Scripts\sau.exe xiaohongshu --help
-```
-
-```bash
-uv run sau xiaohongshu --help
-```
-
-如果当前环境还没有安装项目：
-
-```bash
-uv pip install -e .
-```
 
 ## cookie 无效或已过期
 
 先检查 cookie 状态：
 
 ```bash
-sau xiaohongshu check --account <account>
+python sau_cli.py xiaohongshu check --account <account>
 ```
 
 如果无效，就重新登录：
 
 ```bash
-sau xiaohongshu login --account <account>
+python sau_cli.py xiaohongshu login --account <account>
 ```
 
 ## 无头登录二维码处理

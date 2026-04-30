@@ -1,7 +1,20 @@
+﻿ '"""' + $args[0].Groups[1].Value.ToUpper() uaishou CLI invocation template.
+
+Assumes social-auto-upload was cloned to SAU_HOME and `uv sync --python 3.12`
+has already been run. See references/runtime-requirements.md for setup steps.
+"""
+
 from __future__ import annotations
 
 import shlex
 import subprocess
+from pathlib import Path
+
+# Where OPclaw clones social-auto-upload by convention.
+SAU_HOME = Path.home() / ".openclaw" / "social-auto-upload"
+
+# Prefix every sau_cli.py invocation with `uv run --project <SAU_HOME>`.
+SAU_PREFIX = ["uv", "run", "--project", str(SAU_HOME), "python", "sau_cli.py"]
 
 
 def run_command(command: list[str]) -> None:
@@ -15,42 +28,25 @@ def main() -> None:
     # You can prepare multiple account names and run them in parallel.
 
     commands = [
-        ["sau", "kuaishou", "login", "--account", account],
-        ["sau", "kuaishou", "check", "--account", account],
-        [
-            "sau",
-            "kuaishou",
-            "upload-video",
-            "--account",
-            account,
-            "--file",
-            "videos/demo.mp4",
-            "--title",
-            "Kuaishou video from Python",
-            "--desc",
-            "Kuaishou video description from Python",
-            "--tags",
-            "cli,video",
-            "--thumbnail",
-            "videos/demo.png",
+        SAU_PREFIX + ["kuaishou", "login", "--account", account, "--headless"],
+        SAU_PREFIX + ["kuaishou", "check", "--account", account],
+        SAU_PREFIX + [
+            "kuaishou", "upload-video",
+            "--account", account,
+            "--file", "videos/demo.mp4",
+            "--title", "Kuaishou video from Python",
+            "--desc", "Kuaishou video description from Python",
+            "--tags", "cli,video",
+            "--thumbnail", "videos/demo.png",
             "--headless",
         ],
-        [
-            "sau",
-            "kuaishou",
-            "upload-note",
-            "--account",
-            account,
-            "--images",
-            "videos/1.png",
-            "videos/2.png",
-            "videos/3.png",
-            "--title",
-            "Kuaishou note title from Python",
-            "--note",
-            "Kuaishou note from Python",
-            "--tags",
-            "cli,note",
+        SAU_PREFIX + [
+            "kuaishou", "upload-note",
+            "--account", account,
+            "--images", "videos/1.png", "videos/2.png", "videos/3.png",
+            "--title", "Kuaishou note title from Python",
+            "--note", "Kuaishou note from Python",
+            "--tags", "cli,note",
             "--headless",
         ],
     ]

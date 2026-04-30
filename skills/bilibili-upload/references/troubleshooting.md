@@ -1,4 +1,6 @@
-# Bilibili 常见问题
+﻿# Bilibili 常见问题
+
+> 所有 `python sau_cli.py bilibili ...` 命令都需要在 `<SAU_HOME>` (即 `~/.openclaw/social-auto-upload`) 上下文里跑，前缀为 `uv run --project <SAU_HOME>`。详见 `runtime-requirements.md`。
 
 ## 1. 首次运行很慢
 
@@ -28,14 +30,14 @@
 建议：
 
 ```bash
-sau bilibili login --account <account>
+python sau_cli.py bilibili login --account <account>
 ```
 
 ## 4. 登录时报 `not a terminal`
 
 常见原因：
 
-- 你是在非交互环境里触发了 `sau bilibili login`
+- 你是在非交互环境里触发了 `python sau_cli.py bilibili login`
 - 例如 agent 的命令执行器、管道环境、被接管标准输出的进程
 
 建议：
@@ -43,7 +45,7 @@ sau bilibili login --account <account>
 - 改成由用户自己在本地真实终端里执行：
 
 ```bash
-sau bilibili login --account <account>
+python sau_cli.py bilibili login --account <account>
 ```
 
 - 如果终端里的二维码显示不完整，直接打开当前目录下的 `qrcode.png` 扫码

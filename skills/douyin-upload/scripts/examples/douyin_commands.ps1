@@ -1,3 +1,6 @@
+﻿# 假设 social-auto-upload 已 clone 到 $SAU_HOME，且已经跑过 `uv sync --python 3.12`。
+$SAU_HOME = "$env:USERPROFILE\.openclaw\social-auto-upload"
+
 # PowerShell examples for the installed sau CLI.
 
 # account_name is user-defined. One account_name maps to one account file.
@@ -7,10 +10,10 @@ $video = "videos/demo.mp4"
 $thumbnail = "videos/demo.png"
 $noteImages = @("videos/1.png", "videos/2.png")
 
-sau douyin login --account $account --headless
-sau douyin check --account $account
+& uv run --project $SAU_HOME python sau_cli.py douyin login --account $account --headless
+& uv run --project $SAU_HOME python sau_cli.py douyin check --account $account
 
-sau douyin upload-video `
+& uv run --project $SAU_HOME python sau_cli.py douyin upload-video `
   --account $account `
   --file $video `
   --title "Douyin video from PowerShell" `
@@ -19,7 +22,7 @@ sau douyin upload-video `
   --thumbnail $thumbnail `
   --headless
 
-sau douyin upload-note `
+& uv run --project $SAU_HOME python sau_cli.py douyin upload-note `
   --account $account `
   --images $noteImages `
   --title "Douyin note title from PowerShell" `

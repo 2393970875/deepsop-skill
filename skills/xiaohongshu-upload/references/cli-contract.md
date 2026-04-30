@@ -1,13 +1,13 @@
-# 小红书 CLI 契约
+﻿# 小红书 CLI 契约
 
-这个 skill 默认假设当前环境已经安装并可调用 `sau` 命令。
+**调用前缀**：所有命令都用 `uv run --project <SAU_HOME> python sau_cli.py xiaohongshu ...` 形式运行，`<SAU_HOME>` 是 `~/.openclaw/social-auto-upload`。下面命令为简化只写 `python sau_cli.py xiaohongshu ...`，agent 必须自动加上 `uv run --project <SAU_HOME>` 前缀。详见 `runtime-requirements.md`。
 
 ## 命令列表
 
 ### 登录
 
 ```bash
-sau xiaohongshu login --account <account>
+python sau_cli.py xiaohongshu login --account <account>
 ```
 
 - 必填参数:
@@ -22,7 +22,7 @@ sau xiaohongshu login --account <account>
 ### 校验 cookie
 
 ```bash
-sau xiaohongshu check --account <account>
+python sau_cli.py xiaohongshu check --account <account>
 ```
 
 - 必填参数:
@@ -34,7 +34,7 @@ sau xiaohongshu check --account <account>
 ### 上传视频
 
 ```bash
-sau xiaohongshu upload-video \
+python sau_cli.py xiaohongshu upload-video \
   --account <account> \
   --file <video-path> \
   --title "<title>" \
@@ -62,7 +62,7 @@ sau xiaohongshu upload-video \
 ### 上传图文
 
 ```bash
-sau xiaohongshu upload-note \
+python sau_cli.py xiaohongshu upload-note \
   --account <account> \
   --images <image-1> [image-2 ...] \
   --title "<title>" \

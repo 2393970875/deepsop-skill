@@ -1,45 +1,48 @@
 ---
 name: bilibili-upload
-description: 当 agent 需要通过已安装的 `sau` CLI 完成 Bilibili 登录、账号校验或视频上传时使用这个 skill。优先使用 `sau bilibili ...`，程序会自动准备 `biliup`，不要求用户手动安装。
+description: Bilibili 视频自动上传 skill。当用户需要登录 Bilibili、校验账号或上传视频时使用。基于 social-auto-upload 项目，OPclaw 自动准备运行环境，无需用户手动安装。
 ---
 
 # Bilibili 上传 Skill
 
-优先把 `sau` 作为主接口。
-
-不要一开始就让用户自己找 `biliup` 或手动下载 release。
-程序会在运行时自动检查、自动下载、自动更新 `biliup`。
+本 skill 通过 [social-auto-upload](https://github.com/dreammis/social-auto-upload) 项目（以下简称 SAU）完成 Bilibili 操作。OPclaw 自带 `uv` 工具，会在首次使用时自动 clone SAU 并准备依赖，**不要让用户手动 pip install**。
 
 ## 功能概览
 
-| 功能 | 命令入口 | 说明 |
+| 功能 | 子命令 | 说明 |
 | --- | --- | --- |
-| 登录 | `sau bilibili login --account <name>` | 需要用户自己在本地真实终端里执行，用于生成或刷新登录信息 |
-| 校验 | `sau bilibili check --account <name>` | 检查指定账号当前是否有效 |
-| 视频上传 | `sau bilibili upload-video ...` | 上传一条 Bilibili 视频 |
+| 登录 | `login --account <name>` | 用户在本机真实终端里执行，扫码完成 |
+| 校验 | `check --account <name>` | 检查指定账号当前是否有效 |
+| 视频上传 | `upload-video ...` | 上传一条 Bilibili 视频 |
 
 ## 默认工作流
 
-1. 先确认 `references/runtime-requirements.md`
-2. 再确认 `references/cli-contract.md`
-3. 执行匹配的 `sau bilibili ...` 命令
-4. 如果命令失败，再看 `references/troubleshooting.md`
+1. **先确认环境就绪** —— 见 `references/runtime-requirements.md`
+2. **再确认命令格式** —— 见 `references/cli-contract.md`
+3. 执行匹配的 `python sau_cli.py bilibili ...` 命令
+4. 失败时查 `references/troubleshooting.md`
 
 ## 命令选择建议
 
-- 用户没有登录信息，先让用户自己在本地终端执行 `login`
-- 用户只想确认账号状态，先用 `check`
-- 用户要发视频，用 `upload-video`
+- 用户没有登录信息 → 让用户自己在本机终端执行 `login`
+- 用户只想确认账号状态 → 用 `check`
+- 用户要发视频 → 用 `upload-video`
 
-## 执行前检查
+## 执行前必做检查（agent 行为约定）
 
-- 优先确认当前环境能运行 `sau`
-- 如果 `sau` 不在 PATH 中，可以用仓库里的 `sau_cli.py`
-- 不要要求用户手动下载 `biliup`
-- 第一次运行 Bilibili 命令时，程序可能会自动联网准备 `biliup`
-- 对 agent 来说，不要在非交互环境里硬跑 `sau bilibili login`
-- 正确做法是让用户自己在本地终端执行 `sau bilibili login --account <name>`
-- 如果终端里的二维码显示不完整，提醒用户直接打开当前目录下的 `qrcode.png` 扫码
+执行任何 `python sau_cli.py bilibili ...` 之前，**必须**按 `references/runtime-requirements.md` 的"自动准备流程"完成环境校验：
+
+1. 检查 `~/.openclaw/social-auto-upload` 是否存在
+2. 不存在则自动 clone + `uv sync`
+3. 准备好后，**所有调用都用 `uv run --project ~/.openclaw/social-auto-upload python sau_cli.py bilibili ...`**
+4. **不要**直接 `sau bilibili ...`（这条命令不存在）
+5. **不要**要求用户手动下载 `biliup`（程序首次执行 upload-video 时会自动联网下载）
+
+## 登录注意事项
+
+- `login` 命令应由**用户自己**在本机终端执行，agent 在非交互环境下不要硬跑
+- 如果终端二维码显示不完整，提醒用户打开仓库目录下的 `qrcode.png` 扫码
+- 一个 `--account <name>` 对应一个本地账号文件，可用于多账号隔离
 
 ## 模板文件
 

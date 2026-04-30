@@ -1,4 +1,8 @@
-#!/usr/bin/env bash
+﻿#!/usr/bin/env bash
+
+# Assumes social-auto-upload already cloned to $SAU_HOME and `uv sync --python 3.12` already ran.
+SAU_HOME="$HOME/.openclaw/social-auto-upload"
+
 
 set -euo pipefail
 
@@ -8,10 +12,10 @@ account="account_a"
 video="videos/demo.mp4"
 thumbnail="videos/demo.png"
 
-sau xiaohongshu login --account "$account" --headless
-sau xiaohongshu check --account "$account"
+uv run --project "$SAU_HOME" python sau_cli.py xiaohongshu login --account "$account" --headless
+uv run --project "$SAU_HOME" python sau_cli.py xiaohongshu check --account "$account"
 
-sau xiaohongshu upload-video \
+uv run --project "$SAU_HOME" python sau_cli.py xiaohongshu upload-video \
   --account "$account" \
   --file "$video" \
   --title "Xiaohongshu video from bash" \
@@ -20,7 +24,7 @@ sau xiaohongshu upload-video \
   --thumbnail "$thumbnail" \
   --headless
 
-sau xiaohongshu upload-note \
+uv run --project "$SAU_HOME" python sau_cli.py xiaohongshu upload-note \
   --account "$account" \
   --images "videos/1.png" "videos/2.png" \
   --title "Xiaohongshu note title from bash" \

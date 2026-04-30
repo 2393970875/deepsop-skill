@@ -1,67 +1,47 @@
 ---
 name: douyin-upload
-description: 当 agent 需要通过已安装的 `sau` CLI 完成抖音登录、cookie 校验、视频上传或图文发布时使用这个 skill。该 skill 适用于已经安装 `social-auto-upload` 且可调用 `sau` 命令的环境。优先使用这个 skill 进行稳定的命令式抖音工作流，而不是一开始就阅读 uploader 源码。
+description: 抖音视频自动上传 skill。当用户需要登录抖音、校验账号或上传视频时使用。基于 social-auto-upload 项目，OPclaw 自动准备运行环境，无需用户手动安装。
 ---
 
 # 抖音上传 Skill
 
-优先把 `sau` 作为主接口。
-
-不要假设当前环境一定能读取仓库源码。
-不要一开始就去读 `uploader/`。
-只有在命令不可用或 CLI 执行失败时，才回退到故障排查说明。
+本 skill 通过 [social-auto-upload](https://github.com/dreammis/social-auto-upload) 项目（以下简称 SAU）完成抖音操作。OPclaw 自带 `uv` 工具，会在首次使用时自动 clone SAU 并准备依赖，**不要让用户手动 pip install**。
 
 ## 功能概览
 
-| 功能 | 命令入口 | 说明 |
+| 功能 | 子命令 | 说明 |
 | --- | --- | --- |
-| 抖音登录 | `sau douyin login --account <name>` | 生成或刷新指定账号的 cookie |
-| cookie 校验 | `sau douyin check --account <name>` | 检查指定账号 cookie 是否有效 |
-| 视频上传 | `sau douyin upload-video ...` | 上传并发布抖音视频 |
-| 图文上传 | `sau douyin upload-note ...` | 上传并发布抖音图文 |
-
-元数据约定：
-
-- 视频使用 `title + desc + tags`
-- 图文使用 `title + note + tags`
+| 登录 | `login --account <name>` | 用户在本机真实终端里执行，扫码完成 |
+| 校验 | `check --account <name>` | 检查指定账号当前是否有效 |
+| 视频上传 | `upload-video ...` | 上传一条抖音视频 |
 
 ## 默认工作流
 
-1. 先确认 `references/runtime-requirements.md` 里的运行前提。
-2. 再确认 `references/cli-contract.md` 里的命令契约。
-3. 执行匹配的 `sau douyin ...` 命令。
-4. 如果命令失败，再看 `references/troubleshooting.md`。
+1. **先确认环境就绪** —— 见 `references/runtime-requirements.md`
+2. **再确认命令格式** —— 见 `references/cli-contract.md`
+3. 执行匹配的 `python sau_cli.py douyin ...` 命令
+4. 失败时查 `references/troubleshooting.md`
 
-## 支持动作
+## 执行前必做检查（agent 行为约定）
 
-- 使用 `sau douyin login --account <name>` 登录抖音
-- 使用 `sau douyin check --account <name>` 校验 cookie 是否有效
-- 使用 `sau douyin upload-video ...` 上传抖音视频
-- 使用 `sau douyin upload-note ...` 上传抖音图文
+执行任何 `python sau_cli.py douyin ...` 之前，**必须**按 `references/runtime-requirements.md` 的"自动准备流程"完成环境校验：
 
-## 命令选择建议
+1. 检查 `~/.openclaw/social-auto-upload` 是否存在
+2. 不存在则自动 clone + `uv sync`
+3. 准备好后，**所有调用都用 `uv run --project ~/.openclaw/social-auto-upload python sau_cli.py douyin ...`**
+4. **不要**直接 `sau douyin ...`（这条命令不存在）
 
-- 当用户需要新的 cookie，或现有 cookie 已失效时，使用 `login`
-- 当用户只需要确认 cookie 状态时，使用 `check`
-- 当用户要发布视频时，使用 `upload-video`
-- 当用户要发布图文时，使用 `upload-note`
+## 登录注意事项
 
-## 执行前检查
-
-- 先确认当前 shell 里是否可以调用 `sau`
-- 如果 `sau` 不可用，按 `references/runtime-requirements.md` 里的回退方式处理
-- 当用户明确指定无头或有头模式时，显式传 `--headless` 或 `--headed`
-- 只有用户明确要求定时发布时，才使用 `--schedule`
-- 如果登录流程生成了本地二维码图片，不要只把图片路径告诉用户
-- 二维码图片本身就是给用户扫码的，优先直接把本地图片展示/发送给用户
+- `login` 命令应由**用户自己**在本机终端执行，agent 在非交互环境下不要硬跑
+- 如果终端二维码显示不完整，提醒用户打开仓库目录下的 `qrcode.png` 扫码
+- 一个 `--account <name>` 对应一个本地账号文件，可用于多账号隔离
 
 ## 模板文件
 
-当你需要稳定的命令模板时，使用 `scripts/examples/` 下的文件：
-
-- `douyin_commands.ps1`
-- `douyin_commands.sh`
-- `douyin_cli_template.py`
+- `scripts/examples/douyin_commands.ps1`
+- `scripts/examples/douyin_commands.sh`
+- `scripts/examples/douyin_cli_template.py`
 
 ## 参考文档
 
