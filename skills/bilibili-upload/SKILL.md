@@ -1,4 +1,4 @@
----
+﻿---
 name: bilibili-upload
 description: Bilibili 视频自动上传 skill。当用户需要登录 Bilibili、校验账号或上传视频时使用。基于 social-auto-upload 项目，OPclaw 自动准备运行环境，无需用户手动安装。
 ---
@@ -36,7 +36,8 @@ description: Bilibili 视频自动上传 skill。当用户需要登录 Bilibili�
 2. 不存在则自动 clone + `uv sync`
 3. 准备好后，**所有调用都用 `uv run --project ~/.openclaw/social-auto-upload python sau_cli.py bilibili ...`**
 4. **不要**直接 `sau bilibili ...`（这条命令不存在）
-5. **不要**要求用户手动下载 `biliup`（程序首次执行 upload-video 时会自动联网下载）
+5. **网络失败时**：`git clone` 直连超时/失败，agent 必须**自动**用 `gh-proxy.org` / `gh-proxy.com` / `hub.gitmirror.com` 三个镜像依次重试，**严禁**第一次失败就告诉用户'无法访问 GitHub'。详见 `references/runtime-requirements.md` Step 2
+6. **不要**要求用户手动下载 `biliup`（程序首次执行 upload-video 时会自动联网下载）
 
 ## 登录注意事项
 

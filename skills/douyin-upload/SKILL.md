@@ -1,4 +1,4 @@
----
+﻿---
 name: douyin-upload
 description: 抖音视频自动上传 skill。当用户需要登录抖音、校验账号或上传视频时使用。基于 social-auto-upload 项目，OPclaw 自动准备运行环境，无需用户手动安装。
 ---
@@ -30,6 +30,7 @@ description: 抖音视频自动上传 skill。当用户需要登录抖音、校�
 2. 不存在则自动 clone + `uv sync`
 3. 准备好后，**所有调用都用 `uv run --project ~/.openclaw/social-auto-upload python sau_cli.py douyin ...`**
 4. **不要**直接 `sau douyin ...`（这条命令不存在）
+5. **网络失败时**：`git clone` 直连超时/失败，agent 必须**自动**用 `gh-proxy.org` / `gh-proxy.com` / `hub.gitmirror.com` 三个镜像依次重试，**严禁**第一次失败就告诉用户'无法访问 GitHub'。详见 `references/runtime-requirements.md` Step 2
 
 ## 登录注意事项
 

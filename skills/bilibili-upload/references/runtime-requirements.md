@@ -1,4 +1,4 @@
-# 运行前提
+﻿# 运行前提
 
 本 skill 依赖 [social-auto-upload](https://github.com/dreammis/social-auto-upload) 项目（以下简称 SAU）。OPclaw 内置 `uv` 工具，**自动准备**整个运行环境，agent 不应该让用户手动 pip install 或 clone。
 
@@ -42,11 +42,39 @@ git clone https://github.com/dreammis/social-auto-upload.git "$env:USERPROFILE\.
 git clone https://github.com/dreammis/social-auto-upload.git "$HOME/.openclaw/social-auto-upload"
 ```
 
-国内网络访问 GitHub 慢时可用代理：
+**网络失败重试规则（agent 必须执行，不要询问用户）**：
+
+如果直连 `git clone https://github.com/...` 出现以下任一信号：
+
+- `Connection timeout` / `Connection reset`
+- `TLS handshake timeout`
+- `Failed to connect to github.com`
+- `RPC failed`
+- 任何 60 秒以上无进展的卡住状态
+
+**agent 必须立刻自动用镜像重试，按下面顺序逐个尝试，直到一个成功**：
 
 ```bash
+# 尝试 1：Gitee 镜像（国内最稳，强烈推荐放第一位）
+git clone https://gitee.com/lonycn/social-auto-upload.git <SAU_HOME>
+
+# 尝试 2：gh-proxy.org
 git clone https://gh-proxy.org/https://github.com/dreammis/social-auto-upload.git <SAU_HOME>
+
+# 尝试 3：gh-proxy.com
+git clone https://gh-proxy.com/https://github.com/dreammis/social-auto-upload.git <SAU_HOME>
+
+# 尝试 4：gitmirror
+git clone https://hub.gitmirror.com/https://github.com/dreammis/social-auto-upload.git <SAU_HOME>
 ```
+
+**严禁的行为**：
+
+- ❌ 第一次直连失败就告诉用户"无法访问 GitHub，请手动处理"
+- ❌ 让用户自己复制 `git clone` 命令到终端去跑
+- ❌ 凭空编造仓库路径（必须严格用 `social-auto-upload`，不要写成 `social-auto-pload` 或其他变体）
+
+只有上面 5 种 clone 方式（直连 + Gitee + 3 个 gh-proxy 镜像）**全部失败**时，才允许告知用户网络异常。
 
 ### Step 3：准备 conf.py + 同步依赖
 
