@@ -6,14 +6,14 @@ description: |
   ⚠️ 使用前必须设置环境变量 AI_ARTIST_TOKEN 为你自己的 API Key！
   获取 API Key：访问 https://ai.deepsop.com/ 注册登录后创建。
 
-  支持图片模型：**3.1Nano2-Evo（默认）**、S5.0L、N2、W2.7、W2.7Pro、Nano2-Beta-Evo。
+  支持图片模型：**3.1Nano2-Evo（默认）**、S5.0L、N2、W2.7、W2.7Pro、Nano2-Beta-Evo、**Image2（GPTimage-2）**。
   支持视频模型：**V3.1FB（默认）**、S1.5Pro、V3.1PB、V3.1Fast、W2.6t / W2.6i / W2.6r、klingV3Omni、W2.7t / W2.7i / W2.7r。
   查看当前服务端激活的模型请运行：`python3 scripts/generate_image.py --list-models`。
 
   触发场景：
   - 用户要求生成图片，如"生成一匹狼"、"画一只猫"、"风景画"、"帮我画"等。
   - 用户要求生成视频，如"生成视频"、"文生视频"、"图生视频"、"生成一段...的视频"等。
-  - 用户指定模型：N2、S5.0L、W2.7、W2.7Pro、3.1Nano2-Evo、Nano2-Beta-Evo、S1.5Pro、V3.1FB、V3.1PB、V3.1Fast、W2.6t、W2.6i、W2.6r、klingV3Omni、W2.7t、W2.7i、W2.7r。
+  - 用户指定模型：N2、S5.0L、W2.7、W2.7Pro、3.1Nano2-Evo、Nano2-Beta-Evo、Image2、GPTimage-2、gpt-image-2、S1.5Pro、V3.1FB、V3.1PB、V3.1Fast、W2.6t、W2.6i、W2.6r、klingV3Omni、W2.7t、W2.7i、W2.7r。
   - 用户上传参考图/参考视频时，自动先调用文件上传 API 转换为可访问 URL。
 ---
 
@@ -122,6 +122,13 @@ python3 scripts/generate_image.py "提示词"
 - 有无参考图？做"风格迁移"、"角色一致性"、"文字渲染"时参考图能显著提升质量。
 - 是否需要特定比例？（默认 1:1，横图/竖图需指定）
 - 质量档位（1K/2K/4K，详见每个模型表）
+
+**`Image2`（GPTimage-2，OpenAI gpt-image-2 接入）**：
+- 渲染质量预设？`low`（最快）/ `medium`（平衡，默认）/ `high`（质量）——用 `--ratiocination`
+- 一次出几张？1–10，用 `--n`
+- 是否需要参考图？支持最多 16 张参考图、单张 ≤50MB；提示词上限 16000 字
+- 默认尺寸 `auto`（智能比例），可改为 `1:1 / 3:4 / 4:3 / 16:9 / 9:16` 等（**禁用** `1:4 / 4:1 / 1:8 / 8:1`）
+- 该模型 **不接受 `webSearch`、不接受 `imageSearch`**；仅 `3.1Nano2-Evo` 支持 `imageSearch`
 
 ### 提问姿态（给 Claude 的指令）
 
@@ -242,6 +249,9 @@ if result and result["status"] == "SUCCESS":
 | `--reference-image` | - | 参考图本地路径，自动上传后作为 image-to-image 参考 |
 | `--reference-image-url` | - | 已上传的参考图 URL（跳过上传流程）|
 | `--web-search` / `--no-web-search` | - | 启用/关闭联网搜索（仅 `S5.0L`、`3.1Nano2-Evo`）|
+| `--image-search` / `--no-image-search` | - | 启用/关闭图像搜索（仅 `3.1Nano2-Evo`）|
+| `--ratiocination` | `medium` | 渲染质量预设（仅 `Image2`）：`low` / `medium` / `high` |
+| `--n` | `1` | 生成数量（图片 `Image2` 1–10；视频 `V3.1Fast` 1–4）|
 
 ### 视频专属参数
 
@@ -264,11 +274,12 @@ if result and result["status"] == "SUCCESS":
 | 模型 | sourceName | methodType | 默认尺寸 | 特点 |
 |------|-----------|-----------|---------|------|
 | `S5.0L` | DeepSop·S5.0L | `4` | `2048x2048` | 默认模型，质量 2K/3K，支持联网，像素尺寸 WxH |
-| `N2` | DeepSop·N2 | `2` | `1:1` | 多模态输入，精细参数调节，卓越文字渲染与角色一致性（比例格式）|
+| `N2` | DeepSop·Nano1 Pro | `2` | `1:1` | 多模态输入，精细参数调节，卓越文字渲染与角色一致性（比例格式；服务端已重命名为 Nano1 Pro）|
 | `W2.7` | DeepSop.W2.7 | `6` | `2048*2048` | 文生图/图生图多模态输入，质量 1K/2K，size 用 `*` 分隔 |
 | `W2.7Pro` | DeepSop.W2.7Pro | `7` | `2048*2048` | 精准控图与风格迁移，质量 1K/2K，size 用 `*` 分隔 |
-| `3.1Nano2-Evo` | DeepSop·3.1Nano2-Evo | `8` | `1:1` | N2 Evo 版，多模态输入、文字渲染与角色一致性 |
+| `3.1Nano2-Evo` | DeepSop·Nano2 | `8` | `1:1` | N2 Evo 版（服务端称 Nano2），支持 `imageSearch` 与 `webSearch` |
 | `Nano2-Beta-Evo` | DeepSop·Nano2 Beta-Evo | `9` | `1:1` | N2 Beta Evo 版，多模态输入、文字渲染与角色一致性 |
+| `Image2` | DeepSop·Image2 | `10` | `auto` | **GPTimage-2** 接入；支持 `ratiocination`(low/medium/high)、`n`(1–10)；提示词 16000 字；参考图 ≤50MB×16 张；禁用 1:4/4:1/1:8/8:1 |
 
 ### 视频模型
 
@@ -321,6 +332,13 @@ python3 scripts/generate_image.py "角色三视图" --model W2.7Pro
 # 3.1Nano2-Evo / Nano2-Beta-Evo（N2 进化版）
 python3 scripts/generate_image.py "赛博朋克街景" --model 3.1Nano2-Evo --size "16:9"
 python3 scripts/generate_image.py "少女肖像" --model Nano2-Beta-Evo --size "3:4"
+
+# Image2（GPTimage-2）—— 默认 auto 比例，medium 渲染质量
+python3 scripts/generate_image.py "一只可爱的柯基犬坐在草地上" --model Image2
+# Image2 出 4 张高质量图片
+python3 scripts/generate_image.py "产品宣传图 4 种风格" --model Image2 --n 4 --ratiocination high --size "1:1"
+# 3.1Nano2-Evo 启用图像搜索 + 联网搜索
+python3 scripts/generate_image.py "帮我画一种雨季仅出现三天的菌菇" --model 3.1Nano2-Evo --image-search --web-search
 
 # 下载图片
 python3 scripts/generate_image.py "风景画" --download

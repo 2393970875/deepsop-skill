@@ -64,8 +64,9 @@ X-Api-Key: <api_key>
 | `N2` | DeepSop·N2 | `"2"` | `1:1` | 多模态输入，卓越文字渲染与角色一致性 |
 | `W2.7` | DeepSop.W2.7 | `"6"` | `2048x2048` | 文生图/图生图多模态输入 |
 | `W2.7Pro` | DeepSop.W2.7Pro | `"7"` | `2048x2048` | 精准控图与风格迁移 |
-| `3.1Nano2-Evo` | DeepSop·3.1Nano2-Evo | `"8"` | `1:1` | N2 Evo 版 |
+| `3.1Nano2-Evo` | DeepSop·Nano2 | `"8"` | `1:1` | N2 Evo 版（服务端称 Nano2），支持 `imageSearch` |
 | `Nano2-Beta-Evo` | DeepSop·Nano2 Beta-Evo | `"9"` | `1:1` | N2 Beta Evo 版 |
+| `Image2` | DeepSop·Image2 | `"10"` | `auto` | GPTimage-2 接入；新增 `imageSearch`、`ratiocination`(low/medium/high)、`n`(1–10) |
 
 **支持的视频模型（`type="9"`）：** `S1.5Pro`(2)、`V3.1FB`(3)、`V3.1PB`(4)、`V3.1Fast`(5)、`W2.6t`(7)、`W2.6i`(8)、`W2.6r`(9)、`klingV3Omni`(10)、`W2.7i`(14)、`W2.7t`(15)、`W2.7r`(16)。
 
@@ -80,9 +81,12 @@ X-Api-Key: <api_key>
 | `image` | array | 参考图片（可选） |
 | `quality` | string | 图片质量: "2K" / "4K" |
 | `size` | string | 尺寸格式因模型而异：`S5.0L`/`W2.7`/`W2.7Pro` 用 "2048x2048"，`N2`/`3.1Nano2-Evo`/`Nano2-Beta-Evo` 用 "1:1" |
-| `webSearch` | boolean | 是否启用网络搜索 |
-| `targetMaxSize` | number | 目标最大尺寸 |
-| `targetMaxLength` | number | 目标最大长度 |
+| `webSearch` | boolean | 是否启用网络搜索（仅 `S5.0L` / `3.1Nano2-Evo`）|
+| `imageSearch` | boolean | 是否启用图像搜索（仅 `3.1Nano2-Evo`）|
+| `ratiocination` | string | 渲染质量预设（仅 `Image2`）：`low` / `medium` / `high` |
+| `n` | number | 生成数量（仅 `Image2`，1–10）|
+| `targetMaxSize` | number | 目标最大尺寸（MB）|
+| `targetMaxLength` | number | 目标最大长度（像素）|
 | `duration` | number | 持续时间（仅 `S5.0L`）|
 
 **成功响应:**
