@@ -1,4 +1,4 @@
----
+﻿---
 name: xiaohongshu-upload
 description: 小红书视频/图文自动上传 skill。当用户需要登录小红书、校验账号或上传内容时使用。基于 social-auto-upload 项目，OPclaw 自动准备运行环境，无需用户手动安装。
 ---
@@ -43,8 +43,9 @@ description: 小红书视频/图文自动上传 skill。当用户需要登录小
 2. 不存在则自动 clone + `uv sync --python 3.12`
 3. 准备好后，**所有调用都用 `uv run --project ~/.openclaw/social-auto-upload python sau_cli.py xiaohongshu ...`**
 4. **不要**直接 `sau xiaohongshu ...`（这条命令不存在）
-5. 当用户明确指定无头或有头模式时，显式传 `--headless` 或 `--headed`
-6. 只有用户明确要求定时发布时，才使用 `--schedule`
+5. **网络失败时**：`git clone` 直连超时/失败，agent 必须**自动**用 `gh-proxy.org` / `gh-proxy.com` / `hub.gitmirror.com` 三个镜像依次重试，**严禁**第一次失败就告诉用户'无法访问 GitHub'。详见 `references/runtime-requirements.md` Step 2
+6. 当用户明确指定无头或有头模式时，显式传 `--headless` 或 `--headed`
+7. 只有用户明确要求定时发布时，才使用 `--schedule`
 
 ## 登录注意事项
 

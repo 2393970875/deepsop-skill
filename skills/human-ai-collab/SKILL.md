@@ -82,13 +82,16 @@ DEEPSOP_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxx
 }
 ```
 
-解析结果字段：
-- `totalTarget`：目标数量（数字）
-- `employeeList`：参与员工逗号字符串，如 `"AiWa"` 或 `"AiWa,Frank"`
-- `language`：`"中文"` 或 `"英文"`
-- `taskName`：任务名称
-- `executionMode`：`"定额任务"` 或 `"周期性任务"`（接口参数：定额=1，周期=2）
-- `tiktokContent`：任务描述中涉及 TikTok 发布的内容主题（仅当 employeeList 包含 Toby 时使用）
+解析结果字段（**注意：这些只是 SKILL 内部用的解析变量，不要原样塞到最终 API 请求体里**）：
+- `totalTarget`：目标数量（数字）— 仅作为 `employeeParams.AiWa.totalTarget` 或 `employeeParams.Toby.totalTarget` 的值来源，**不得**作为根级字段
+- `employeeList`：参与员工逗号字符串，如 `"AiWa"` 或 `"AiWa,Frank"` — **仅本 SKILL 内部用于决定要构造哪些 `employeeParams.{Name}` 子对象，绝不允许出现在最终请求体的任何层级**
+- `language`：`"中文"` 或 `"英文"` — **仅作为 `employeeParams.Frank.language` 的值，不得挂到根级或其他员工子对象**
+- `taskName`：任务名称（→ `collaborationSubmitTaskParam.taskName`）
+- `executionMode`：中文字符串 `"定额任务"` 或 `"周期性任务"` — **这是 LLM 返回的内部变量，提交请求体时必须转换为数字**：
+  - `"定额任务"` → 提交时写 `"executionMode": 1`
+  - `"周期性任务"` → 提交时写 `"executionMode": 2`
+  - **绝不允许**把中文字符串直接塞进请求体（如 `"executionMode": "定额任务"`），会被后端 schema 校验拒绝
+- `tiktokContent`：任务描述中涉及 TikTok 发布的内容主题（仅作为 `employeeParams.Toby.content` 与 `employeeParams.Toby.param.text` 的值来源，**不得**作为独立字段出现在请求体中）
 
 **员工组合校验：**
 
@@ -171,6 +174,51 @@ x-api-key: $DEEPSOP_API_KEY
 ```
 
 > ⚠️ **强制规则：** 请求体根级必须包含 `"completed": true`（布尔字面量）。**严禁省略、写成 `null`、`"true"` 字符串或 `false`**，否则后端会直接返回 500。该字段与 `collaborationSubmitTaskParam` 同级，不在其内部。
+
+> ⛔ **字段名零改写规则（极高优先级，违反必返回 500）：**
+> 后端通过精确字段名解析参数，**所有键名必须与本文档示例 JSON 中的拼写完全一致（大小写、连写、单复数都不能改）**。在生成请求体时：
+>
+> 1. **不得做大小写转换**：`scriptId` ≠ `scriptID` ≠ `ScriptId` ≠ `script_id`；`agentProfileId` ≠ `agentProfileID` ≠ `AgentProfileId`。
+> 2. **不得做命名风格转换**：禁止把 camelCase 改成 snake_case 或 kebab-case。
+>    - ❌ `template_param_list` / `template-param-list` → ✅ `templateParamList`
+>    - ❌ `email_plan_list` → ✅ `emailPlanList`
+>    - ❌ `country_code_list` → ✅ `countryCodeList`
+>    - ❌ `address_obj_list` → ✅ `addressObjList`
+>    - ❌ `industry_list` / `keyword_list` → ✅ `industryList` / `keywordList`
+>    - ❌ `account_config_list` → ✅ `accountConfigList`
+>    - ❌ `publish_templates` → ✅ `publishTemplates`
+>    - ❌ `current_module` → ✅ `currentModule`
+>    - ❌ `execution_mode` → ✅ `executionMode`
+>    - ❌ `task_name` / `task_description` → ✅ `taskName` / `taskDescription`
+>    - ❌ `source_settings` / `employee_params` → ✅ `sourceSettings` / `employeeParams`
+>    - ❌ `total_target` / `incremental_target` / `upper_limit_target` → ✅ `totalTarget` / `incrementalTarget` / `upperLimitTarget`
+>    - ❌ `sender_email` → ✅ `senderEmail`
+>    - ❌ `calling_number` / `ringing_duration` / `min_concurrency` → ✅ `callingNumber` / `ringingDuration` / `minConcurrency`
+>    - ❌ `template_code` / `template_content` / `template_type` / `sign_name` / `qualification_name` → ✅ `templateCode` / `templateContent` / `templateType` / `signName` / `qualificationName`
+>    - ❌ `variable_label` / `variable_attribute` / `variable_value` → ✅ `variableLabel` / `variableAttribute` / `variableValue`
+>    - ❌ `method_type` / `image_url_list` / `first_image_url` / `last_image_url` / `keep_original_sound` / `generate_audio` / `enhance_prompt` / `negative_prompt` / `prompt_extend` / `shot_type` / `duration_switch` / `person_generation` / `resize_mode` → 全部保持 camelCase
+>    - ❌ `account_id` / `privacy_level` / `comment_disabled` / `duet_disabled` / `stitch_disabled` / `disable_comment` / `disable_duet` / `disable_stitch` / `is_public_account` / `brand_content_toggle` / `brand_organic_toggle` → 全部保持 camelCase
+>    - ❌ `release_type` / `time_zone` / `interval_type` / `start_time` / `publish_count` / `publish_interval` → 全部保持 camelCase
+>    - ❌ `delay_day` / `email_subject` / `email_text` → ✅ `delayDay` / `emailSubject` / `emailText`
+>    - ❌ `country_id` / `address_id` / `file_list` / `update_support` / `seas_group_ids` / `group_id` / `stage_id` / `label_id` → 全部保持 camelCase（`groupId` / `stageId` / `labelId` / `seasGroupIds` / `fileList` / `updateSupport` / `addressId` / `countryId`）
+>    - ❌ `staff_id` / `video_items` → ✅ `staffId` / `videoItems`
+> 3. **不得做单复数改造**：复数字段必须保留 `List` / 复数后缀，单数字段不得加 `s`。
+>    - `emailPlanList` 不得写成 `emailPlans` / `emailPlan`
+>    - `callingNumber` 不得写成 `callingNumbers`
+>    - `publishTemplates` 不得写成 `publishTemplate` / `publishTemplateList`
+>    - `accountConfigList` 不得写成 `accountConfigs`
+>    - `templateParamList` 不得写成 `templateParams`
+> 4. **不得做语义改名**：禁止用同义词替换字段名。
+>    - `agentProfileId` ≠ `agentId` / `chatbotId` / `profileId` / `botId`
+>    - `senderEmail` ≠ `fromEmail` / `mailFrom` / `email`
+>    - `callingNumber` ≠ `callerNumber` / `phone` / `outboundNumber`
+>    - `templateCode` ≠ `smsTemplateCode` / `code`
+>    - `signName` ≠ `signature` / `signatureName`（注意：模板列表返回的字段叫 `signatureName`，但**提交时的字段名必须是 `signName`**）
+>    - `qualificationName` ≠ `qualification` / `qualifications`
+>    - `taskName` / `taskDescription` ≠ `name` / `description` / `title`
+> 5. **校验流程**：构建完请求体后，**必须把 JSON 字符串与本文档对应的示例 JSON 逐字段对位检查一遍**——示例里有的键，请求体必须有；示例里键名怎么拼，请求体就照样拼；任何一个键名拼错都视为构建失败，重新构建后再提交。
+>
+> 不允许"我觉得 snake_case 更规范所以转一下"或"复数加 s 更自然"这类自作主张。
 
 **参数构建规则：**
 
@@ -511,12 +559,87 @@ curl -s -H "x-api-key: $DEEPSOP_API_KEY" 'https://ai.deepsop.com/prod-api/ai/use
 - `totalTarget`：定额模式下填 Step 1 的 totalTarget，周期模式下为 null
 - `incrementalTarget`：必填，固定填 5000（不可为 null）
 - `upperLimitTarget`：固定填 5000
-- `keywordList`：Step 2 的 keywordList 拆分成数组
-- `continent`：Step 2 的 continent（无则 null）
-- `country`：Step 2 的 country（无则 null）
-- `countryCodeList`：Step 2 的 countryCodeList 拆分成数组（无则空数组 `[]`）
-- `addressObjList`：根据 Step 2 的 address 构建，无则 `[{"type":1,"province":"","city":"","county":"","address":""}]`
-- `industryList`：Step 2 的 industryList 拆分成数组
+- `keywordList`：Step 2 的 keywordList **必须用 `.split(",")` 拆分成数组**（绝不可保留为逗号字符串）
+- `continent`：Step 2 的 continent，**无则填 `null`，不得填 `""`**
+- `country`：Step 2 的 country，**无则填 `null`，不得填 `""`**
+- `countryCodeList`：Step 2 的 countryCodeList **必须用 `.split(",")` 拆分成数组**，无则填 `[]`（**不得填 `""` 或 `null`**）
+- `addressObjList`：根据 Step 2 的 `addressObjList`（逗号字符串）构建，规则如下：
+  - **情况 1（无地址）**：Step 2 返回空字符串。必须填占位 `[{"type":1,"province":"","city":"","county":"","address":""}]`，**不得填 `[]`**。
+  - **情况 2（中文结构化地址）**：Step 2 返回如 `"浙江,宁波"`。拆分后填 `type=1` + 对应层级字段、`address` 留空：
+    `[{"type":1,"province":"浙江","city":"宁波","county":"","address":""}]`
+  - **情况 3（非中国 / 自由文本地址）**：如输入为英文完整地址（`"123 Main St, London"`）、拆不出省/市/县层级。填 `type=0` + `province/city/county` 留空、`address` 填全文：
+    `[{"type":0,"province":"","city":"","county":"","address":"123 Main St, London"}]`
+  - **多个地址**：array 中可多条对象，但 `type` 需与各自的地址形式匹配。
+  - **`type` 取值语义**：`1` = 中文结构化拆分地址（期望填到 `province/city/county`）；`0` = 自由文本地址（期望填到 `address`）。**不得两者同时填**（`type=1` 时 `address` 须为 `""`；`type=0` 时 `province/city/county` 须全为 `""`）。
+- `industryList`：Step 2 的 industryList **必须用 `.split(",")` 拆分成数组**
+
+> ⛔ **AiWa 结构强约束（违反必返回 500 / 后端识别不到参数）：**
+>
+> 1. AiWa 子对象的 key 是 **`AiWa`**（**P**ascal**C**ase 三个字母原样），不是 `aiwa` / `Aiwa` / `aiWa` / `aiwaParam` / `aiWaParams`。
+> 2. AiWa 子对象**必须**嵌在 `collaborationSubmitTaskParam.employeeParams.AiWa` 之下，**绝对禁止**直接挂到 `collaborationSubmitTaskParam.aiwaParam` / `collaborationSubmitTaskParam.AiWa` 这种少一层的位置。
+> 3. **以下来自 Step 1/Step 2 的"内部解析变量"是给本 SKILL 内部流程用的，绝不允许出现在最终请求体的任何层级**：
+>    - `employeeList`（Step 1 用来分发员工，请求体只关心 `employeeParams` 里的子键）
+>    - `language`（仅在 `employeeParams.Frank` 子对象内部使用，禁止挂到根级或 AiWa 子对象内）
+>    - `tiktokContent`（仅在构建 `employeeParams.Toby.content` / `param.text` 时取值，禁止挂到请求体任何层级）
+>    - `totalTarget`（**只能**作为 `employeeParams.AiWa.totalTarget` 或 `employeeParams.Toby.totalTarget`，**不得**挂到 `collaborationSubmitTaskParam` 根级）
+> 4. AiWa 必填的 9 个键：`totalTarget` / `incrementalTarget` / `upperLimitTarget` / `keywordList` / `continent` / `country` / `countryCodeList` / `addressObjList` / `industryList`，**一个都不能漏**。
+> 5. `currentModule` 必须在 `collaborationSubmitTaskParam` 内（仅 AiWa 或 AiWa+Toby 时为 `"analysis"`，其余为 `"content"`）。
+
+**AiWa 任务请求体示例（仅 AiWa 单独执行 — 直接对照拷贝，不要自由发挥）：**
+
+```json
+{
+  "collaborationSubmitTaskParam": {
+    "taskName": "家纺客户挖掘",
+    "taskDescription": "帮我找10个做家纺的客户",
+    "executionMode": 1,
+    "employeeParams": {
+      "AiWa": {
+        "totalTarget": 10,
+        "incrementalTarget": 5000,
+        "upperLimitTarget": 5000,
+        "keywordList": ["家纺", "纺织", "床上用品", "毛巾", "窗帘", "home textile", "bedding"],
+        "continent": null,
+        "country": null,
+        "countryCodeList": [],
+        "addressObjList": [{"type": 1, "province": "", "city": "", "county": "", "address": ""}],
+        "industryList": ["家纺", "纺织"]
+      }
+    },
+    "sourceSettings": null,
+    "currentModule": "analysis"
+  },
+  "completed": true
+}
+```
+
+> 🚫 **错误示例（曾经真实出现过的错传，禁止再生成此种结构）：**
+>
+> ```json
+> {
+>   "completed": true,
+>   "collaborationSubmitTaskParam": {
+>     "taskName": "家纺客户挖掘",
+>     "executionMode": 1,
+>     "totalTarget": 10,                       // ❌ 不应在根级
+>     "employeeList": "AiWa",                  // ❌ Step 1 内部变量，不应出现
+>     "language": "中文",                       // ❌ Step 1 内部变量，不应出现
+>     "aiwaParam": {                           // ❌ 应是 employeeParams.AiWa
+>       "keywordList": "家纺,纺织,床上用品,毛巾,窗帘",  // ❌ 应是数组
+>       "industryList": "家纺,纺织",              // ❌ 应是数组
+>       "continent": "",                         // ❌ 应是 null
+>       "country": "",                           // ❌ 应是 null
+>       "countryCodeList": "",                   // ❌ 应是 []
+>       "addressObjList": []                     // ❌ 必须放占位对象
+>     }
+>     // ❌ 缺 employeeParams 包装层
+>     // ❌ 缺 incrementalTarget / upperLimitTarget
+>     // ❌ 缺 currentModule / sourceSettings
+>   }
+> }
+> ```
+>
+> 上面这个错例犯了 7 项错误，**任何一项都会让后端识别不到参数**。生成请求体前请把上面的"正确示例"拷过来再替换具体值，不要从头自由编写。
 
 **Frank 参数构建规则：**
 - `incrementalTarget`：固定填 1000
@@ -530,15 +653,31 @@ curl -s -H "x-api-key: $DEEPSOP_API_KEY" 'https://ai.deepsop.com/prod-api/ai/use
   - `emailText`：AI 生成的邮件正文（HTML 格式）
   - `loading`：0
 
+> ⛔ **Frank 结构强约束：**
+> 1. 子对象 key 必须是 **`Frank`**（首字母大写），不是 `frank` / `FRANK` / `frankParam` / `frankParams`。
+> 2. 必须嵌在 `collaborationSubmitTaskParam.employeeParams.Frank` 之下。
+> 3. `language` **只能**作为 `employeeParams.Frank.language`，**不得**挂到根级或其他员工子对象。
+> 4. `emailPlanList` 必须是**长度为 1 的数组**，元素是对象，且对象内 4 个键 `delayDay` / `emailSubject` / `emailText` / `loading` 一个都不能漏。**不得**写成 `emailPlan`（单数）或 `emailPlans`（错误复数）或直接把对象本身赋给 `emailPlanList`（少一层数组）。
+> 5. `senderEmail` 必须是字符串，不得写成对象 `{email: "..."}`，也不得改名为 `email` / `fromEmail` / `mailFrom`。
+> 6. 必填 6 个键：`incrementalTarget` / `upperLimitTarget` / `senderEmail` / `language` / `templateId` / `emailPlanList`，一个都不能漏。
+
 **Fran 参数构建规则：**
 - `ringingDuration`：固定填 25
 - `incrementalTarget`：固定填 1000
 - `upperLimitTarget`：固定填 1000
 - `minConcurrency`：固定填 1
 - `priority`：固定填 `"Daily"`
-- `callingNumber`：前置 A 第 1 步用户选定的号码数组（如 `["30350903"]`）
+- `callingNumber`：前置 A 第 1 步用户选定的号码**数组**（如 `["30350903"]`），**单号码也必须是数组形式**
 - `scriptId`：前置 A 第 2 步用户选定的场景库 `scriptId`
 - `agentProfileId`：前置 A 第 2 步 `data.chatbotIdList[0]`
+
+> ⛔ **Fran 结构强约束：**
+> 1. 子对象 key 必须是 **`Fran`**（首字母大写、4 个字母原样），不是 `fran` / `FRAN` / `franParam` / `franParams`。
+> 2. 必须嵌在 `collaborationSubmitTaskParam.employeeParams.Fran` 之下。
+> 3. `callingNumber` **必须是数组**（`["30350903"]`），即使只有一个号码也不得写成裸字符串 `"30350903"`，也不得改名为 `callingNumbers` / `callerNumber` / `phone` / `outboundNumber`。
+> 4. `scriptId` 与 `agentProfileId` 必须是 **接口返回的字符串原值**（保留原始大小写如 `"chatbot-cn-RYRmV3jjzb"`），不得自行拼接、改名、加引号包裹两次。`agentProfileId` ≠ `agentId` / `chatbotId` / `profileId`。
+> 5. `priority` 是字符串 `"Daily"`（**首字母大写**），不是 `"daily"` / `"DAILY"` / 整数。
+> 6. 必填 8 个键：`ringingDuration` / `incrementalTarget` / `upperLimitTarget` / `minConcurrency` / `priority` / `callingNumber` / `scriptId` / `agentProfileId`，一个都不能漏。
 
 **Fran 任务请求体示例（AiWa + Fran 联合任务）：**
 ```json
@@ -578,12 +717,21 @@ curl -s -H "x-api-key: $DEEPSOP_API_KEY" 'https://ai.deepsop.com/prod-api/ai/use
 **Lisa 参数构建规则：**
 - `incrementalTarget`：固定填 100
 - `upperLimitTarget`：固定填 100
-- `signName`：选定模板的 `signatureName`
+- `signName`：选定模板的 `signatureName`（**接口返回字段叫 `signatureName`，但请求体提交时必须叫 `signName`，自行改名**）
 - `qualificationName`：同 `signName`（如两者不同由用户确认）
 - `templateCode`：选定模板的 `templateCode`
 - `templateContent`：选定模板的 `templateContent`
-- `templateType`：选定模板的 `outerTemplateType`（注意：是 `outerTemplateType` 而非 `templateType`）
+- `templateType`：选定模板的 `outerTemplateType`（注意：值取自模板对象的 `outerTemplateType` 字段，但请求体的键名仍叫 `templateType`）
 - `templateParamList`：前置 D 第 2 步构建的变量数组（无变量则为 `[]`）
+
+> ⛔ **Lisa 结构强约束：**
+> 1. 子对象 key 必须是 **`Lisa`**（首字母大写、4 个字母原样），不是 `lisa` / `LISA` / `lisaParam` / `lisaParams`。
+> 2. 必须嵌在 `collaborationSubmitTaskParam.employeeParams.Lisa` 之下。
+> 3. `templateParamList` **必须是数组**，每个元素是含 **`variableLabel` / `variableAttribute` / `variableValue`** 三个键的对象。**禁止**改成键值映射形式（如 `{conference: "库阔科技", address: "杭州"}`）；**禁止**漏 `variableAttribute`（即使值与 `variableLabel` 同名也必须显式写出）。无变量时填 `[]`，**不要省略此键**。
+> 4. `signName` ≠ `signatureName`（提交字段名）；`signName` 不得改名为 `signature` / `sign`。
+> 5. `templateCode` 必须保留接口返回的原值（如 `"SMS_500460013"`），不得改名为 `code` / `smsTemplateCode`。
+> 6. `templateType` 是数字（取自 `outerTemplateType`），不是字符串。
+> 7. 必填 8 个键：`incrementalTarget` / `upperLimitTarget` / `signName` / `qualificationName` / `templateCode` / `templateContent` / `templateType` / `templateParamList`，一个都不能漏。
 
 **Lisa 任务请求体示例（AiWa + Lisa 联合任务）：**
 ```json
@@ -655,6 +803,17 @@ curl -s -H "x-api-key: $DEEPSOP_API_KEY" 'https://ai.deepsop.com/prod-api/ai/use
   - `commentDisabled`：同 `data.commentDisabled`（布尔转字符串）
   - `duetDisabled`：同 `data.duetDisabled`
   - `stitchDisabled`：同 `data.stitchDisabled`
+
+> ⛔ **Toby 结构强约束：**
+> 1. 子对象 key 必须是 **`Toby`**（首字母大写、4 个字母原样），不是 `toby` / `TOBY` / `tobyParam` / `tobyParams`。
+> 2. 必须嵌在 `collaborationSubmitTaskParam.employeeParams.Toby` 之下。
+> 3. **`param` 必须保持为嵌套对象**：所有视频生成参数（`methodType` / `text` / `resolution` / `ratio` / `duration` / `multiShot` / `generationType` / `negativePrompt` / `imageUrlList` / `firstImageUrl` / `lastImageUrl` / `firstClipUrl` / `elementList` / `videoUrlList` / `audioUrl` / `keepOriginalSound` / `durationList` / `mode` / `generateAudio` / `enhancePrompt` / `n` / `personGeneration` / `resizeMode` / `promptExtend` / `shotType` / `durationSwitch` / `multiPrompt`）都是 `param` **对象内部**的键，**禁止**把它们提升到 Toby 根部（错例：`Toby.methodType`、`Toby.text`）。
+> 4. `tiktokContent` **不是请求体字段**，它的值要落到 `Toby.content` 与 `Toby.param.text` 两处（同一个字符串），但不得自己再加一个 `tiktokContent` 键。
+> 5. `publishTemplates` 必须是数组，每个选中账号一条，每条对象必填 7 个键：`publishCount` / `releaseType` / `timeZone` / `intervalType` / `startTime` / `accountId` / `publishInterval`。
+> 6. `accountConfigList` 必须是数组（即使只有一条），每条对象必填 12 个键（见示例）。
+> 7. `staffId` 必填，空字符串 `""` 也得给（不得省略此键）。
+> 8. `videoItems` 必填，空数组 `[]` 也得给。
+> 9. Toby 根部必填 8 个键：`totalTarget` / `incrementalTarget` / `upperLimitTarget` / `content` / `staffId` / `param` / `videoItems` / `publishTemplates` / `accountConfigList`（注意 `param` 内部还有自己的必填子键集）。
 
 **Toby 任务请求体示例：**
 ```json
@@ -738,7 +897,49 @@ curl -s -H "x-api-key: $DEEPSOP_API_KEY" 'https://ai.deepsop.com/prod-api/ai/use
 
 ---
 
+**📋 员工组合 → `currentModule` / `sourceSettings` 对照表**
+
+构建请求体前，按本次任务实际包含的员工组合从下表查 `currentModule` 与 `sourceSettings` 的取值，**严禁自行推断**：
+
+| 员工组合 | `currentModule` | `sourceSettings` | 备注 |
+|---|---|---|---|
+| 仅 AiWa | `"analysis"` | `null` | 单纯客户挖掘 |
+| 仅 Toby | `"analysis"` | `null` | 单纯 TikTok 发布 |
+| AiWa + Toby | `"analysis"` | `null` | 挖客户 + 同步 TikTok 发布 |
+| AiWa + Frank | `"content"` | `null` | 挖客户 + 邮件销售 |
+| AiWa + Fran | `"content"` | 完整 sourceSettings 对象（见 Fran 示例） | 挖客户 + 电话销售 |
+| AiWa + Lisa | `"content"` | 完整 sourceSettings 对象（见 Lisa 示例） | 挖客户 + 短信销售 |
+| AiWa + Frank + Fran | `"content"` | 完整 sourceSettings 对象 | 多通道销售 |
+| AiWa + Frank + Lisa | `"content"` | 完整 sourceSettings 对象 | 多通道销售 |
+| AiWa + Fran + Lisa | `"content"` | 完整 sourceSettings 对象 | 多通道销售 |
+| AiWa + Frank + Fran + Lisa | `"content"` | 完整 sourceSettings 对象 | 全通道销售 |
+| AiWa + Frank + Toby | `"content"` | `null` | 邮件销售 + TikTok |
+| AiWa + Fran + Toby | `"content"` | 完整 sourceSettings 对象 | 电话销售 + TikTok |
+| AiWa + Lisa + Toby | `"content"` | 完整 sourceSettings 对象 | 短信销售 + TikTok |
+
+> 🔍 **快速判定规则**：
+> - 含 `Fran` 或 `Lisa` → `sourceSettings` **必须是完整对象**（不能为 `null`）；
+> - 不含 `Fran` 也不含 `Lisa` → `sourceSettings` 为 `null`；
+> - 仅 AiWa、仅 Toby、AiWa+Toby 三种组合 → `currentModule` 为 `"analysis"`；
+> - 其他所有含销售员工的组合 → `currentModule` 为 `"content"`。
+
+> 🚫 **组合场景常见错例：**
+>
+> 1. AiWa+Frank 联合任务把 `currentModule` 写成 `"analysis"`：错。含 Frank 必须 `"content"`。
+> 2. AiWa+Fran 联合任务把 `sourceSettings` 写成 `null`：错。含 Fran 必须填完整对象。
+> 3. AiWa+Toby 联合任务把 `sourceSettings` 写成 `{}`：错。应为 `null`。
+> 4. 多员工组合时把不同员工塞进同一个员工 key（如 `employeeParams.AiWaFrank: {...}`）：错。每个员工是 `employeeParams` 下独立的同级 key。
+> 5. 多员工组合时漏掉某个员工的子对象（仅在 `employeeList` 字符串里出现，但 `employeeParams` 里没有对应键）：错。`employeeList` 里写了的员工，`employeeParams` 必须有对应子对象。
+
+---
+
 **⚠️ 提交前必须执行参数完整性校验（缺少任意一项禁止提交）**
+
+> 🔒 **第 0 步（前置硬闸）：字段名逐键对位检查**
+> 把刚构建好的 `body` JSON 字符串和本文件对应员工的示例 JSON 并排放置，**逐键比对拼写**：
+> 1. 示例里出现的每一个键名（含 `taskName`、`taskDescription`、`executionMode`、`employeeParams`、`sourceSettings`、`currentModule`、`completed`，以及各员工子对象内部的全部 key），在 body 中必须**原样存在**，不得改写大小写、不得改 snake_case、不得改单复数、不得换同义词。
+> 2. 任何键名只要与示例不一致（哪怕只差一个字母大小写），立即停止提交，回头修正后再走本清单。
+> 3. 这一步在所有员工字段值校验之前完成，因为字段名错了，值再对也没用。
 
 根据本次任务包含的员工，逐项对照以下清单检查构建好的请求体，确认每个字段都存在且有合法值：
 
@@ -747,7 +948,8 @@ curl -s -H "x-api-key: $DEEPSOP_API_KEY" 'https://ai.deepsop.com/prod-api/ai/use
 - `collaborationSubmitTaskParam.taskDescription`：非空字符串
 - `collaborationSubmitTaskParam.executionMode`：值为 `1`
 - `collaborationSubmitTaskParam.employeeParams`：对象，包含至少一个员工
-- `collaborationSubmitTaskParam.sourceSettings`：仅含 AiWa+Frank 时可为 `null`；含 Fran 或 Lisa 时必须为完整对象（见 Fran/Lisa 示例）
+- `collaborationSubmitTaskParam.sourceSettings`：取值严格按上文「员工组合 → `currentModule` / `sourceSettings` 对照表」填（**不要在这里推断**）。快速规则：含 `Fran` 或 `Lisa` → 完整对象；不含 `Fran` 也不含 `Lisa` → `null`
+- `collaborationSubmitTaskParam.currentModule`：取值严格按上文「员工组合 → `currentModule` / `sourceSettings` 对照表」填。快速规则：仅 AiWa、仅 Toby、AiWa+Toby 三种 → `"analysis"`；其余含销售员工的组合 → `"content"`
 - `completed`：**必传**，布尔字面量 `true`，与 `collaborationSubmitTaskParam` 同级；不得为 `null`、缺省、字符串 `"true"` 或 `false`，否则接口返回 500
 
 **AiWa（当 employeeList 包含 AiWa 时）：**
@@ -803,8 +1005,8 @@ curl -s -H "x-api-key: $DEEPSOP_API_KEY" 'https://ai.deepsop.com/prod-api/ai/use
 - `param.text`：非空字符串
 - `publishTemplates`：非空数组，每个账号一条，且 `publishCount`/`startTime`/`publishInterval`/`accountId` 均非空
 - `accountConfigList`：包含且仅一条，`accountId`/`privacyLevel` 非空
-- `sourceSettings`：`null`
-- `currentModule`：`"analysis"`
+
+> ⚠️ **`sourceSettings` 与 `currentModule` 是根级字段，取值取决于本次任务的员工组合，请查阅上文「员工组合 → `currentModule` / `sourceSettings` 对照表」，不能因为含 Toby 就一律写成 `null`/`"analysis"`。**例如 `AiWa+Lisa+Toby` 时，`sourceSettings` 必须是完整对象、`currentModule` 为 `"content"`。
 
 **发现任何字段缺失或值不合法时，停止提交，先补全后再执行提交。**
 
@@ -891,12 +1093,14 @@ curl -s -H "x-api-key: $DEEPSOP_API_KEY" 'https://ai.deepsop.com/prod-api/ai/use
 - `aiwaDagTaskId`：遍历 `data.employeeList`，找到 `nodeType === "AIWA"` 的条目，取其 `dagTaskId`，用于 **AiWa** 客户查询；无则为 null
 - `aiwaCustomerPoolId`：遍历 `data.employeeList`，找到 `nodeType === "AIWA"` 的条目，取其 `customerPoolId`，用于 **AiWa** 客户查询；无则为 null
 - `frankDagTaskId`：遍历 `data.employeeList`，找到 `nodeType === "FRANK"` 的条目，取其 `dagTaskId`，用于 **Frank** 邮件查询；无则为 null
-- `franDagTaskId`：遍历 `data.employeeList`，找到 `nodeType === "Fran"` 的条目，取其 `dagTaskId`，用于 **Fran** 电话查询；无则为 null
-- `franCustomerPoolId`：遍历 `data.employeeList`，找到 `nodeType === "Fran"` 的条目，取其 `customerPoolId`，用于 **Fran** 电话统计/详情查询；无则为 null
-- `lisaDagTaskId`：遍历 `data.employeeList`，找到 `nodeType === "Lisa"` 的条目，取其 `dagTaskId`，用于 **Lisa** 短信查询；无则为 null
-- `lisaCustomerPoolId`：遍历 `data.employeeList`，找到 `nodeType === "Lisa"` 的条目，取其 `customerPoolId`，用于 **Lisa** 短信统计/详情查询；无则为 null
-- `tobyDagTaskId`：遍历 `data.employeeList`，找到 `nodeType === "Toby"` 的条目，取其 `dagTaskId`，用于 **Toby** 任务查询；无则为 null
-- `tobyCustomerPoolId`：遍历 `data.employeeList`，找到 `nodeType === "Toby"` 的条目，取其 `customerPoolId`，用于 **Toby** 视频统计/列表查询；无则为 null
+- `franDagTaskId`：遍历 `data.employeeList`，找到 `nodeType === "FRAN"` 的条目，取其 `dagTaskId`，用于 **Fran** 电话查询；无则为 null
+- `franCustomerPoolId`：遍历 `data.employeeList`，找到 `nodeType === "FRAN"` 的条目，取其 `customerPoolId`，用于 **Fran** 电话统计/详情查询；无则为 null
+- `lisaDagTaskId`：遍历 `data.employeeList`，找到 `nodeType === "LISA"` 的条目，取其 `dagTaskId`，用于 **Lisa** 短信查询；无则为 null
+- `lisaCustomerPoolId`：遍历 `data.employeeList`，找到 `nodeType === "LISA"` 的条目，取其 `customerPoolId`，用于 **Lisa** 短信统计/详情查询；无则为 null
+- `tobyDagTaskId`：遍历 `data.employeeList`，找到 `nodeType === "TOBY"` 的条目，取其 `dagTaskId`，用于 **Toby** 任务查询；无则为 null
+- `tobyCustomerPoolId`：遍历 `data.employeeList`，找到 `nodeType === "TOBY"` 的条目，取其 `customerPoolId`，用于 **Toby** 视频统计/列表查询；无则为 null
+
+> ⚠️ **`nodeType` 大写统一**：后端返回的 `nodeType` 是**全大写**（`AIWA` / `FRANK` / `FRAN` / `LISA` / `TOBY`），不是 PascalCase 的 `AiWa` / `Frank` 。上面 5 条提取规则里的字符串只能是大写形式。如果某次调用发现某个员工总拿不到 `dagTaskId`，优先检查是不是这里的大写写错了。
 
 提交成功后，告知用户并询问等待时间：
 > 任务已提交！任务名：{taskName}，目标数量：{totalTarget}，任务ID：{taskId}。
