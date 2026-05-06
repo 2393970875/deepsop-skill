@@ -88,9 +88,9 @@ DEEPSOP_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxx
 - `language`：`"中文"` 或 `"英文"` — **仅作为 `employeeParams.Frank.language` 的值，不得挂到根级或其他员工子对象**
 - `taskName`：任务名称（→ `collaborationSubmitTaskParam.taskName`）
 - `executionMode`：中文字符串 `"定额任务"` 或 `"周期性任务"` — **这是 LLM 返回的内部变量，提交请求体时必须转换为数字**：
-  - `"定额任务"` → 提交时写 `"executionMode": 1`
-  - `"周期性任务"` → 提交时写 `"executionMode": 2`
-  - **绝不允许**把中文字符串直接塞进请求体（如 `"executionMode": "定额任务"`），会被后端 schema 校验拒绝
+  - 后端枚举：`"周期性任务" = 0`，`"定额任务" = 1`
+  - 🔒 **当前阶段强制规则：无论 LLM 识别结果是定额还是周期性，提交请求体时 `executionMode` 一律硬编码为数字 `1`（即按定额任务下达）**。
+  - **绝不允许**把中文字符串直接塞进请求体（如 `"executionMode": "定额任务"`），会被后端 schema 校验拒绝；也不得写成 `"1"`（带引号字符串）、`true`、`null`。
 - `tiktokContent`：任务描述中涉及 TikTok 发布的内容主题（仅作为 `employeeParams.Toby.content` 与 `employeeParams.Toby.param.text` 的值来源，**不得**作为独立字段出现在请求体中）
 
 **员工组合校验：**
@@ -164,6 +164,45 @@ DEEPSOP_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxx
 ---
 
 ### Step 3：构建并提交任务
+
+> 🧷 **下任务参数总规约（最高优先级，所有员工通用）**
+>
+> 提交任务时 `collaborationSubmitTaskParam` 对象**有且仅有以下 5 个根级键**，键名、类型、取值规则严格如下：
+>
+> ```ts
+> {
+>   "taskName":        String,   // AI 总结出的任务名称（来自 Step 1 的 taskName，非空字符串）
+>   "currentModule":   "content",// 字符串字面量，永远是 "content"（不分员工组合，无任何例外）
+>   "executionMode":   Number,   // 永远写数字 1（当前阶段一律按定额任务下达；后端枚举：周期性=0、定额=1）
+>   "employeeParams":  Object,   // 见下方规约
+>   "taskDescription": String    // 用户最初下达的原始任务描述，原文透传，不要改写/精简/翻译
+> }
+> ```
+>
+> 同时与 `collaborationSubmitTaskParam` **同级**必须再带：
+> - `completed`: `true`（布尔字面量）
+> - `sourceSettings`: 见下方「员工组合 → sourceSettings 对照表」（含 Fran/Lisa 时为完整对象，否则为 `null`）
+>
+> **`employeeParams` 规约：**
+> - 是一个对象，key 为参与员工的 PascalCase 名称（`AiWa` / `Frank` / `Fran` / `Lisa` / `Toby`），value 为该员工自己的参数对象。
+> - **包含哪些员工**由 Step 1 解析出的 `taskDescription` + `employeeList` 共同决定：任务里识别出几个员工，`employeeParams` 就有几个对应的 key，**多一个、少一个、错一个都不允许**。
+> - 例：任务里同时有 AiWa 和 Frank → `employeeParams: { "AiWa": {...}, "Frank": {...} }`，两个员工的参数都是各自独立的对象，不得混合到同一个对象里，也不得只挂一个员工的参数。
+>
+> **每个员工子对象内部参数清单（按员工查阅下文「{员工} 参数构建规则」与「{员工} 结构强约束」获取必填键、固定值、示例）：**
+> - `AiWa`: `totalTarget` / `incrementalTarget` / `upperLimitTarget` / `keywordList` / `continent` / `country` / `countryCodeList` / `addressObjList` / `industryList`（外加可选范围字段 `employeeNumberRangeStart` / `employeeNumberRangeEnd` / `storeNumberRangeStart` / `storeNumberRangeEnd`，仅当 Step 2 提取到值时才放入）。
+> - `Frank`: `incrementalTarget` / `upperLimitTarget` / `senderEmail` / `language` / `templateId` / `emailPlanList`（`emailPlanList` 元素含 `delayDay` / `emailSubject` / `emailText` / `loading`）。
+> - `Fran`: `priority` / `scriptId` / `callingNumber` / `agentProfileId` / `minConcurrency` / `ringingDuration` / `incrementalTarget` / `upperLimitTarget`。
+> - `Lisa`: `signName` / `templateCode` / `templateType` / `templateContent` / `incrementalTarget` / `upperLimitTarget` / `qualificationName` / `templateParamList`。
+> - `Toby`: `param`（嵌套对象）/ `content` / `videoItems` / `totalTarget` / `publishTemplates` / `upperLimitTarget` / `accountConfigList` / `incrementalTarget` / `staffId`。
+>
+> **必须遵守的硬规则（违反任意一条，后端立即拒绝）：**
+> 1. `currentModule` 永远等于字符串 `"content"`，禁止写 `"analysis"` / `"Content"` / `null` / 省略。
+> 2. `executionMode` 永远等于数字 `1`，禁止写 `0` / `2` / `"1"` / `true` / `"定额任务"` / `"周期性任务"`。
+> 3. `taskDescription` 透传用户原始指令文本，禁止改写为 AI 总结后的简短描述（那是 `taskName` 的活儿）。
+> 4. `employeeParams` 子键必须是 PascalCase 原样（`AiWa` / `Frank` / `Fran` / `Lisa` / `Toby`），不得改成 `aiwa` / `aiwaParam` / `aiwaParams` 等任何变体。
+> 5. Step 1/Step 2 的内部解析变量（`employeeList` / `language` / `tiktokContent` / 根级 `totalTarget`）一律不得出现在最终请求体中——它们只能流到对应员工子对象内的指定字段。
+>
+> **下方各员工的"参数构建规则"、"结构强约束"、"请求体示例"是上述规约的展开细节，构建请求体时必须先按本规约确定整体形状，再按对应员工的小节填充值。**
 
 **接口：** `POST https://ai.deepsop.com/prod-api/ai/presetEmployee/submitTask`
 
@@ -524,10 +563,22 @@ curl -s -H "x-api-key: $DEEPSOP_API_KEY" 'https://ai.deepsop.com/prod-api/ai/use
 接口：`POST https://ai.deepsop.com/prod-api/ai/consumeSource/list?pageNum=1&pageSize=999`
 请求体：`{"sourceTypeList":["VIDEO_MODEL"],"hiddenState":"0"}`
 
-视频其他参数亦默认如下，无需用户配置：
-- 分辨率：`720p`
-- 画面比例：`16:9`
-- 视频时长：`8` 秒
+视频其他参数亦默认如下，无需用户配置（默认 methodType=`"3"` Veo3.1 Fast Lite 下，详见 Step 3 「Toby 参数构建规则」与「methodType → 取值约束表」）：
+- `resolution`：`720p`
+- `ratio`：`16:9`
+- `duration`：`8` 秒（methodType=`"3"` 唯一允许值）
+- `generationType`：`"FIRST&LAST"`
+- `shotType`：`"single"`
+- `mode`：`"pro"`
+- `keepOriginalSound`：`"yes"`
+- `personGeneration`：`"allow_adult"`
+- `resizeMode`：`"pad"`
+- `n`：`1`
+- `generateAudio`：`true`
+- `enhancePrompt` / `promptExtend` / `multiShot`：`false`
+- `durationSwitch`：`"1"`
+
+> 若用户明确要求换其他视频模型（如指定 `Veo3.1 Pro` / `Sora2 Pro` / `kling-v3-omni` 等），先调上面的 `consumeSource/list` 接口拿到候选模型的 `sourceValue`，让用户回复选定的 sourceValue，再据此 methodType 去 Step 3 的「methodType → 取值约束表」校正 `generationType` / `resolution` / `ratio` / `duration` / `shotType` 等依赖字段，**不得**沿用 methodType=`"3"` 的默认值。
 
 **E-4：视频生成提示词确认（必题用户，禁止跳过）**
 
@@ -583,7 +634,7 @@ curl -s -H "x-api-key: $DEEPSOP_API_KEY" 'https://ai.deepsop.com/prod-api/ai/use
 >    - `tiktokContent`（仅在构建 `employeeParams.Toby.content` / `param.text` 时取值，禁止挂到请求体任何层级）
 >    - `totalTarget`（**只能**作为 `employeeParams.AiWa.totalTarget` 或 `employeeParams.Toby.totalTarget`，**不得**挂到 `collaborationSubmitTaskParam` 根级）
 > 4. AiWa 必填的 9 个键：`totalTarget` / `incrementalTarget` / `upperLimitTarget` / `keywordList` / `continent` / `country` / `countryCodeList` / `addressObjList` / `industryList`，**一个都不能漏**。
-> 5. `currentModule` 必须在 `collaborationSubmitTaskParam` 内（仅 AiWa 或 AiWa+Toby 时为 `"analysis"`，其余为 `"content"`）。
+> 5. `currentModule` 必须在 `collaborationSubmitTaskParam` 内，**值固定为 `"content"`**（任何员工组合下都不得写 `"analysis"`）。
 
 **AiWa 任务请求体示例（仅 AiWa 单独执行 — 直接对照拷贝，不要自由发挥）：**
 
@@ -607,7 +658,7 @@ curl -s -H "x-api-key: $DEEPSOP_API_KEY" 'https://ai.deepsop.com/prod-api/ai/use
       }
     },
     "sourceSettings": null,
-    "currentModule": "analysis"
+    "currentModule": "content"
   },
   "completed": true
 }
@@ -774,13 +825,37 @@ curl -s -H "x-api-key: $DEEPSOP_API_KEY" 'https://ai.deepsop.com/prod-api/ai/use
 - `upperLimitTarget`：固定 10
 - `content`：来自 Step 1 的 `tiktokContent`
 - `staffId`：固定为空字符串 `""`
-- `param`：
-  - `methodType`：默认 `"3"`（来自 E-3）
-  - `text`：同 `content`（E-4 确认后的最终提示词）
-  - `resolution`：`"720p"`
-  - `ratio`：`"16:9"`
-  - `duration`：`8`
-  - 其他字段按以下示例固定填：`multiShot=false`、`generationType="FIRST&LAST"`、`negativePrompt=""`、`imageUrlList=[]`、`firstImageUrl=null`、`lastImageUrl=null`、`firstClipUrl=null`、`elementList=[]`、`videoUrlList=[]`、`audioUrl=null`、`keepOriginalSound="yes"`、`durationList=[]`、`mode="pro"`、`resolution="720p"`、`ratio="16:9"`、`generateAudio=true`、`enhancePrompt=false`、`n=1`、`personGeneration="allow_adult"`、`resizeMode="pad"`、`promptExtend=false`、`shotType="single"`、`durationSwitch="1"`、`duration=8`、`multiPrompt=[]`
+- `param`：嵌套对象，**有且仅有以下 27 个键**，必须按官方默认模板的键集与顺序构建（`text` 取自 E-4 确认后的最终提示词；`methodType` 默认 `"3"` Veo3.1 Fast Lite，来自 E-3）。**注意：当前 methodType 下 UI 不显的字段也必须传默认值，禁止裁剪 key**：
+
+  | 字段 | 默认值 | 类型 | 说明 |
+  |---|---|---|---|
+  | `methodType` | `"3"` | string | 视频生成模型，默认 Veo3.1 Fast Lite；其他可选值见下方 methodType 约束表 |
+  | `multiShot` | `false` | boolean | 是否多镜头（仅 methodType=`"10"` 实际生效，其他模型固定 `false`） |
+  | `generationType` | `"FIRST&LAST"` | string | 生成类型；可选值受 methodType 约束（见下表） |
+  | `text` | `""` → 取 E-4 提示词 | string | 视频生成提示词，与 `Toby.content` 相同 |
+  | `multiPrompt` | `[]` | string[] | 多镜头分镜提示词（仅 `shotType="customize"` 时填） |
+  | `negativePrompt` | `""` | string | 反向提示词（仅 methodType ∈ {5,6,7,8,9,14,15,16} 实际生效） |
+  | `imageUrlList` | `[]` | string[] | 参考图（仅 `generationType` ∈ {REFERENCE,EDIT,FEATURE} 时填） |
+  | `firstImageUrl` | `null` | string\|null | 首帧图（仅 `generationType="FIRST&LAST"` 时填） |
+  | `lastImageUrl` | `null` | string\|null | 尾帧图（仅 `generationType="FIRST&LAST"` 且 methodType ∉ {auto,1,8,11,12} 时填） |
+  | `firstClipUrl` | `null` | string\|null | 续写/编辑/参考视频（仅 methodType ∈ {10,14} 且 `generationType` ∈ {CONTINUATION,EDIT,FEATURE} 时填） |
+  | `elementList` | `[]` | array | 参考主体（仅 methodType=`"10"` 时填） |
+  | `videoUrlList` | `[]` | string[] | 参考视频（仅 methodType ∈ {9,16,17,18} 时填） |
+  | `audioUrl` | `null` | string\|null | 参考音频单（仅 methodType ∈ {7,8,14,15,16} 时填） |
+  | `keepOriginalSound` | `"yes"` | string | 保留视频原声（仅 methodType=`"10"` 时实际生效） |
+  | `durationList` | `[]` | array | 多段时长配置 |
+  | `mode` | `"pro"` | string | 生成模式（仅 methodType=`"10"` 时实际生效） |
+  | `resolution` | `"720p"` | string | 分辨率；可选值受 methodType 约束（见下表） |
+  | `ratio` | `"16:9"` | string | 画面比例；可选值受 methodType 约束（见下表） |
+  | `generateAudio` | `true` | boolean | 是否生成声音（仅 methodType ∈ {2,5,6,10,17,18} 实际生效） |
+  | `enhancePrompt` | `false` | boolean | 是否翻译为英文（仅 methodType ∈ {3,4,5,6} 实际生效） |
+  | `n` | `1` | number | 生成数量（仅 methodType ∈ {5,6} 实际生效） |
+  | `personGeneration` | `"allow_adult"` | string | 是否允许人物（仅 methodType ∈ {5,6} 实际生效） |
+  | `resizeMode` | `"pad"` | string | 图像缩放模式（仅 methodType ∈ {5,6} 实际生效） |
+  | `promptExtend` | `false` | boolean | 智能改写（仅 methodType ∈ {7,8,9,14,15,16} 实际生效） |
+  | `shotType` | `"single"` | string | 镜头模式；可选值受 methodType 约束（见下表） |
+  | `durationSwitch` | `"1"` | string | 生成时长模式（仅 methodType ∈ {2,17,18} 实际生效） |
+  | `duration` | 由 methodType 决定，默认 `8`（case `"3"`） | number | 视频时长（秒）；范围与默认值受 methodType 约束（见下表） |
 - `videoItems`：固定为 `[]`
 - `publishTemplates`：每个选中账号一条，字段：
   - `publishCount`：用户指定（字符串）
@@ -814,6 +889,44 @@ curl -s -H "x-api-key: $DEEPSOP_API_KEY" 'https://ai.deepsop.com/prod-api/ai/use
 > 7. `staffId` 必填，空字符串 `""` 也得给（不得省略此键）。
 > 8. `videoItems` 必填，空数组 `[]` 也得给。
 > 9. Toby 根部必填 8 个键：`totalTarget` / `incrementalTarget` / `upperLimitTarget` / `content` / `staffId` / `param` / `videoItems` / `publishTemplates` / `accountConfigList`（注意 `param` 内部还有自己的必填子键集）。
+> 10. **`param` 27 个键全量传**：即使当前 `methodType` 在 UI 上隐藏了某些字段（如 methodType=`"3"` 时 `audioUrl` / `firstClipUrl` / `elementList` / `videoUrlList` / `mode` / `durationSwitch` / `multiShot` / `negativePrompt` / `keepOriginalSound` / `promptExtend` / `shotType` 等不显），**请求体仍按上表的默认值传值，不得裁剪 key**。后端依赖固定的字段集合做反序列化。
+
+**📐 methodType → 取值约束表（构建 `param` 时必须参照此表选取/校验各依赖字段的合法值）：**
+
+下表中"固定值"列表示该 methodType 下唯一可用值，"可选值"列以英文逗号分隔，"默认值"列为本 SKILL 在用户未指定时的默认选择。
+
+| methodType | 模型 | `generationType` 可选 | `resolution` 可选 | `ratio` 可选 | `duration`（步长/最小/最大/默认） | `shotType` 可选 |
+|---|---|---|---|---|---|---|
+| `"auto"` | Auto | `FIRST&LAST` | `720p` | `16:9`,`9:16` | 由模型自动决定，**不传 `duration`**（仍保留键，值给默认 `8`） | `single` |
+| `"1"` | Sora2 BetaMax | `TEXT`,`FIRST&LAST` | `720p` | `16:9`,`9:16` | step=5, 10–15, 默认 `10` | `single` |
+| `"2"` | Seedance1.5 Pro | `TEXT`,`FIRST&LAST` | `480p`,`720p`,`1080p` | `adaptive`,`1:1`,`3:4`,`4:3`,`16:9`,`9:16`,`21:9` | step=1, 4–12, 默认 `4` | `single` |
+| `"3"`（**默认**） | Veo3.1 Fast Lite | `TEXT`,`FIRST&LAST`,`REFERENCE` | `720p`,`1080p`,`4K` | `adaptive`,`16:9`,`9:16` | step=1, 8–8, 默认 `8`（**唯一允许 8**） | `single` |
+| `"4"` | Veo3.1 Pro Lite | `TEXT`,`FIRST&LAST` | `720p`,`1080p`,`4K` | `adaptive`,`16:9`,`9:16` | step=1, 8–8, 默认 `8` | `single` |
+| `"5"` | Veo3.1 Fast | `TEXT`,`FIRST&LAST` | `720p`,`1080p`,`4K` | `adaptive`,`16:9`,`9:16` | step=2, 4–8, 默认 `4` | `single` |
+| `"6"` | Veo3.1 Pro | `TEXT`,`FIRST&LAST` | `720p`,`1080p`,`4K` | `adaptive`,`16:9`,`9:16` | step=2, 4–8, 默认 `4` | `single` |
+| `"7"` | Wan2.6 t2v | `TEXT` | `720p`,`1080p` | `1:1`,`3:4`,`4:3`,`16:9`,`9:16` | step=1, 3–15, 默认 `3` | `single`,`multi` |
+| `"8"` | Wan2.6 i2v | `FIRST&LAST` | `720p`,`1080p` | **不传 `ratio`** | step=1, 3–15, 默认 `3` | `single`,`multi` |
+| `"9"` | Wan2.6 r2v | `REFERENCE` | `720p`,`1080p` | `1:1`,`3:4`,`4:3`,`16:9`,`9:16` | step=1, 3–10, 默认 `3` | `single`,`multi` |
+| `"10"` | kling-v3-omni | `TEXT`,`FIRST&LAST`,`REFERENCE`,`EDIT`,`FEATURE` | **不传 `resolution`** | `1:1`,`16:9`,`9:16` | step=1, 3–15, 默认 `3` | `single`,`multi`,`customize` |
+| `"11"` | Sora2 | `TEXT`,`FIRST&LAST` | `720p` | `16:9`,`9:16` | step=4, 4–12, 默认 `4` | `single` |
+| `"12"` | Sora2 Pro | `TEXT`,`FIRST&LAST` | `720p`,`2K` | `16:9`,`9:16`,`7:4`,`4:7` | step=4, 4–12, 默认 `4` | `single` |
+| `"14"` | Wan2.7 i2v | `FIRST&LAST`,`CONTINUATION` | `720p`,`1080p` | **不传 `ratio`** | step=1, 3–15, 默认 `3` | `single` |
+| `"15"` | Wan2.7 t2v | `TEXT` | `720p`,`1080p` | `1:1`,`3:4`,`4:3`,`16:9`,`9:16` | step=1, 3–15, 默认 `3` | `single` |
+| `"16"` | Wan2.7 r2v | `REFERENCE` | `720p`,`1080p` | `1:1`,`3:4`,`4:3`,`16:9`,`9:16` | 有 `videoUrlList` 时 step=1, 3–10；否则 step=1, 3–15；默认 `3` | `single` |
+| `"17"` | Seedance2.0 | `TEXT`,`FIRST&LAST`,`REFERENCE` | `480p`,`720p`,`1080p` | `adaptive`,`1:1`,`3:4`,`4:3`,`16:9`,`9:16`,`21:9` | step=1, 4–15, 默认 `4` | `single` |
+| `"18"` | Seedance2.0 Fast | `TEXT`,`FIRST&LAST`,`REFERENCE` | `480p`,`720p` | `adaptive`,`1:1`,`3:4`,`4:3`,`16:9`,`9:16`,`21:9` | step=1, 4–15, 默认 `4` | `single` |
+
+> 🔒 **填值硬规则：**
+> 1. `generationType` / `resolution` / `ratio` / `shotType` 必须从该 methodType 行内的"可选值"中取，**不得**取该行未列出的值（例如 methodType=`"3"` 时 `ratio` 不得写 `1:1`，`generationType` 不得写 `EDIT`）。
+> 2. `duration` 必须落在该行的[最小, 最大]闭区间内，且 `(duration - 最小) % 步长 === 0`；用户未指定时取该行默认值。methodType=`"3"` 时只能是 `8`。
+> 3. methodType=`"8"` / `"14"` 时**不传 `ratio` 字段**（请求体里仍保留键，值给默认 `"16:9"`，但后端会忽略）；methodType=`"10"` 时**不传 `resolution` 字段**（同上，键保留、值给默认 `"720p"`）；methodType=`"auto"` 时 `duration` 由后端自动决定（键保留、值给默认 `8`）。即"不传"指**业务上不生效**，结构上**键仍必填**（呼应规则 10：27 个键全量传）。
+> 4. 字段间依赖：
+>    - `generationType="FIRST&LAST"` → `firstImageUrl` 必填、`lastImageUrl` 必填（除非 methodType ∈ {auto,1,8,11,12} 则 `lastImageUrl` 留 `null`）。
+>    - `generationType ∈ {REFERENCE, EDIT, FEATURE}` → `imageUrlList` 至少 1 项。
+>    - `generationType ∈ {CONTINUATION, EDIT, FEATURE}` → `firstClipUrl` 必填（仅 methodType ∈ {10,14} 才支持这些类型）。
+>    - `shotType="customize"` → `multiPrompt` 至少 1 项；同时 `text` 可留空。
+>    - `methodType ∈ {9,16,17,18}` → 视业务需要填 `videoUrlList`。
+> 5. 默认 methodType=`"3"` 下，本 SKILL 的合法 `param` 默认快照为：`generationType="FIRST&LAST"`、`resolution="720p"`、`ratio="16:9"`、`duration=8`、`shotType="single"`、`enhancePrompt=false`，其他依赖字段（`firstImageUrl` / `lastImageUrl` / `imageUrlList` / `firstClipUrl` / `videoUrlList` / `audioUrl` / `elementList` / `multiPrompt`）保持空值（`null` 或 `[]`）。
 
 **Toby 任务请求体示例：**
 ```json
@@ -889,7 +1002,7 @@ curl -s -H "x-api-key: $DEEPSOP_API_KEY" 'https://ai.deepsop.com/prod-api/ai/use
       }
     },
     "sourceSettings": null,
-    "currentModule": "analysis"
+    "currentModule": "content"
   },
   "completed": true
 }
@@ -901,11 +1014,13 @@ curl -s -H "x-api-key: $DEEPSOP_API_KEY" 'https://ai.deepsop.com/prod-api/ai/use
 
 构建请求体前，按本次任务实际包含的员工组合从下表查 `currentModule` 与 `sourceSettings` 的取值，**严禁自行推断**：
 
+> 🔒 **`currentModule` 全局固定为 `"content"`**：无论员工组合是哪种、是否含销售员工、是否含 Toby，`currentModule` 字段都是字符串字面量 `"content"`，**不得**写成 `"analysis"` / `"Content"` / `"CONTENT"` / `null` / 省略。
+
 | 员工组合 | `currentModule` | `sourceSettings` | 备注 |
 |---|---|---|---|
-| 仅 AiWa | `"analysis"` | `null` | 单纯客户挖掘 |
-| 仅 Toby | `"analysis"` | `null` | 单纯 TikTok 发布 |
-| AiWa + Toby | `"analysis"` | `null` | 挖客户 + 同步 TikTok 发布 |
+| 仅 AiWa | `"content"` | `null` | 单纯客户挖掘 |
+| 仅 Toby | `"content"` | `null` | 单纯 TikTok 发布 |
+| AiWa + Toby | `"content"` | `null` | 挖客户 + 同步 TikTok 发布 |
 | AiWa + Frank | `"content"` | `null` | 挖客户 + 邮件销售 |
 | AiWa + Fran | `"content"` | 完整 sourceSettings 对象（见 Fran 示例） | 挖客户 + 电话销售 |
 | AiWa + Lisa | `"content"` | 完整 sourceSettings 对象（见 Lisa 示例） | 挖客户 + 短信销售 |
@@ -918,14 +1033,13 @@ curl -s -H "x-api-key: $DEEPSOP_API_KEY" 'https://ai.deepsop.com/prod-api/ai/use
 | AiWa + Lisa + Toby | `"content"` | 完整 sourceSettings 对象 | 短信销售 + TikTok |
 
 > 🔍 **快速判定规则**：
+> - `currentModule` 始终为 `"content"`（无任何例外分支）。
 > - 含 `Fran` 或 `Lisa` → `sourceSettings` **必须是完整对象**（不能为 `null`）；
-> - 不含 `Fran` 也不含 `Lisa` → `sourceSettings` 为 `null`；
-> - 仅 AiWa、仅 Toby、AiWa+Toby 三种组合 → `currentModule` 为 `"analysis"`；
-> - 其他所有含销售员工的组合 → `currentModule` 为 `"content"`。
+> - 不含 `Fran` 也不含 `Lisa` → `sourceSettings` 为 `null`。
 
 > 🚫 **组合场景常见错例：**
 >
-> 1. AiWa+Frank 联合任务把 `currentModule` 写成 `"analysis"`：错。含 Frank 必须 `"content"`。
+> 1. 仅 AiWa / 仅 Toby / AiWa+Toby 任务把 `currentModule` 写成 `"analysis"`：错。**任何组合**都必须 `"content"`。
 > 2. AiWa+Fran 联合任务把 `sourceSettings` 写成 `null`：错。含 Fran 必须填完整对象。
 > 3. AiWa+Toby 联合任务把 `sourceSettings` 写成 `{}`：错。应为 `null`。
 > 4. 多员工组合时把不同员工塞进同一个员工 key（如 `employeeParams.AiWaFrank: {...}`）：错。每个员工是 `employeeParams` 下独立的同级 key。
@@ -946,10 +1060,10 @@ curl -s -H "x-api-key: $DEEPSOP_API_KEY" 'https://ai.deepsop.com/prod-api/ai/use
 **根结构（必须）：**
 - `collaborationSubmitTaskParam.taskName`：非空字符串
 - `collaborationSubmitTaskParam.taskDescription`：非空字符串
-- `collaborationSubmitTaskParam.executionMode`：值为 `1`
+- `collaborationSubmitTaskParam.executionMode`：**当前阶段一律硬编码为数字 `1`**（即使 Step 1 识别为周期性任务也写 1；不得写 `0` / `2` / `"1"` / `"定额任务"`）
 - `collaborationSubmitTaskParam.employeeParams`：对象，包含至少一个员工
 - `collaborationSubmitTaskParam.sourceSettings`：取值严格按上文「员工组合 → `currentModule` / `sourceSettings` 对照表」填（**不要在这里推断**）。快速规则：含 `Fran` 或 `Lisa` → 完整对象；不含 `Fran` 也不含 `Lisa` → `null`
-- `collaborationSubmitTaskParam.currentModule`：取值严格按上文「员工组合 → `currentModule` / `sourceSettings` 对照表」填。快速规则：仅 AiWa、仅 Toby、AiWa+Toby 三种 → `"analysis"`；其余含销售员工的组合 → `"content"`
+- `collaborationSubmitTaskParam.currentModule`：**全局固定为字符串 `"content"`**，无任何例外（不得写 `"analysis"` / `"Content"` / `null`）
 - `completed`：**必传**，布尔字面量 `true`，与 `collaborationSubmitTaskParam` 同级；不得为 `null`、缺省、字符串 `"true"` 或 `false`，否则接口返回 500
 
 **AiWa（当 employeeList 包含 AiWa 时）：**
@@ -1001,8 +1115,10 @@ curl -s -H "x-api-key: $DEEPSOP_API_KEY" 'https://ai.deepsop.com/prod-api/ai/use
 - `upperLimitTarget`：`10`
 - `content`：非空字符串，来自 `tiktokContent`
 - `staffId`：空字符串 `""`
-- `param.methodType`：非空字符串，来自用户选定模型的 `sourceValue`
-- `param.text`：非空字符串
+- `param`：嵌套对象，**全量 27 个键齐全**（按 Step 3「Toby 参数构建规则」表中默认值快照填充，未指定 methodType 时全部按 methodType=`"3"` 默认快照传）
+- `param.methodType`：非空字符串，默认 `"3"`；若用户切换模型，必须从 E-3 接口拿到的 `sourceValue` 取值
+- `param.text`：非空字符串（与 `Toby.content` 同值）
+- `param.generationType` / `resolution` / `ratio` / `duration` / `shotType`：取值必须与 `param.methodType` 在「methodType → 取值约束表」内的可选值完全匹配，否则停止提交并校正
 - `publishTemplates`：非空数组，每个账号一条，且 `publishCount`/`startTime`/`publishInterval`/`accountId` 均非空
 - `accountConfigList`：包含且仅一条，`accountId`/`privacyLevel` 非空
 
