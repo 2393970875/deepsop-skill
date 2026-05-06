@@ -1,6 +1,6 @@
 ---
 name: human-ai-collab
-description: 人机协作台技能。用户输入自然语言销售指令，AI自动分析拆解任务参数，调用 deepsop 平台接口提交任务，等待后查询结果并推送。触发场景：用户说「帮我找客户」「挖掘XXX行业客户」「找XXX个客户」「提交任务」等与客户挖掘、销售任务相关的指令；「发TikTok视频」「生成视频发布到TikTok」等TikTok视频发布指令；或收到包含 [DeepSOP-AutoQuery] 标记的系统定时事件（cron 回调，用于自动查询并推送任务结果）。需要提前配置环境变量 DEEPSOP_API_KEY。
+description: 人机协作台技能。用户输入自然语言销售指令，AI自动分析拆解任务参数，调用 deepsop 平台接口提交任务，等待后查询结果并推送。触发场景：用户说「帮我找客户」「挖掘XXX行业客户」「找XXX个客户」「提交任务」等与客户挖掘、销售任务相关的指令；「发TikTok视频」「生成视频发布到TikTok」等TikTok视频发布指令；或收到包含 [DeepSOP-AutoQuery] 标记的系统定时事件（cron 回调，用于自动查询并推送任务结果）。需要提前配置环境变量 DEEPSOP_API_KEY。⚠️ 调用本 SKILL 前必须先完整阅读 SKILL.md。提交 agentSubmitTask **必须**走 scripts/submit_task.py（通过 heredoc 把 body 喂给 stdin），脚本内部串行跑 validate_employee_params.py + validate_sms_template_params.py + UTF-8 安全 HTTP 提交，**禁止**直接写 curl 命令（会因 Windows cp936 代码页导致 taskName/taskDescription 中文乱码）。脚本退出码 0 才算成功；非 0 必须把 summary/errors 原样回给用户后修正重试，禁止绕过校验或假装成功。
 ---
 
 # 人机协作台（Human-AI Collaboration）
@@ -208,11 +208,31 @@ DEEPSOP_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxx
 
 **请求头：**
 ```
-Content-Type: application/json
+Content-Type: application/json; charset=utf-8
 x-api-key: $DEEPSOP_API_KEY
 ```
 
 > ⚠️ **强制规则：** 请求体根级必须包含 `"completed": true`（布尔字面量）。**严禁省略、写成 `null`、`"true"` 字符串或 `false`**，否则后端会直接返回 500。该字段与 `collaborationSubmitTaskParam` 同级，不在其内部。
+
+> 🔒 **强制使用 `submit_task.py` 提交，禁止直接 `curl`：**
+>
+> ```bash
+> python3 scripts/submit_task.py <<'TASK_BODY_EOF'
+> {
+>   "completed": true,
+>   "collaborationSubmitTaskParam": { ...完整请求体... }
+> }
+> TASK_BODY_EOF
+> ```
+>
+> 原因：直接在 bash 命令行写 `curl -d '{"taskName":"家纺..."}'` 会触发 Windows ANSI 代码页（cp936）与 UTF-8 之间的转码歧义，导致 `taskName` / `taskDescription` 含中文时**间歇性提交为乱码**。`submit_task.py` 通过 stdin 字节流 + 显式 UTF-8 解码 + `Content-Type: application/json; charset=utf-8` 显式声明，**彻底闭合编码链路**，并内置两层 pre-flight 校验（`validate_employee_params.py` + `validate_sms_template_params.py`），校验未过自动阻塞 HTTP 提交。
+>
+> 行为约束：
+> - **必须**通过 heredoc（`<<'TASK_BODY_EOF'` ... `TASK_BODY_EOF`）把请求体喂给 stdin；**禁止**用 argv 传 JSON（如 `python3 submit_task.py "$(echo {...})"`），argv 仍受 shell 编码影响。
+> - heredoc 定界符**必须用单引号包裹**（`'TASK_BODY_EOF'` 而不是 `TASK_BODY_EOF`），否则 bash 会做变量展开，破坏 JSON 中的 `$` 字符。
+> - 若运行时不支持 heredoc（极少见），退路：用 `python3 -c` 把 body 写到 UTF-8 文件，再 `python3 scripts/submit_task.py --file /tmp/task_body.json`。
+> - 脚本输出单行 JSON：`{ok, stage, status, summary, response, body_preview, errors?}`；退出码 `0`=成功、`1`=校验失败、`2`=网络失败、`3`=服务端非 2xx、`4`=输入格式错误。
+> - 退出码 ≠ 0 时，**必须**把 `summary` + `errors`/`response` 原样回复给用户，不得直接重试或假装成功。
 
 > ⛔ **字段名零改写规则（极高优先级，违反必返回 500）：**
 > 后端通过精确字段名解析参数，**所有键名必须与本文档示例 JSON 中的拼写完全一致（大小写、连写、单复数都不能改）**。在生成请求体时：
@@ -485,14 +505,53 @@ curl -s -H "x-api-key: $DEEPSOP_API_KEY" 'https://ai.deepsop.com/prod-api/ai/use
    - `user_nick`/昵称类 → `user_nick`
    - `conference`/`unit`/组织类 → `unit_name`
    - 其他 → `others`
-2. 求用户为每个变量填写具体值，并说明类型和校验规则，格式：
+2. 求用户为每个变量填写具体值。**必须**同时给出"✅ 正确示例"和"❌ 错误示例"，让用户一眼看到雷区。格式：
    > 模板内容为：「{templateContent}」
-   > 包含以下变量需要填写：
+   > 包含以下变量需要填写（请严格按格式，否则短信会全部发送失败）：
    > - `${conference}`：企业/组织名称（仅中文，不超过20字符）
+   >   - ✅ 例：`库阔数字科技`
+   >   - ❌ 例：`Kocgo Tech`（含英文）、`库阔数字科技股份有限公司（杭州）`（超长）
    > - `${address}`：地址（不超过30字符）
-   > - `${time}`：时间（如 2026-04-20　14:30）
-   > 请为每个变量填写具体内容
-3. 用户回复后校验每个变量值是否符合对应规则，不符则进行提示并要求重新填写。
+   >   - ✅ 例：`杭州萧山万豪酒店三楼`
+   >   - ❌ 例：`https://maps.example.com/...`（含网址）
+   > - `${time}`：时间（仅允许 `YYYY-MM-DD`、`hh:mm`、`上午/下午X点` 等标准格式）
+   >   - ✅ 例：`2026-05-15 14:00`、`5月15日 下午2点`
+   >   - ❌ 例：`2026年5月15日 14:00`（含中文"年月日"会被运营商网关拒绝）
+   > 请为每个变量填写具体内容。
+3. 🔒 **强制变量校验（pre-flight gate，违反任意一条都不得继续）：**
+
+   ✅ **首选方式：调用本 SKILL 自带的校验脚本**（代码级校验，结果机器可读，比 LLM 自查可靠）：
+
+   ```bash
+   python3 scripts/validate_sms_template_params.py '<templateParamList JSON 字符串>'
+   ```
+
+   - 入参：和最终请求体里的 `templateParamList` 同形状的 JSON 数组（仅含 `variableLabel` / `variableAttribute` / `variableValue` 三键）。
+   - stdout 输出单行 JSON：`{ok, summary, results: [{label, attribute, value, status, reason, suggestion?}]}`。
+   - 退出码：`0` 全 PASS、`1` 至少一项 FAIL、`2` 输入格式错误。
+   - 行为约束：
+     - 退出码 ≠ 0 时，**禁止**继续；必须把 `results` 中每条 FAIL 的 `reason` + `suggestion` 原样回复给用户，要求其重新填写后再次构建 `templateParamList` 并**重新调用本脚本**。
+     - 退出码 = 0 时才进入第 4 步。
+     - **不得**自己规整后跳过脚本（例如把 `2026年5月15日` 改成 `2026-05-15` 然后直接提交），必须让用户确认修改后的值再走一次校验。
+
+   ⚠️ **退路：脚本调用失败时（极少见，例如 python3 不可用）**，按下列规则人工逐个变量校验，规则与脚本完全一致：
+
+   a. 按变量的 `variableAttribute`（即上一步匹配到的 `code`）查上方"主要变量类型与校验规则"表，取出"校验规则"列。
+   b. 用规则对值做逐字符校验，**必须**判定是 PASS 还是 FAIL。不得"差不多就算过"，不得"用户写得清楚就提交"。
+   c. **任意一个变量 FAIL** → 立即向用户回复不合规的变量、违反的具体规则、合法示例，并要求重新填写。**不得**：
+      - 调用提交任务接口（`agentSubmitTask`）
+      - 自己擅自规整格式（如把 `2026年5月15日` 改写成 `2026-05-15` 后偷偷提交——必须让用户确认）
+      - 把"用户写得很明确"作为跳过校验的理由
+   d. **全部 PASS** 才能进入第 4 步构建 `templateParamList` 并继续后续提交流程。
+
+   **🚨 高频错误案例（已发生过真实事故，每次提交前必须自查）：**
+
+   | 变量类型 | 用户实际填写 | AI 错误处理 | 后果 | 正确处理 |
+   |---|---|---|---|---|
+   | `time` | `2026年5月15日 14:00` | 直接提交 | 短信网关拒绝，13 条全部失败 | 提醒用户改成 `2026-05-15 14:00` 后再提交 |
+   | `unit_name` | `Kocgo Tech` | 直接提交 | 模板审核为"仅中文"被拒 | 提醒用户改成中文名称 |
+   | `phone_number2` | `+86 138-1234-5678` | 直接提交 | 含非数字字符被拒 | 提醒用户改成 `13812345678` |
+
 4. 校验通过后，构建 `templateParamList`：
    ```json
    [
@@ -1126,11 +1185,49 @@ curl -s -H "x-api-key: $DEEPSOP_API_KEY" 'https://ai.deepsop.com/prod-api/ai/use
 
 **发现任何字段缺失或值不合法时，停止提交，先补全后再执行提交。**
 
+**🔒 强制提交：直接走 `scripts/submit_task.py`（一站式：校验 + UTF-8 安全 HTTP）**
+
+`submit_task.py` 已串联以下三件事，**LLM 只需调一次**即可完成"校验 + 提交"，不需要再单独调 `validate_employee_params.py` 或 `validate_sms_template_params.py`：
+
+1. 内部调用 `validate_employee_params.py`（结构 + 取值，覆盖 AiWa/Frank/Fran/Lisa/Toby 全员）
+2. 含 Lisa 模板变量时，自动调用 `validate_sms_template_params.py` 做内容校验
+3. 任一步校验失败立即退出（退出码 1），**不会**触发 HTTP 提交
+4. 校验全过才以 `Content-Type: application/json; charset=utf-8` POST 到 `/ai/presetEmployee/submitTask`
+
+```bash
+python3 scripts/submit_task.py <<'TASK_BODY_EOF'
+{
+  "completed": true,
+  "collaborationSubmitTaskParam": { ...完整请求体... }
+}
+TASK_BODY_EOF
+```
+
+**校验覆盖范围**（详见 `validate_employee_params.py` / `validate_sms_template_params.py` 源码）：
+- Step 1/2 内部变量（`employeeList` / `language` / `tiktokContent` / 根级 `totalTarget`）泄漏到根或 `collaborationSubmitTaskParam` 层
+- 员工 key 大小写错（`aiwa` / `aiwaParam` / `franParam` 等都会被纠错为 PascalCase）
+- `executionMode` 必须是数字 `1`（拦截 `"1"` / `true` / `"定额任务"` 等）
+- `currentModule` 必须固定为 `"content"`；含 `Fran`/`Lisa` 时 `sourceSettings` 必须是完整对象
+- 各员工必填键、固定值（如 AiWa.incrementalTarget=5000、Frank.upperLimitTarget=1000、Fran.priority="Daily"、Lisa.incrementalTarget=100、Toby.upperLimitTarget=10）
+- 数组类字段类型（`keywordList` / `industryList` / `countryCodeList` / `callingNumber` / `templateParamList` / `publishTemplates` / `accountConfigList`）
+- AiWa.addressObjList 占位规则与 `type=0/1` 与 `address` / `province/city/county` 的互斥
+- Frank.emailPlanList 长度恰为 1 与子键完整
+- Lisa.templateParamList 数组结构 + 每项三键齐全 + 变量内容合规（如 `time` 类禁止含中文"年"）
+- Toby.param 必须包含全部 27 个键、`methodType` 与 `generationType` / `resolution` / `ratio` / `duration` / `shotType` 的依赖关系（依据「methodType → 取值约束表」）
+
+**行为约束：**
+- **必须**用 heredoc + 单引号定界符（`<<'TASK_BODY_EOF'`），不能用 argv 传 JSON。
+- 脚本输出单行 JSON（含 `summary` / `errors` / `body_preview` / `response`）。
+- 退出码：`0` 提交成功 / `1` 校验失败 / `2` 网络失败 / `3` HTTP 非 2xx / `4` 输入格式错误或 API key 缺失。
+- 退出码 ≠ 0 时，**必须**把 `summary`、`errors`/`response` 原样回给用户，按提示修正请求体再重跑；**不允许**跳过校验、不允许"我这次写得很标准"为由绕过。
+
+> ℹ️ 仅在排查时可先用 `python3 scripts/submit_task.py --dry-run <<'TASK_BODY_EOF' ...` 跑校验而不发 HTTP；正式提交禁止 `--dry-run`。
+
 **用户确认清单（以下各项必须已获得用户明确确认，缺一不可提交）：**
 - Fran 参与时：✅ `callingNumber` 非空（多号码时用户已选择）
 - Fran 参与时：✅ 用户已选择/确认场景库（`scriptId` 非空，且用户有明确回复确认）
 - Lisa 参与时：✅ 用户已选择/确认短信模板（`templateCode` 非空，且用户有明确回复确认）
-- Lisa 参与时（模板含变量）：✅ 用户已填写并校验通过所有模板变量（`templateParamList` 构建完整）
+- Lisa 参与时（模板含变量）：✅ 已通过 `scripts/submit_task.py` 完成提交（脚本内部已串行跑过 `validate_employee_params.py` + `validate_sms_template_params.py`）；脚本退出码 ≠ 0 时禁止重试，必须把脚本返回的 `summary`/`errors` 原样回给用户、修正后再重跑。**禁止**绕过 `submit_task.py` 自己拼 curl。**特别注意 `time` 类变量**——值中**不得**出现中文"年"，脚本会直接拒绝
 - Frank 参与时：✅ 用户 profile 已获取（`senderEmail` 非空），邮件内容已 AI 生成
 - Toby 参与时：✅ 用户已选择/确认 TikTok 账号（`selectedAccountIds` 非空）
 - Toby 参与时：✅ 用户已确认或修改视频生成提示词（`content` 已确定）
