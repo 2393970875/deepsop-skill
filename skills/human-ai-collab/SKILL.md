@@ -29,7 +29,11 @@ description: 人机协作台技能。用户输入自然语言销售指令，AI�
 
 ## 前置条件：获取 API Key
 
-1. 访问 [https://ai.deepsop.com](https://ai.deepsop.com) 注册并登录账号
+本技能需要 **API Key 授权**才能调用 DeepSOP 接口。请按以下步骤获取：
+
+1. 获取 API Key 入口：
+   - **已有账号** → 前往 [https://ai.deepsop.com/login?isClaw=1](https://ai.deepsop.com/login?isClaw=1) 登录获取
+   - **没有账号** → 前往 [https://ai.deepsop.com/register?isClaw=1](https://ai.deepsop.com/register?isClaw=1) 注册后获取
 2. 登录后进入「设置」或「API 管理」页面
 3. 新建 API Key，复制以 `sk-` 开头的密钥
 4. 在 OpenClaw 中配置环境变量：
@@ -40,6 +44,64 @@ DEEPSOP_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxx
 
 > 所有 API 请求头需携带：`x-api-key: $DEEPSOP_API_KEY`
 > API Base URL：`https://ai.deepsop.com/prod-api/`
+
+---
+
+## ⛔ 接口路径强约束（最高优先级，所有 HTTP 请求必须遵守）
+
+> 🔒 **核心规则：** 调用任何接口时，**必须严格使用本文档对应步骤标注的完整 URL**，不得做任何形式的改写、简化、猜测或自创。
+>
+> **请求前自检流程（每一次 HTTP 请求都必须执行）：**
+> 1. 在下方「**API 路径权威清单**」中找到对应步骤的接口；
+> 2. 将即将发出的完整 URL（含 host、path、query key 名与顺序、`pageNum`/`pageSize`/`platform` 等参数值）与清单中的 `Path` 列**逐字符比对**；
+> 3. 完全一致才允许发出请求；任何偏差立即停止，按清单中的路径修正后再重试；
+> 4. 若某接口未在清单中列出 → **绝对禁止**自行编造路径，必须先向用户确认。
+>
+> **禁止行为：**
+> - ❌ 把 `prod-api` 改成 `api` / `v1` / `prod` / `prodApi`
+> - ❌ 把 camelCase 改成 snake_case 或全小写（如 `presetEmployee` ≠ `preset_employee` ≠ `presetemployee`）
+> - ❌ 把 `outBound` 写成 `outbound`、`emailconfig` 写成 `emailConfig`、`authaccount` 写成 `authAccount`（这三个偏偏就是全小写，特别注意）
+> - ❌ 用同义词替换路径段（`getCustomerPoolDetail` ≠ `customerPoolDetail` / `getCustomerDetail`；`collaborationCallResult` ≠ `callResult`）
+> - ❌ 漏写或私自补加 query 参数（如漏 `platform=1` / `status=1`，或私自加 `pageSize=20` 改成 `pageSize=10`）
+> - ❌ 凭"上一次调用记得"或"经验"猜测路径，不回到本文档对照
+>
+> **路径错误是最常见、最可避免、影响最大的事故，必须零容忍。**
+
+### 📋 API 路径权威清单（Base URL: `https://ai.deepsop.com/prod-api`）
+
+| # | 步骤 | 方法 | Path（不含 Base URL） |
+|---|---|---|---|
+| 1 | Step 1.5 数字员工可用性 | `GET` | `/ai/presetEmployee/list` |
+| 2 | Step 3 提交任务 | `POST` | `/ai/presetEmployee/submitTask` |
+| 3 | Step 3 前置 A-0 外呼实例 | `GET` | `/ai/outBound/describeInstance` |
+| 4 | Step 3 前置 A-1 号码池 | `GET` | `/ai/outBound/callerNumber/list` |
+| 5 | Step 3 前置 A-2 场景库 | `POST` | `/ai/outBound/listScripts` |
+| 6 | Step 3 前置 B0 邮箱绑定检查 | `GET` | `/ai/emailconfig/list?pageSize=1000&pageNum=1&status=1` |
+| 7 | Step 3 前置 B 用户 Profile | `GET` | `/ai/user/profile` |
+| 8 | Step 3 前置 D-1 短信模板列表 | `GET` | `/ai/sms/querySmsTemplateList?pageNum=1&pageSize=20&pageNumber=1` |
+| 9 | Step 3 前置 E-1 TikTok 账号列表 | `GET` | `/ai/authaccount/list?pageNum=1&pageSize=999&platform=1&status=1` |
+| 10 | Step 3 前置 E-2 TikTok 账号权限 | `GET` | `/ai/auth/tiktok/getCreatorInfo?authAccountId={id}` |
+| 11 | Step 3 前置 E-3 视频模型列表 | `POST` | `/ai/consumeSource/list?pageNum=1&pageSize=999` |
+| 12 | Step 5-A AiWa 客户池详情 | `POST` | `/ai/presetEmployee/getCustomerPoolDetail?pageNum=1&pageSize=10` |
+| 13 | Step 5-B-1 Frank 邮件统计 | `GET` | `/ai/email/getTaskEmailCount?taskId={frankDagTaskId}` |
+| 14 | Step 5-B-2 Frank 邮件列表 | `GET` | `/ai/email/taskList?pageNum=1&pageSize=2000&taskId={frankDagTaskId}` |
+| 15 | Step 5-C-1 Fran 电话统计 | `GET` | `/ai/presetEmployee/collaborationTaskStatistics?taskId={franDagTaskId}&customerPoolId={franCustomerPoolId}` |
+| 16 | Step 5-C-2 Fran 电话详情 | `POST` | `/ai/presetEmployee/collaborationCallResult?pageNum=1&pageSize=10` |
+| 17 | Step 5-D-1 Lisa 短信统计 | `POST` | `/ai/sms/getTaskSmsCount` |
+| 18 | Step 5-D-2 Lisa 短信详情 | `POST` | `/ai/sms/getSmsResultList?pageNum=1&pageSize=10` |
+| 19 | Step 5-E-1 Toby 视频统计 | `GET` | `/ai/data/count?taskId={tobyDagTaskId}&customerPoolId={tobyCustomerPoolId}&platform=1` |
+| 20 | Step 5-E-2 Toby 视频列表 | `GET` | `/ai/data/list?pageNum=1&pageSize=10&taskId={tobyDagTaskId}&customerPoolId={tobyCustomerPoolId}&platform=1` |
+
+> 🔁 **本清单与下文各 Step 中"接口："标注的路径完全一致**。如发现两处不一致，**以下文 Step 中的标注为准**（本清单仅为快速比对索引），同时立即向用户报告该不一致以便修正。
+
+### 🛡️ 双轨强约束（本文档 + 代码）
+
+> 上述清单同时存在于 `scripts/api_paths.py`，构成"双轨强约束"：
+>
+> - **LLM 直接发请求时（curl/工具调用）：** 必须对照本文档清单逐字符比对路径。
+> - **脚本调用 API 时（如 `submit_task.py`）：** 严禁脚本内硬编码 URL，必须从 `api_paths.py` 通过 `build_url("xxx")` 获取，并配合 `assert_url_matches()` 自检。
+> - **新增/修改接口的强制流程：** 先改 SKILL.md 这张表 → 再改 `api_paths.py` → 然后才能在脚本里使用；遗漏任一步即视为 bug。
+> - **漂移检测：** 运行 `python scripts/api_paths.py` 会扫描本文件中所有 `https://ai.deepsop.com/prod-api/...` 路径，若有未在 `api_paths.py` 登记的项目则非零退出。该命令应在每次修改路径后执行一次自检。
 
 ---
 
@@ -1809,7 +1871,11 @@ python3 ~/.openclaw/workspace/skills/deepsop-human-ai-collab/scripts/format_emai
 
 ## 错误处理
 
-- `DEEPSOP_API_KEY` 未设置：提示用户前往 https://ai.deepsop.com 注册登录后新建 API Key，配置环境变量后再使用
+- `DEEPSOP_API_KEY` 未设置：提示用户**需要 API Key 授权**才能使用本技能：
+  - **已有账号** → 前往 [https://ai.deepsop.com/login?isClaw=1](https://ai.deepsop.com/login?isClaw=1) 登录获取
+  - **没有账号** → 前往 [https://ai.deepsop.com/register?isClaw=1](https://ai.deepsop.com/register?isClaw=1) 注册获取
+  
+  登录后在控制台新建 API Key（`sk-` 开头），配置 `DEEPSOP_API_KEY` 环境变量后再重试
 - POST 接口返回非 200：展示错误信息，提示检查参数或稍后重试
 - AiWa GET 接口 data 为空：提示任务可能仍在执行，给出 taskId 供用户告知「再查一次」
 - Frank 邮件统计/列表接口异常：提示邮件任务可能仍在发送中，给出 taskId 供用户告知「再查Frank结果」
