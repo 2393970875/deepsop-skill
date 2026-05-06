@@ -57,12 +57,16 @@ if str(SCRIPT_DIR) not in sys.path:
 
 import validate_employee_params as vep  # noqa: E402
 import validate_sms_template_params as vstp  # noqa: E402
+import api_paths  # noqa: E402  —— SKILL.md「API 路径权威清单」的代码侧单一来源
 
 import urllib.error  # noqa: E402
 import urllib.request  # noqa: E402
 
 
-API_URL = "https://ai.deepsop.com/prod-api/ai/presetEmployee/submitTask"
+# ⚠️ 强约束：本脚本提交任务的 URL 必须与 SKILL.md「API 路径权威清单」#2 一致；
+# 不得在此文件硬编码 URL，任何路径变更只能在 api_paths.py 中改，并同步更新 SKILL.md。
+API_URL = api_paths.build_url("preset_employee_submit_task")
+api_paths.assert_url_matches(API_URL, "preset_employee_submit_task")
 TIMEOUT_SEC = 30
 
 
