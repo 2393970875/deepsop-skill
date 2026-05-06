@@ -37,7 +37,7 @@ description: |
 - **已有账号** → 前往 [https://ai.deepsop.com/login?isClaw=1](https://ai.deepsop.com/login?isClaw=1) 登录获取
 - **没有账号** → 前往 [https://ai.deepsop.com/register?isClaw=1](https://ai.deepsop.com/register?isClaw=1) 注册后获取
 
-登录后在控制台创建你的 API Key（`sk-` 开头）。
+登录后在复制您的 API Key（`sk-` 开头）。
 
 ### 2. 设置环境变量
 

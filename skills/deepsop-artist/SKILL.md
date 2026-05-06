@@ -30,7 +30,7 @@ description: |
 - **已有账号** → 前往 [https://ai.deepsop.com/login?isClaw=1](https://ai.deepsop.com/login?isClaw=1) 登录获取
 - **没有账号** → 前往 [https://ai.deepsop.com/register?isClaw=1](https://ai.deepsop.com/register?isClaw=1) 注册后获取
 
-登录后在控制台创建你的 API Key（`sk-` 开头）。
+登录后在复制您的 API Key（`sk-` 开头）。
 
 ### 2. 设置环境变量
 
@@ -505,7 +505,7 @@ if result and result["status"] == "SUCCESS":
 1. 访问入口：
    - **已有账号** → [https://ai.deepsop.com/login?isClaw=1](https://ai.deepsop.com/login?isClaw=1) 登录获取
    - **没有账号** → [https://ai.deepsop.com/register?isClaw=1](https://ai.deepsop.com/register?isClaw=1) 注册获取
-2. 登录后在控制台创建你的 API Key
+2. 登录后在复制您的 API Key
 3. 复制生成的 API Key（格式：`sk-xxxxxx...`）
 
 #### 方式 1：使用 .env 文件（推荐）
