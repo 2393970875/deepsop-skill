@@ -13,8 +13,8 @@
 
 本技能需要 **API Key 授权**才能调用 AI Artist API：
 
-- **已有账号** → 前往 [https://ai.deepsop.com/login?isClaw=2](https://ai.deepsop.com/login?isClaw=2) 登录获取
-- **没有账号** → 前往 [https://ai.deepsop.com/register?isClaw=2](https://ai.deepsop.com/register?isClaw=2) 注册后获取
+- **已有账号** → 前往 [https://ai.deepsop.com/login?source=2](https://ai.deepsop.com/login?source=2) 登录获取
+- **没有账号** → 前往 [https://ai.deepsop.com/register?source=2](https://ai.deepsop.com/register?source=2) 注册后获取
 
 登录后在复制您的 API Key（`sk-` 开头）。
 

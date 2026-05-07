@@ -254,8 +254,8 @@ AI：AiWa 客户挖掘完成，共找到 50 个客户，详见附件
 ### API Key 获取
 
 #### AI Artist API Key
-- **已有账号** → 前往 [https://ai.deepsop.com/login?isClaw=2](https://ai.deepsop.com/login?isClaw=2) 登录获取
-- **没有账号** → 前往 [https://ai.deepsop.com/register?isClaw=2](https://ai.deepsop.com/register?isClaw=2) 注册后获取
+- **已有账号** → 前往 [https://ai.deepsop.com/login?source=2](https://ai.deepsop.com/login?source=2) 登录获取
+- **没有账号** → 前往 [https://ai.deepsop.com/register?source=2](https://ai.deepsop.com/register?source=2) 注册后获取
 
 登录后在复制您的 API Key（`sk-` 开头）。
 
@@ -265,8 +265,8 @@ AI：AiWa 客户挖掘完成，共找到 50 个客户，详见附件
 
 #### DeepSOP API Key
 
-- **已有账号** → 前往 [https://ai.deepsop.com/login?isClaw=2](https://ai.deepsop.com/login?isClaw=2) 登录获取
-- **没有账号** → 前往 [https://ai.deepsop.com/register?isClaw=2](https://ai.deepsop.com/register?isClaw=2) 注册后获取
+- **已有账号** → 前往 [https://ai.deepsop.com/login?source=2](https://ai.deepsop.com/login?source=2) 登录获取
+- **没有账号** → 前往 [https://ai.deepsop.com/register?source=2](https://ai.deepsop.com/register?source=2) 注册后获取
 
 登录后在复制您的 API Key（`sk-` 开头）。
 
@@ -459,8 +459,8 @@ description: 简短描述，说明何时使用此 skill
 
 ### Q1: 如何获取 API Key？
 
-A: 已有账号 → 前往 [https://ai.deepsop.com/login?isClaw=2](https://ai.deepsop.com/login?isClaw=2) 登录获取
-B: 没有账号 → 前往 [https://ai.deepsop.com/register?isClaw=2](https://ai.deepsop.com/register?isClaw=2) 注册后获取
+A: 已有账号 → 前往 [https://ai.deepsop.com/login?source=2](https://ai.deepsop.com/login?source=2) 登录获取
+B: 没有账号 → 前往 [https://ai.deepsop.com/register?source=2](https://ai.deepsop.com/register?source=2) 注册后获取
 
 ### Q2: 为什么命令执行失败？
 
