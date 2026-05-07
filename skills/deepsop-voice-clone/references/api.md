@@ -6,7 +6,10 @@
 
 **认证方式:** 所有请求需要在 Header 中携带 `x-api-key: <your_api_key>`
 
-**API Key 获取:** 访问 https://ai.deepsop.com/ 注册登录后创建
+**API Key 获取:**
+- **已有账号** → 前往 [https://ai.deepsop.com/login?source=2](https://ai.deepsop.com/login?source=2) 登录获取
+- **没有账号** → 前往 [https://ai.deepsop.com/register?source=2](https://ai.deepsop.com/register?source=2) 注册后获取
+登录后在复制您的 API Key（`sk-` 开头）。
 
 ---
 

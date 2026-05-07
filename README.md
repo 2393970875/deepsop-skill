@@ -254,11 +254,10 @@ AI：AiWa 客户挖掘完成，共找到 50 个客户，详见附件
 ### API Key 获取
 
 #### AI Artist API Key
+- **已有账号** → 前往 [https://ai.deepsop.com/login?source=2](https://ai.deepsop.com/login?source=2) 登录获取
+- **没有账号** → 前往 [https://ai.deepsop.com/register?source=2](https://ai.deepsop.com/register?source=2) 注册后获取
 
-1. 访问 [https://ai.deepsop.com/](https://ai.deepsop.com/)
-2. 注册并登录账号
-3. 在控制台创建 API Key
-4. 复制以 `sk-` 开头的密钥
+登录后在复制您的 API Key（`sk-` 开头）。
 
 适用于：
 - deepsop-artist（图片/视频生成）
@@ -266,10 +265,10 @@ AI：AiWa 客户挖掘完成，共找到 50 个客户，详见附件
 
 #### DeepSOP API Key
 
-1. 访问 [https://ai.deepsop.com/](https://ai.deepsop.com/)
-2. 登录后进入「设置」或「API 管理」页面
-3. 新建 API Key
-4. 复制以 `sk-` 开头的密钥
+- **已有账号** → 前往 [https://ai.deepsop.com/login?source=2](https://ai.deepsop.com/login?source=2) 登录获取
+- **没有账号** → 前往 [https://ai.deepsop.com/register?source=2](https://ai.deepsop.com/register?source=2) 注册后获取
+
+登录后在复制您的 API Key（`sk-` 开头）。
 
 适用于：
 - human-ai-collab（人机协作）
@@ -460,7 +459,8 @@ description: 简短描述，说明何时使用此 skill
 
 ### Q1: 如何获取 API Key？
 
-A: 访问 [https://ai.deepsop.com/](https://ai.deepsop.com/) 注册登录后，在控制台创建 API Key。
+A: 已有账号 → 前往 [https://ai.deepsop.com/login?source=2](https://ai.deepsop.com/login?source=2) 登录获取
+B: 没有账号 → 前往 [https://ai.deepsop.com/register?source=2](https://ai.deepsop.com/register?source=2) 注册后获取
 
 ### Q2: 为什么命令执行失败？
 

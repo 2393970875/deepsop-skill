@@ -9,9 +9,14 @@
 
 ## 🚀 快速开始
 
-### 1) 获取 API Key
+### 1. 获取 API Key
 
-访问 [https://ai.deepsop.com/](https://ai.deepsop.com/) 注册登录后，在控制台创建 API Key。
+本技能需要 **API Key 授权**才能调用 AI Artist API：
+
+- **已有账号** → 前往 [https://ai.deepsop.com/login?source=2](https://ai.deepsop.com/login?source=2) 登录获取
+- **没有账号** → 前往 [https://ai.deepsop.com/register?source=2](https://ai.deepsop.com/register?source=2) 注册后获取
+
+登录后在复制您的 API Key（`sk-` 开头）。
 
 ### 2) 设置环境变量
 

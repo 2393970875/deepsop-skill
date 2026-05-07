@@ -4,7 +4,7 @@ description: |
   AI 图片与视频异步生成技能，调用 AI Artist API 根据文本提示词生成图片或视频，自动轮询直到任务完成。
 
   ⚠️ 使用前必须设置环境变量 AI_ARTIST_TOKEN 为你自己的 API Key！
-  需要 API Key 授权：已有账号请前往 https://ai.deepsop.com/login?isClaw=1 登录获取；没有账号请前往 https://ai.deepsop.com/register?isClaw=1 注册后获取。
+  需要 API Key 授权：已有账号请前往 https://ai.deepsop.com/login?source=2 登录获取；没有账号请前往 https://ai.deepsop.com/register?source=2 注册后获取。
 
   支持图片模型：**3.1Nano2-Evo（默认）**、S5.0L、N2、W2.7、W2.7Pro、Nano2-Beta-Evo、**Image2（GPTimage-2）**。
   支持视频模型：**V3.1FB（默认）**、S1.5Pro、V3.1PB、V3.1Fast、W2.6t / W2.6i / W2.6r、klingV3Omni、W2.7t / W2.7i / W2.7r。
@@ -27,8 +27,8 @@ description: |
 
 本技能需要 **API Key 授权**才能调用 AI Artist API：
 
-- **已有账号** → 前往 [https://ai.deepsop.com/login?isClaw=1](https://ai.deepsop.com/login?isClaw=1) 登录获取
-- **没有账号** → 前往 [https://ai.deepsop.com/register?isClaw=1](https://ai.deepsop.com/register?isClaw=1) 注册后获取
+- **已有账号** → 前往 [https://ai.deepsop.com/login?source=2](https://ai.deepsop.com/login?source=2) 登录获取
+- **没有账号** → 前往 [https://ai.deepsop.com/register?source=2](https://ai.deepsop.com/register?source=2) 注册后获取
 
 登录后在复制您的 API Key（`sk-` 开头）。
 
@@ -503,8 +503,8 @@ if result and result["status"] == "SUCCESS":
 本技能需要 **API Key 授权**：
 
 1. 访问入口：
-   - **已有账号** → [https://ai.deepsop.com/login?isClaw=1](https://ai.deepsop.com/login?isClaw=1) 登录获取
-   - **没有账号** → [https://ai.deepsop.com/register?isClaw=1](https://ai.deepsop.com/register?isClaw=1) 注册获取
+   - **已有账号** → [https://ai.deepsop.com/login?source=2](https://ai.deepsop.com/login?source=2) 登录获取
+   - **没有账号** → [https://ai.deepsop.com/register?source=2](https://ai.deepsop.com/register?source=2) 注册获取
 2. 登录后在复制您的 API Key
 3. 复制生成的 API Key（格式：`sk-xxxxxx...`）
 
