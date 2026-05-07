@@ -32,8 +32,8 @@ description: 人机协作台技能。用户输入自然语言销售指令，AI�
 本技能需要 **API Key 授权**才能调用 DeepSOP 接口。请按以下步骤获取：
 
 1. 获取 API Key 入口：
-   - **已有账号** → 前往 [https://ai.deepsop.com/login?isClaw=1](https://ai.deepsop.com/login?isClaw=1) 登录获取
-   - **没有账号** → 前往 [https://ai.deepsop.com/register?isClaw=1](https://ai.deepsop.com/register?isClaw=1) 注册后获取
+   - **已有账号** → 前往 [https://ai.deepsop.com/login?isClaw=2](https://ai.deepsop.com/login?isClaw=2) 登录获取
+   - **没有账号** → 前往 [https://ai.deepsop.com/register?isClaw=2](https://ai.deepsop.com/register?isClaw=2) 注册后获取
 2. 登录后进入「设置」或「API 管理」页面
 3. 新建 API Key，复制以 `sk-` 开头的密钥
 4. 在 OpenClaw 中配置环境变量：
@@ -1872,8 +1872,8 @@ python3 ~/.openclaw/workspace/skills/deepsop-human-ai-collab/scripts/format_emai
 ## 错误处理
 
 - `DEEPSOP_API_KEY` 未设置：提示用户**需要 API Key 授权**才能使用本技能：
-  - **已有账号** → 前往 [https://ai.deepsop.com/login?isClaw=1](https://ai.deepsop.com/login?isClaw=1) 登录获取
-  - **没有账号** → 前往 [https://ai.deepsop.com/register?isClaw=1](https://ai.deepsop.com/register?isClaw=1) 注册获取
+  - **已有账号** → 前往 [https://ai.deepsop.com/login?isClaw=2](https://ai.deepsop.com/login?isClaw=2) 登录获取
+  - **没有账号** → 前往 [https://ai.deepsop.com/register?isClaw=2](https://ai.deepsop.com/register?isClaw=2) 注册获取
   
   登录后在控制台新建 API Key（`sk-` 开头），配置 `DEEPSOP_API_KEY` 环境变量后再重试
 - POST 接口返回非 200：展示错误信息，提示检查参数或稍后重试
