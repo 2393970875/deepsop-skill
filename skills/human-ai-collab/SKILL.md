@@ -32,8 +32,8 @@ description: 人机协作台技能。用户输入自然语言销售指令，AI�
 本技能需要 **API Key 授权**才能调用 DeepSOP 接口。请按以下步骤获取：
 
 1. 获取 API Key 入口：
-   - **已有账号** → 前往 [https://ai.deepsop.com/login?source=2](https://ai.deepsop.com/login?source=2) 登录获取
-   - **没有账号** → 前往 [https://ai.deepsop.com/register?source=2](https://ai.deepsop.com/register?source=2) 注册后获取
+   - **已有账号** → 前往 [https://ai.deepsop.com/login?source=3](https://ai.deepsop.com/login?source=3) 登录获取
+   - **没有账号** → 前往 [https://ai.deepsop.com/register?source=3](https://ai.deepsop.com/register?source=3) 注册后获取
 2. 登录后进入「设置」或「API 管理」页面
 3. 新建 API Key，复制以 `sk-` 开头的密钥
 4. 在 OpenClaw 中配置环境变量：
@@ -72,6 +72,10 @@ DEEPSOP_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxx
 | # | 步骤 | 方法 | Path（不含 Base URL） |
 |---|---|---|---|
 | 1 | Step 1.5 数字员工可用性 | `GET` | `/ai/presetEmployee/list` |
+| 1.1 | Step 1.5.1① 签约套餐列表 | `GET` | `/ai/setting/list?packageType=3` |
+| 1.2 | Step 1.5.1② 人民币→K币汇率 | `GET` | `/system/config/configKey/CNY_TO_KCOIN` |
+| 1.3 | Step 1.5.1③ K币余额查询 | `GET` | `/ai/vip/balance?userId={userId}` |
+| 1.4 | Step 1.5.1④ 提交签约（扣K币） | `POST` | `/ai/order/purchaseIndependentPackageByKToken` |
 | 2 | Step 3 提交任务 | `POST` | `/ai/presetEmployee/submitTask` |
 | 3 | Step 3 前置 A-0 外呼实例 | `GET` | `/ai/outBound/describeInstance` |
 | 4 | Step 3 前置 A-1 号码池 | `GET` | `/ai/outBound/callerNumber/list` |
@@ -187,15 +191,103 @@ DEEPSOP_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxx
 1. **禁用状态（status = 1）→ 终止任务**，回复：
    > ⚠️ 数字员工「{name}」当前处于禁用状态，无法执行任务。请联系管理员启用后再试。
 
-2. **剩余天数耗尽（status = 0 且 remainingDays ≤ 0）→ 警告并终止任务**，回复：
-   > ⚠️ 数字员工「{name}」的使用天数已耗尽（剩余 {remainingDays} 天），请前往 https://ai.deepsop.com 购买/续费后再执行任务。
+2. **未开通 / 已过期（status = 0 且 `remainingDays` 为 `null` 或 `remainingDays ≤ 0`）→ 进入签约流程（见下方 Step 1.5.1）**。签约完成后重新拉取 `/ai/presetEmployee/list` 校验，通过后继续；用户放弃或余额不足则终止任务。
 
 3. **剩余天数不足（status = 0 且 remainingDays > 0 且 remainingDays ≤ 7）→ 提醒用户，但允许继续**：
    > ⚡ 提示：数字员工「{name}」剩余可用天数仅剩 **{remainingDays} 天**，建议尽快前往 https://ai.deepsop.com 续费，以免中断服务。
 
-4. **正常（status = 0 且 remainingDays > 7 或 remainingDays 为 null）→ 继续流程**
+4. **正常（status = 0 且 remainingDays > 7）→ 继续流程**
 
-**所有员工均通过校验后，方可继续后续步骤。任一员工触发规则 1 或规则 2 立即停止，不得继续下任务。**
+**所有员工均通过校验后，方可继续后续步骤。任一员工触发规则 1 立即停止；规则 2 必须走完签约流程且成功后才能继续。**
+
+---
+
+#### Step 1.5.1：数字员工签约流程（仅在规则 2 触发时执行）
+
+按顺序执行，**每一步失败或用户放弃均立即终止任务**。
+
+**① 拉取套餐列表**
+
+接口：`GET https://ai.deepsop.com/prod-api/ai/setting/list?packageType=3`
+请求头：`x-api-key: $DEEPSOP_API_KEY`
+
+响应 `data` 为数组，每项结构：
+```
+{
+  presetEmployeeId,          // 关联员工 ID，用于匹配当前待签约员工
+  packageOptions: [
+    {
+      id,                    // optionId（提交签约用）
+      packageId,             // 套餐 ID（提交签约用）
+      description,           // 套餐名称文案（如"月度套餐"）
+      purchaseMonths,        // 1 | 3 | 6 | 12
+      actualPrice,           // 人民币实价（元）
+      discountRate,          // 折扣率，100 = 无折扣
+      giftKToken             // 赠送 K 币数量
+    }
+  ]
+}
+```
+
+根据当前待签约员工的 `id` 匹配对应条目，取其 `packageOptions`。
+
+**② 展示套餐让用户选择**
+
+先获取人民币→K币汇率：
+接口：`GET https://ai.deepsop.com/prod-api/system/config/configKey/CNY_TO_KCOIN`
+响应 `msg` 即为汇率（记为 `rate`）。
+
+每个套餐的**应付 K 币**计算公式：
+```
+priceKCoin = actualPrice × (discountRate / 100) × rate
+```
+
+向用户展示（格式示例）：
+```
+数字员工「{name}」尚未开通，请选择签约套餐（回复序号）：
+1. {description}（{purchaseMonths}个月） — {priceKCoin} K币{折扣率≠100 时追加"（{discountRate/10}折）"}{giftKToken>0 时追加"，赠送 {giftKToken} K币"}
+2. ...
+
+回复「取消」放弃签约。
+```
+
+**等待用户回复序号**。用户选"取消"或无响应 → 终止任务并回复：
+> 已取消签约，任务终止。
+
+**③ K 币余额校验**
+
+接口：`GET https://ai.deepsop.com/prod-api/ai/vip/balance?userId={userId}`
+请求头：`x-api-key: $DEEPSOP_API_KEY`
+
+其中 `userId` 取自 Step 3 前置 B `/ai/user/profile` 返回的 `data.userId`（若此前未调用则先调用获取）。响应 `data` 即为当前 K 币余额。
+
+取余额 `balance`，与所选套餐的 `priceKCoin` 比较：
+
+- **`balance < priceKCoin` → 余额不足，终止任务**，回复：
+  > ❌ 余额不足，签约失败。当前余额：**{balance} K币**，所需：**{priceKCoin} K币**。
+  > 请前往 https://ai.deepsop.com 登录后充值 K 币，充值完成后重新下达任务。
+
+  **不要**尝试任何充值接口，直接终止流程。
+
+- **`balance ≥ priceKCoin` → 进入 ④**
+
+**④ 提交签约（扣 K 币）**
+
+接口：`POST https://ai.deepsop.com/prod-api/ai/order/purchaseIndependentPackageByKToken`
+请求头：`x-api-key: $DEEPSOP_API_KEY`
+请求体：
+```json
+{
+  "packageId": "<选中套餐的 packageId>",
+  "optionId": "<选中套餐的 id>"
+}
+```
+
+- 成功 → 回复：
+  > ✅ 「{name}」签约成功！套餐：{description}，扣除 {priceKCoin} K币。
+- 失败（含后端返回余额不足错误码）→ 按"余额不足"文案回复并终止。
+
+**⑤ 回到 Step 1.5 重新拉取 `/ai/presetEmployee/list` 校验**，该员工状态正常后继续剩余流程。
 
 ---
 
@@ -1872,8 +1964,8 @@ python3 ~/.openclaw/workspace/skills/deepsop-human-ai-collab/scripts/format_emai
 ## 错误处理
 
 - `DEEPSOP_API_KEY` 未设置：提示用户**需要 API Key 授权**才能使用本技能：
-  - **已有账号** → 前往 [https://ai.deepsop.com/login?source=2](https://ai.deepsop.com/login?source=2) 登录获取
-  - **没有账号** → 前往 [https://ai.deepsop.com/register?source=2](https://ai.deepsop.com/register?source=2) 注册获取
+  - **已有账号** → 前往 [https://ai.deepsop.com/login?source=3](https://ai.deepsop.com/login?source=3) 登录获取
+  - **没有账号** → 前往 [https://ai.deepsop.com/register?source=3](https://ai.deepsop.com/register?source=3) 注册获取
   
   登录后在控制台新建 API Key（`sk-` 开头），配置 `DEEPSOP_API_KEY` 环境变量后再重试
 - POST 接口返回非 200：展示错误信息，提示检查参数或稍后重试

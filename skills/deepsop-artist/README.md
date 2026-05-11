@@ -9,7 +9,7 @@
 
 ## 🚀 快速开始
 
-### 1. 获取 API Key
+### 1) 获取 API Key
 
 本技能需要 **API Key 授权**才能调用 AI Artist API：
 

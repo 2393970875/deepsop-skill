@@ -249,30 +249,6 @@ AI：AiWa 客户挖掘完成，共找到 50 个客户，详见附件
 
 ---
 
-## 环境配置
-
-### API Key 获取
-
-#### AI Artist API Key
-- **已有账号** → 前往 [https://ai.deepsop.com/login?source=2](https://ai.deepsop.com/login?source=2) 登录获取
-- **没有账号** → 前往 [https://ai.deepsop.com/register?source=2](https://ai.deepsop.com/register?source=2) 注册后获取
-
-登录后在复制您的 API Key（`sk-` 开头）。
-
-适用于：
-- deepsop-artist（图片/视频生成）
-- deepsop-voice-clone（声音克隆）
-
-#### DeepSOP API Key
-
-- **已有账号** → 前往 [https://ai.deepsop.com/login?source=2](https://ai.deepsop.com/login?source=2) 登录获取
-- **没有账号** → 前往 [https://ai.deepsop.com/register?source=2](https://ai.deepsop.com/register?source=2) 注册后获取
-
-登录后在复制您的 API Key（`sk-` 开头）。
-
-适用于：
-- human-ai-collab（人机协作）
-
 ### 环境变量设置
 
 #### Linux/macOS/Git Bash
@@ -457,12 +433,7 @@ description: 简短描述，说明何时使用此 skill
 
 ## 常见问题
 
-### Q1: 如何获取 API Key？
-
-A: 已有账号 → 前往 [https://ai.deepsop.com/login?source=2](https://ai.deepsop.com/login?source=2) 登录获取
-B: 没有账号 → 前往 [https://ai.deepsop.com/register?source=2](https://ai.deepsop.com/register?source=2) 注册后获取
-
-### Q2: 为什么命令执行失败？
+### Q1: 为什么命令执行失败？
 
 A: 请检查：
 - 环境变量是否正确设置
@@ -470,14 +441,14 @@ A: 请检查：
 - API Key 是否有效
 - 查看详细错误信息并参考 `references/troubleshooting.md`
 
-### Q3: 如何自定义输出目录？
+### Q2: 如何自定义输出目录？
 
 A: 大多数脚本支持 `--output-dir` 参数，例如：
 ```bash
 python3 scripts/generate_image.py "风景画" --download --output-dir "./my_images"
 ```
 
-### Q4: 支持哪些操作系统？
+### Q3: 支持哪些操作系统？
 
 A: 支持 Windows、macOS、Linux。部分 CLI 工具可能需要额外配置。
 
