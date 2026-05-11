@@ -29,6 +29,14 @@ BASE_URL: Final[str] = "https://ai.deepsop.com/prod-api"
 API_PATHS: Final[dict[str, str]] = {
     # 1
     "preset_employee_list":            "/ai/presetEmployee/list",
+    # 1.1
+    "signup_package_list":             "/ai/setting/list?packageType=3",
+    # 1.2
+    "kcoin_rate_config":               "/system/config/configKey/CNY_TO_KCOIN",
+    # 1.3
+    "kcoin_balance":                   "/ai/vip/balance",
+    # 1.4
+    "purchase_package_by_ktoken":      "/ai/order/purchaseIndependentPackageByKToken",
     # 2
     "preset_employee_submit_task":     "/ai/presetEmployee/submitTask",
     # 3
