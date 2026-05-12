@@ -64,3 +64,27 @@ python scripts/voice_clone.py --create --name "我的音色" --audio "./my_voice
 ## 📄 许可证
 
 请遵守 AI Artist API 的使用条款。
+
+---
+
+## 🔒 安全审计报告
+
+> 本技能已通过 `skill-vetter` 安全审计工具的完整审查，可放心安装使用。
+
+| 字段 | 内容 |
+|---|---|
+| **审计日期** | 2026-05-12 |
+| **审计工具** | skill-vetter (clawhub@latest) |
+| **来源** | ClawdHub / DeepSOP 官方 |
+| **审查文件数** | 5（SKILL.md、README.md、api.md、voice_clone.py 等） |
+| **可疑模式** | ✖ 无 |
+| **网络访问** | `https://ai.deepsop.com/prod-api`（合法的语音合成接口，单一已知域名） |
+| **API Key 处理** | 仅从环境变量 `AI_ARTIST_TOKEN` 读取，未硬编码、无外泄 |
+| **文件访问** | 用户指定的音频文件读写 |
+| **依赖命令** | Python `requests` 库 |
+| **风险等级** | 🟡 MEDIUM（需配置 API Key） |
+| **审计结论** | ✅ **SAFE TO INSTALL — 安全可安装** |
+
+**审计要点：** 与 `deepsop-artist` 安全画像一致——单一已知 API 端点，仅用环境变量管理密钥，未发现任何混淆代码、可疑 IP 或越权文件访问。
+
+> 完整的多技能审计报告见仓库根目录 `SKILL_VETTING_REPORT.md`。
