@@ -1,5 +1,5 @@
 ﻿---
-name: douyin-upload
+name: deepsop-douyin
 description: 抖音视频自动上传 skill。当用户需要登录抖音、校验账号或上传视频时使用。基于 social-auto-upload 项目，OPclaw 自动准备运行环境，无需用户手动安装。
 ---
 

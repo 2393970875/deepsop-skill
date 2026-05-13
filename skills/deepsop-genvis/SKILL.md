@@ -1,5 +1,5 @@
 ---
-name: ai-image-generator
+name: deepsop-genvis
 description: |
   AI 图片与视频异步生成技能，调用 AI Artist API 根据文本提示词生成图片或视频，自动轮询直到任务完成。
 

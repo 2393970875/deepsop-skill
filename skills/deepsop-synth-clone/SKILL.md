@@ -1,5 +1,5 @@
 ---
-name: voice-clone
+name: deepsop-synth-clone
 description: |
   声音复刻技能，使用 AI Artist API 进行音色克隆和语音合成。支持查询已有音色、上传音频创建新音色、使用指定音色合成语音。
 

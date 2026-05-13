@@ -1,5 +1,5 @@
 ﻿---
-name: xiaohongshu-upload
+name: deepsop-xiaohongshu
 description: 小红书视频/图文自动上传 skill。当用户需要登录小红书、校验账号或上传内容时使用。基于 social-auto-upload 项目，OPclaw 自动准备运行环境，无需用户手动安装。
 ---
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 api_paths.py
-DeepSOP human-ai-collab 技能的 **API 路径权威清单（代码侧单一来源）**。
+DeepSOP humabot 技能的 **API 路径权威清单（代码侧单一来源）**。
 
 此文件必须与 `SKILL.md` 顶部「📋 API 路径权威清单」的 20 条路径**完全一致**。
 任何脚本需要发起 HTTP 请求时，**必须**：

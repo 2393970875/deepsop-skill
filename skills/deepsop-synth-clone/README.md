@@ -85,6 +85,6 @@ python scripts/voice_clone.py --create --name "我的音色" --audio "./my_voice
 | **风险等级** | 🟡 MEDIUM（需配置 API Key） |
 | **审计结论** | ✅ **SAFE TO INSTALL — 安全可安装** |
 
-**审计要点：** 与 `deepsop-artist` 安全画像一致——单一已知 API 端点，仅用环境变量管理密钥，未发现任何混淆代码、可疑 IP 或越权文件访问。
+**审计要点：** 与 `deepsop-genvis` 安全画像一致——单一已知 API 端点，仅用环境变量管理密钥，未发现任何混淆代码、可疑 IP 或越权文件访问。
 
 > 完整的多技能审计报告见仓库根目录 `SKILL_VETTING_REPORT.md`。

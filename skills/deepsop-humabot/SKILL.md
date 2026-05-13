@@ -1,5 +1,5 @@
 ---
-name: human-ai-collab
+name: deepsop-humabot
 description: 人机协作台技能。用户输入自然语言销售指令，AI自动分析拆解任务参数，调用 deepsop 平台接口提交任务，等待后查询结果并推送。触发场景：用户说「帮我找客户」「挖掘XXX行业客户」「找XXX个客户」「提交任务」等与客户挖掘、销售任务相关的指令；「发TikTok视频」「生成视频发布到TikTok」等TikTok视频发布指令；或收到包含 [DeepSOP-AutoQuery] 标记的系统定时事件（cron 回调，用于自动查询并推送任务结果）。需要提前配置环境变量 DEEPSOP_API_KEY。⚠️ 调用本 SKILL 前必须先完整阅读 SKILL.md。提交 agentSubmitTask **必须**走 scripts/submit_task.py（通过 heredoc 把 body 喂给 stdin），脚本内部串行跑 validate_employee_params.py + validate_sms_template_params.py + UTF-8 安全 HTTP 提交，**禁止**直接写 curl 命令（会因 Windows cp936 代码页导致 taskName/taskDescription 中文乱码）。脚本退出码 0 才算成功；非 0 必须把 summary/errors 原样回给用户后修正重试，禁止绕过校验或假装成功。
 ---
 
@@ -1508,7 +1508,7 @@ TASK_BODY_EOF
     "wakeMode": "now",
     "payload": {
       "kind": "systemEvent",
-      "text": "[DeepSOP-AutoQuery] 人机协作台定时结果推送，请立即跳转 Step 5 执行结果查询并主动推送，不要等待用户提问，不要执行 Step 1-4。taskId={taskId}，aiwaDagTaskId={aiwaDagTaskId}，aiwaCustomerPoolId={aiwaCustomerPoolId}，frankDagTaskId={frankDagTaskId}，franDagTaskId={franDagTaskId}，franCustomerPoolId={franCustomerPoolId}，lisaDagTaskId={lisaDagTaskId}，lisaCustomerPoolId={lisaCustomerPoolId}，tobyDagTaskId={tobyDagTaskId}，tobyCustomerPoolId={tobyCustomerPoolId}，任务名：{taskName}，目标数量：{totalTarget}，参与员工：{employeeList}，feishuChatId={feishuChatId}。【AiWa部分，仅当employeeList包含AiWa时执行】1. 调用 POST https://ai.deepsop.com/prod-api/ai/presetEmployee/getCustomerPoolDetail?pageNum=1&pageSize=10 查询结果，参数 {"taskId":"{aiwaDagTaskId}","customerPoolId":{aiwaCustomerPoolId},"startTime":null,"endTime":null}；2. 将完整响应JSON传给脚本生成xlsx：python3 ~/.openclaw/workspace/skills/deepsop-human-ai-collab/scripts/format_customers.py '<JSON>' '/tmp/aiwa_{aiwaDagTaskId前8位}.xlsx'；3. 执行 cp /tmp/aiwa_{aiwaDagTaskId前8位}.xlsx ~/.openclaw/workspace/aiwa_{aiwaDagTaskId前8位}.xlsx 并执行 openclaw message send --channel feishu --target {feishuChatId} --media ~/.openclaw/workspace/aiwa_{aiwaDagTaskId前8位}.xlsx --message 'AiWa 客户挖掘完成，共找到客户数据，详见附件' 将文件发送到飞书群；4. 同时在当前会话回复前5条客户摘要。【Toby部分，仅当employeeList包含Toby且tobyDagTaskId不为null时执行】1. 调用 GET https://ai.deepsop.com/prod-api/ai/data/count?taskId={tobyDagTaskId}&customerPoolId={tobyCustomerPoolId}&platform=1 查询统计；2. 调用 GET https://ai.deepsop.com/prod-api/ai/data/list?pageNum=1&pageSize=10&taskId={tobyDagTaskId}&customerPoolId={tobyCustomerPoolId}&platform=1 查询视频列表；3. 展示统计数据（播放、点赞、评论、分享、发布总数）并列出每条视频的titleName、platformUrl、播放量、点赞数、评论数、转发数、displayCreateTime；4. 在当前会话回复结果摘要。【Frank部分，仅当employeeList包含Frank且frankDagTaskId不为null时执行】1. 调用 GET https://ai.deepsop.com/prod-api/ai/email/getTaskEmailCount?taskId={frankDagTaskId} 查询邮件统计（使用frankDagTaskId）；2. 调用 GET https://ai.deepsop.com/prod-api/ai/email/taskList?pageNum=1&pageSize=2000&taskId={frankDagTaskId} 查询邮件列表（使用frankDagTaskId）；3. 生成xlsx：python3 ~/.openclaw/workspace/skills/deepsop-human-ai-collab/scripts/format_emails.py '<JSON>' '/tmp/frank_{frankDagTaskId前8位}.xlsx'；4. 执行 cp /tmp/frank_{frankDagTaskId前8位}.xlsx ~/.openclaw/workspace/frank_{frankDagTaskId前8位}.xlsx 并执行 openclaw message send --channel feishu --target {feishuChatId} --media ~/.openclaw/workspace/frank_{frankDagTaskId前8位}.xlsx --message 'Frank 邮件发送完成，详见附件' 将文件发送到飞书群；5. 同时在当前会话回复邮件统计摘要和前5条详情。【Lisa部分，仅当employeeList包含Lisa且lisaCustomerPoolId不为null时执行】1. 调用 POST https://ai.deepsop.com/prod-api/ai/sms/getTaskSmsCount 查询短信统计，参数 {"taskId":"{taskId}","customerPoolId":{lisaCustomerPoolId}}；2. 调用 POST https://ai.deepsop.com/prod-api/ai/sms/getSmsResultList?pageNum=1&pageSize=10 查询短信列表，参数 {"taskId":"{taskId}","customerPoolId":{lisaCustomerPoolId},"success":null,"startTime":null,"endTime":null}；3. 生成xlsx：python3 ~/.openclaw/workspace/skills/deepsop-human-ai-collab/scripts/format_sms.py '<JSON>' '/tmp/lisa_{taskId前8位}.xlsx'；4. 发送文件并在当前会话展示短信统计摘要和前5条短信详情。【Toby部分，仅当employeeList包含Toby且tobyDagTaskId不为null时执行】1. 调用 GET https://ai.deepsop.com/prod-api/ai/data/count?taskId={tobyDagTaskId}&customerPoolId={tobyCustomerPoolId}&platform=1 查询视频统计；2. 调用 GET https://ai.deepsop.com/prod-api/ai/data/list?pageNum=1&pageSize=10&taskId={tobyDagTaskId}&customerPoolId={tobyCustomerPoolId}&platform=1 查询视频列表；3. 在当前会话回复统计概览（发布视频数/播放/点赞/评论/分享）并列出每条视频的标题、链接、各项数据及发布时间。"
+      "text": "[DeepSOP-AutoQuery] 人机协作台定时结果推送，请立即跳转 Step 5 执行结果查询并主动推送，不要等待用户提问，不要执行 Step 1-4。taskId={taskId}，aiwaDagTaskId={aiwaDagTaskId}，aiwaCustomerPoolId={aiwaCustomerPoolId}，frankDagTaskId={frankDagTaskId}，franDagTaskId={franDagTaskId}，franCustomerPoolId={franCustomerPoolId}，lisaDagTaskId={lisaDagTaskId}，lisaCustomerPoolId={lisaCustomerPoolId}，tobyDagTaskId={tobyDagTaskId}，tobyCustomerPoolId={tobyCustomerPoolId}，任务名：{taskName}，目标数量：{totalTarget}，参与员工：{employeeList}，feishuChatId={feishuChatId}。【AiWa部分，仅当employeeList包含AiWa时执行】1. 调用 POST https://ai.deepsop.com/prod-api/ai/presetEmployee/getCustomerPoolDetail?pageNum=1&pageSize=10 查询结果，参数 {"taskId":"{aiwaDagTaskId}","customerPoolId":{aiwaCustomerPoolId},"startTime":null,"endTime":null}；2. 将完整响应JSON传给脚本生成xlsx：python3 ~/.openclaw/workspace/skills/deepsop-humabot/scripts/format_customers.py '<JSON>' '/tmp/aiwa_{aiwaDagTaskId前8位}.xlsx'；3. 执行 cp /tmp/aiwa_{aiwaDagTaskId前8位}.xlsx ~/.openclaw/workspace/aiwa_{aiwaDagTaskId前8位}.xlsx 并执行 openclaw message send --channel feishu --target {feishuChatId} --media ~/.openclaw/workspace/aiwa_{aiwaDagTaskId前8位}.xlsx --message 'AiWa 客户挖掘完成，共找到客户数据，详见附件' 将文件发送到飞书群；4. 同时在当前会话回复前5条客户摘要。【Toby部分，仅当employeeList包含Toby且tobyDagTaskId不为null时执行】1. 调用 GET https://ai.deepsop.com/prod-api/ai/data/count?taskId={tobyDagTaskId}&customerPoolId={tobyCustomerPoolId}&platform=1 查询统计；2. 调用 GET https://ai.deepsop.com/prod-api/ai/data/list?pageNum=1&pageSize=10&taskId={tobyDagTaskId}&customerPoolId={tobyCustomerPoolId}&platform=1 查询视频列表；3. 展示统计数据（播放、点赞、评论、分享、发布总数）并列出每条视频的titleName、platformUrl、播放量、点赞数、评论数、转发数、displayCreateTime；4. 在当前会话回复结果摘要。【Frank部分，仅当employeeList包含Frank且frankDagTaskId不为null时执行】1. 调用 GET https://ai.deepsop.com/prod-api/ai/email/getTaskEmailCount?taskId={frankDagTaskId} 查询邮件统计（使用frankDagTaskId）；2. 调用 GET https://ai.deepsop.com/prod-api/ai/email/taskList?pageNum=1&pageSize=2000&taskId={frankDagTaskId} 查询邮件列表（使用frankDagTaskId）；3. 生成xlsx：python3 ~/.openclaw/workspace/skills/deepsop-humabot/scripts/format_emails.py '<JSON>' '/tmp/frank_{frankDagTaskId前8位}.xlsx'；4. 执行 cp /tmp/frank_{frankDagTaskId前8位}.xlsx ~/.openclaw/workspace/frank_{frankDagTaskId前8位}.xlsx 并执行 openclaw message send --channel feishu --target {feishuChatId} --media ~/.openclaw/workspace/frank_{frankDagTaskId前8位}.xlsx --message 'Frank 邮件发送完成，详见附件' 将文件发送到飞书群；5. 同时在当前会话回复邮件统计摘要和前5条详情。【Lisa部分，仅当employeeList包含Lisa且lisaCustomerPoolId不为null时执行】1. 调用 POST https://ai.deepsop.com/prod-api/ai/sms/getTaskSmsCount 查询短信统计，参数 {"taskId":"{taskId}","customerPoolId":{lisaCustomerPoolId}}；2. 调用 POST https://ai.deepsop.com/prod-api/ai/sms/getSmsResultList?pageNum=1&pageSize=10 查询短信列表，参数 {"taskId":"{taskId}","customerPoolId":{lisaCustomerPoolId},"success":null,"startTime":null,"endTime":null}；3. 生成xlsx：python3 ~/.openclaw/workspace/skills/deepsop-humabot/scripts/format_sms.py '<JSON>' '/tmp/lisa_{taskId前8位}.xlsx'；4. 发送文件并在当前会话展示短信统计摘要和前5条短信详情。【Toby部分，仅当employeeList包含Toby且tobyDagTaskId不为null时执行】1. 调用 GET https://ai.deepsop.com/prod-api/ai/data/count?taskId={tobyDagTaskId}&customerPoolId={tobyCustomerPoolId}&platform=1 查询视频统计；2. 调用 GET https://ai.deepsop.com/prod-api/ai/data/list?pageNum=1&pageSize=10&taskId={tobyDagTaskId}&customerPoolId={tobyCustomerPoolId}&platform=1 查询视频列表；3. 在当前会话回复统计概览（发布视频数/播放/点赞/评论/分享）并列出每条视频的标题、链接、各项数据及发布时间。"
     },
     "deleteAfterRun": true
   }
@@ -1574,7 +1574,7 @@ cron 设置成功后，回复用户确认并进入等待状态：
 1. 将完整 API 响应 JSON 传给脚本生成 xlsx 文件：
 
 ```bash
-python3 ~/.openclaw/workspace/skills/deepsop-human-ai-collab/scripts/format_customers.py '<完整响应JSON>' '/tmp/aiwa_{aiwaDagTaskId前8位}.xlsx'
+python3 ~/.openclaw/workspace/skills/deepsop-humabot/scripts/format_customers.py '<完整响应JSON>' '/tmp/aiwa_{aiwaDagTaskId前8位}.xlsx'
 ```
 
 2. 根据当前 channel 决定如何返回文件：
@@ -1673,7 +1673,7 @@ x-api-key: $DEEPSOP_API_KEY
 
 ```bash
 curl 结果存 /tmp/fran_{franDagTaskId前8位}_raw.json
-python3 ~/.openclaw/workspace/skills/deepsop-human-ai-collab/scripts/format_calls.py "$(cat /tmp/fran_{franDagTaskId前8位}_raw.json)" '/tmp/fran_{franDagTaskId前8位}.xlsx'
+python3 ~/.openclaw/workspace/skills/deepsop-humabot/scripts/format_calls.py "$(cat /tmp/fran_{franDagTaskId前8位}_raw.json)" '/tmp/fran_{franDagTaskId前8位}.xlsx'
 ```
 
 根据当前 channel 必须发送文件，不得跳过：
@@ -1762,7 +1762,7 @@ x-api-key: $DEEPSOP_API_KEY
 
 ```bash
 curl 结果存 /tmp/lisa_{lisaDagTaskId前8位}_raw.json
-python3 ~/.openclaw/workspace/skills/deepsop-human-ai-collab/scripts/format_sms.py "$(cat /tmp/lisa_{lisaDagTaskId前8位}_raw.json)" '/tmp/lisa_{lisaDagTaskId前8位}.xlsx'
+python3 ~/.openclaw/workspace/skills/deepsop-humabot/scripts/format_sms.py "$(cat /tmp/lisa_{lisaDagTaskId前8位}_raw.json)" '/tmp/lisa_{lisaDagTaskId前8位}.xlsx'
 ```
 
 根据当前 channel 必须发送文件，不得跳过：
@@ -1838,7 +1838,7 @@ python3 ~/.openclaw/workspace/skills/deepsop-human-ai-collab/scripts/format_sms.
 将邮件列表 JSON 传给脚本生成 xlsx：
 ```bash
 curl 结果存 /tmp/frank_{frankDagTaskId前8位}_raw.json
-python3 ~/.openclaw/workspace/skills/deepsop-human-ai-collab/scripts/format_emails.py "$(cat /tmp/frank_{frankDagTaskId前8位}_raw.json)" '/tmp/frank_{frankDagTaskId前8位}.xlsx'
+python3 ~/.openclaw/workspace/skills/deepsop-humabot/scripts/format_emails.py "$(cat /tmp/frank_{frankDagTaskId前8位}_raw.json)" '/tmp/frank_{frankDagTaskId前8位}.xlsx'
 ```
 
 根据当前 channel 必须发送文件，不得跳过：
@@ -1954,10 +1954,10 @@ python3 ~/.openclaw/workspace/skills/deepsop-human-ai-collab/scripts/format_emai
 
 - Python 3（系统自带）
 - openpyxl：`python3 -m pip install openpyxl --user --break-system-packages`
-- AiWa 生成脚本：`~/.openclaw/workspace/skills/deepsop-human-ai-collab/scripts/format_customers.py`
-- Frank 生成脚本：`~/.openclaw/workspace/skills/deepsop-human-ai-collab/scripts/format_emails.py`
-- Fran 生成脚本：`~/.openclaw/workspace/skills/deepsop-human-ai-collab/scripts/format_calls.py`
-- Lisa 生成脚本：`~/.openclaw/workspace/skills/deepsop-human-ai-collab/scripts/format_sms.py`
+- AiWa 生成脚本：`~/.openclaw/workspace/skills/deepsop-humabot/scripts/format_customers.py`
+- Frank 生成脚本：`~/.openclaw/workspace/skills/deepsop-humabot/scripts/format_emails.py`
+- Fran 生成脚本：`~/.openclaw/workspace/skills/deepsop-humabot/scripts/format_calls.py`
+- Lisa 生成脚本：`~/.openclaw/workspace/skills/deepsop-humabot/scripts/format_sms.py`
 
 ---
 

@@ -30,7 +30,7 @@ DeepSOP Skills 旨在为 AI Agent 提供丰富的功能扩展能力，涵盖：
 
 ## Skills 列表
 
-### 1. 🎨 AI Image Generator (deepsop-artist)
+### 1. 🎨 AI Image Generator (deepsop-genvis)
 
 **功能描述**：调用 AI Artist API 异步生成图片或视频，自动轮询直到任务完成。
 
@@ -61,11 +61,11 @@ python3 scripts/generate_image.py "现代轻奢吊灯" --model V3.1FB
 python3 scripts/generate_image.py --list-models
 ```
 
-📖 [详细文档](skills/deepsop-artist/SKILL.md) | [API 文档](skills/deepsop-artist/references/api.md)
+📖 [详细文档](skills/deepsop-genvis/SKILL.md) | [API 文档](skills/deepsop-genvis/references/api.md)
 
 ---
 
-### 2. 🎙️ Voice Clone (deepsop-voice-clone)
+### 2. 🎙️ Voice Clone (deepsop-synth-clone)
 
 **功能描述**：使用 AI Artist API 进行音色克隆和语音合成，基于 CosyVoice v3.5 Plus 模型。
 
@@ -95,13 +95,13 @@ python scripts/voice_clone.py --synthesize --id 13 --text "你好世界"
 python scripts/voice_clone.py --create --name "我的音色" --audio "./my_voice.mp3"
 ```
 
-📖 [详细文档](skills/deepsop-voice-clone/SKILL.md) | [API 文档](skills/deepsop-voice-clone/references/api.md)
+📖 [详细文档](skills/deepsop-synth-clone/SKILL.md) | [API 文档](skills/deepsop-synth-clone/references/api.md)
 
 ---
 
 ### 3. 📱 Social Media Upload Skills
 
-#### 3.1 抖音上传 (douyin-upload)
+#### 3.1 抖音上传 (deepsop-douyin)
 
 **功能描述**：通过 `sau` CLI 完成抖音登录、cookie 校验、视频/图文上传。
 
@@ -111,11 +111,11 @@ python scripts/voice_clone.py --create --name "我的音色" --audio "./my_voice
 - `sau douyin upload-video ...` - 上传视频
 - `sau douyin upload-note ...` - 上传图文
 
-📖 [详细文档](skills/douyin-upload/SKILL.md)
+📖 [详细文档](skills/deepsop-douyin/SKILL.md)
 
 ---
 
-#### 3.2 快手上传 (kuaishou-upload)
+#### 3.2 快手上传 (deepsop-kuaishou)
 
 **功能描述**：通过 `sau` CLI 完成快手登录、cookie 校验、视频/图文上传。
 
@@ -125,11 +125,11 @@ python scripts/voice_clone.py --create --name "我的音色" --audio "./my_voice
 - `sau kuaishou upload-video ...` - 上传视频
 - `sau kuaishou upload-note ...` - 上传图文
 
-📖 [详细文档](skills/kuaishou-upload/SKILL.md)
+📖 [详细文档](skills/deepsop-kuaishou/SKILL.md)
 
 ---
 
-#### 3.3 小红书上传 (xiaohongshu-upload)
+#### 3.3 小红书上传 (deepsop-xiaohongshu)
 
 **功能描述**：通过 `sau` CLI 完成小红书登录、cookie 校验、视频/图文上传。
 
@@ -139,11 +139,11 @@ python scripts/voice_clone.py --create --name "我的音色" --audio "./my_voice
 - `sau xiaohongshu upload-video ...` - 上传视频
 - `sau xiaohongshu upload-note ...` - 上传图文
 
-📖 [详细文档](skills/xiaohongshu-upload/SKILL.md)
+📖 [详细文档](skills/deepsop-xiaohongshu/SKILL.md)
 
 ---
 
-#### 3.4 Bilibili 上传 (bilibili-upload)
+#### 3.4 Bilibili 上传 (deepsop-bilibili)
 
 **功能描述**：通过 `sau` CLI 完成 Bilibili 登录、账号校验、视频上传。程序会自动准备 `biliup`，无需手动安装。
 
@@ -156,11 +156,11 @@ python scripts/voice_clone.py --create --name "我的音色" --audio "./my_voice
 - 自动检查、下载、更新 `biliup`
 - 二维码扫码登录，支持打开 `qrcode.png` 扫码
 
-📖 [详细文档](skills/bilibili-upload/SKILL.md)
+📖 [详细文档](skills/deepsop-bilibili/SKILL.md)
 
 ---
 
-### 4. 🤝 Human-AI Collaboration (human-ai-collab)
+### 4. 🤝 Human-AI Collaboration (deepsop-humabot)
 
 **功能描述**：基于 deepsop 平台的智能销售任务助手，理解自然语言指令，自动拆解任务并调用 API 提交。
 
@@ -198,7 +198,7 @@ AI：AiWa 客户挖掘完成，共找到 50 个客户，详见附件
      Frank 邮件发送完成，发送总数：50，成功：48，已读：12
 ```
 
-📖 [详细文档](skills/human-ai-collab/SKILL.md)
+📖 [详细文档](skills/deepsop-humabot/SKILL.md)
 
 ---
 
@@ -221,7 +221,7 @@ AI：AiWa 客户挖掘完成，共找到 50 个客户，详见附件
 2. **安装依赖**
    ```bash
    # 根据不同 Skill 安装所需依赖
-   pip install requests python-dotenv openpyxl  # human-ai-collab
+   pip install requests python-dotenv openpyxl  # deepsop-humabot
    ```
 
 3. **配置环境变量**
@@ -241,10 +241,10 @@ AI：AiWa 客户挖掘完成，共找到 50 个客户，详见附件
 4. **验证配置**
    ```bash
    # 测试 AI Artist 配置
-   python3 skills/deepsop-artist/scripts/test_config.py
+   python3 skills/deepsop-genvis/scripts/test_config.py
    
    # 测试声音克隆配置
-   python skills/deepsop-voice-clone/scripts/voice_clone.py --list
+   python skills/deepsop-synth-clone/scripts/voice_clone.py --list
    ```
 
 ---
@@ -321,7 +321,7 @@ FEISHU_WEBHOOK_URL=
 ```
 deepsop-skill/
 ├── skills/                      # Skills 根目录
-│   ├── bilibili-upload/         # Bilibili 上传技能
+│   ├── deepsop-bilibili/        # Bilibili 上传技能
 │   │   ├── references/          # 参考文档
 │   │   │   ├── cli-contract.md
 │   │   │   ├── runtime-requirements.md
@@ -331,7 +331,7 @@ deepsop-skill/
 │   │   │   ├── bilibili_commands.ps1
 │   │   │   └── bilibili_commands.sh
 │   │   └── SKILL.md             # 技能定义文件
-│   ├── deepsop-artist/          # AI 图片/视频生成技能
+│   ├── deepsop-genvis/          # AI 图片/视频生成技能
 │   │   ├── references/
 │   │   │   ├── api.md
 │   │   │   ├── chat-integration.md
@@ -343,26 +343,26 @@ deepsop-skill/
 │   │   │   └── test_generate_image.py
 │   │   ├── README.md
 │   │   └── SKILL.md
-│   ├── deepsop-voice-clone/     # 声音克隆技能
+│   ├── deepsop-synth-clone/     # 声音克隆技能
 │   │   ├── references/
 │   │   │   └── api.md
 │   │   ├── scripts/
 │   │   │   └── voice_clone.py
 │   │   ├── README.md
 │   │   └── SKILL.md
-│   ├── douyin-upload/           # 抖音上传技能
+│   ├── deepsop-douyin/          # 抖音上传技能
 │   │   ├── references/
 │   │   ├── scripts/examples/
 │   │   └── SKILL.md
-│   ├── kuaishou-upload/         # 快手上传技能
+│   ├── deepsop-kuaishou/        # 快手上传技能
 │   │   ├── references/
 │   │   ├── scripts/examples/
 │   │   └── SKILL.md
-│   ├── xiaohongshu-upload/      # 小红书上传技能
+│   ├── deepsop-xiaohongshu/     # 小红书上传技能
 │   │   ├── references/
 │   │   ├── scripts/examples/
 │   │   └── SKILL.md
-│   └── human-ai-collab/         # 人机协作技能
+│   └── deepsop-humabot/         # 人机协作技能
 │       ├── scripts/
 │       │   ├── format_calls.py
 │       │   ├── format_customers.py
