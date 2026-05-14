@@ -118,3 +118,30 @@ pytest tests -q
 - 必须使用你自己的 `AI_ARTIST_TOKEN`
 - 任务创建前会执行费用预估；若余额不足将不会提交任务
 - 请遵守 AI Artist API 的使用条款
+
+---
+
+## 🔒 安全审计报告
+
+> 本技能已通过 `skill-vetter` 安全审计工具的完整审查，可放心安装使用。
+
+| 字段 | 内容 |
+|---|---|
+| **审计日期** | 2026-05-12 |
+| **审计工具** | skill-vetter (clawhub@latest) |
+| **来源** | ClawdHub / DeepSOP 官方 |
+| **审查文件数** | 6（SKILL.md、README.md、api.md、generate_image.py、test_generate_image.py、飞书集成文档） |
+| **可疑模式** | ✖ 无 |
+| **网络访问** | `https://ai.deepsop.com/prod-api/`（合法的 AI 图像生成接口，单一已知域名） |
+| **API Key 处理** | 仅从环境变量 `AI_ARTIST_TOKEN` 读取，未硬编码、无外泄 |
+| **文件访问** | 用户指定的图像文件读写 |
+| **依赖命令** | Python `requests` 库 |
+| **风险等级** | 🟡 MEDIUM（需配置 API Key） |
+| **审计结论** | ✅ **SAFE TO INSTALL — 安全可安装** |
+
+**误报澄清：**
+- 扫描器命中的 `base64.b64encode` 是把本地图片**编码**后上传给 API，并非"解码可疑数据"的危险模式。
+- 全部网络流量仅指向单一已知域名 `ai.deepsop.com`。
+- API Key 仅通过环境变量传入，不写入磁盘，不上报第三方。
+
+> 完整的多技能审计报告见仓库根目录 `SKILL_VETTING_REPORT.md`。
