@@ -583,8 +583,8 @@ VIDEO_FIELD_SUPPORT = {
     # Negative prompt: V3.1Fast + Wan series (mt 5,6,7,8,9,14,15,16)
     "negativePrompt": {"V3.1Fast", "W2.6t", "W2.6i", "W2.6r",
                        "W2.7t", "W2.7i", "W2.7r"},
-    # Audio toggle: S1.5Pro, V3.1Fast, klingV3Omni  (mt 2,5,10)
-    "generateAudio": {"S1.5Pro", "V3.1Fast", "klingV3Omni"},
+    # Audio toggle: S1.5Pro, V3.1Fast, klingV3Omni, S2.0, S2.0Fast  (mt 2,5,10,17,18)
+    "generateAudio": {"S1.5Pro", "V3.1Fast", "klingV3Omni", "S2.0", "S2.0Fast"},
     # English enhancement: V3.1 series (mt 3,4,5)
     "enhancePrompt": {"V3.1FB", "V3.1PB", "V3.1Fast"},
     # Smart rewrite: Wan series (mt 7,8,9,14,15,16)
@@ -595,8 +595,10 @@ VIDEO_FIELD_SUPPORT = {
     "resizeMode": {"V3.1Fast"},
     # Shot mode: Wan2.6 + klingV3Omni  (mt 7,8,9,10)
     "shotType": {"W2.6t", "W2.6i", "W2.6r", "klingV3Omni"},
-    # Duration switch (manual/intelligent): only S1.5Pro  (mt 2)
-    "durationSwitch": {"S1.5Pro"},
+    # Duration switch (manual/intelligent): S1.5Pro, S2.0, S2.0Fast  (mt 2,17,18)
+    "durationSwitch": {"S1.5Pro", "S2.0", "S2.0Fast"},
+    # Web search toggle: S2.0, S2.0Fast  (mt 17,18)
+    "webSearch": {"S2.0", "S2.0Fast"},
     # klingV3Omni exclusives (mt 10)
     "mode": {"klingV3Omni"},
     "multiShot": {"klingV3Omni"},
@@ -606,23 +608,29 @@ VIDEO_FIELD_SUPPORT = {
     "videoList": {"klingV3Omni"},
     # Continuation / reference clip: klingV3Omni + W2.7i  (mt 10,14)
     "firstClipUrl": {"klingV3Omni", "W2.7i"},
-    # Reference-video list: W2.6r / W2.7r  (mt 9,16)
-    "videoUrlList": {"W2.6r", "W2.7r"},
-    # Audio URL: Wan text/image/W2.7 series  (mt 7,8,14,15,16)
+    # Reference-video list: W2.6r / W2.7r / S2.0 / S2.0Fast  (mt 9,16,17,18)
+    "videoUrlList": {"W2.6r", "W2.7r", "S2.0", "S2.0Fast"},
+    # Audio URL (single): Wan text/image/W2.7 series  (mt 7,8,14,15,16).
+    # NOTE: S2.0 / S2.0Fast (mt 17,18) use audioUrlList instead.
     "audioUrl": {"W2.6t", "W2.6i", "W2.7t", "W2.7i", "W2.7r"},
+    # Audio URL list (multi): S2.0, S2.0Fast  (mt 17,18)
+    "audioUrlList": {"S2.0", "S2.0Fast"},
     # lastImageUrl: NOT supported by W2.6i (mt=8) or Sora2 variants. All other
     # active video models support it.
     "lastImageUrl": {"S1.5Pro", "V3.1FB", "V3.1PB", "V3.1Fast",
                      "W2.6t", "W2.6r", "klingV3Omni",
-                     "W2.7t", "W2.7i", "W2.7r"},
+                     "W2.7t", "W2.7i", "W2.7r",
+                     "S2.0", "S2.0Fast"},
     # ratio: W2.6i (mt=8) and W2.7i (mt=14) derive ratio from the first frame.
     "ratio": {"S1.5Pro", "V3.1FB", "V3.1PB", "V3.1Fast",
               "W2.6t", "W2.6r", "klingV3Omni",
-              "W2.7t", "W2.7r"},
+              "W2.7t", "W2.7r",
+              "S2.0", "S2.0Fast"},
     # resolution: klingV3Omni (mt=10) does not expose a resolution selector.
     "resolution": {"S1.5Pro", "V3.1FB", "V3.1PB", "V3.1Fast",
                    "W2.6t", "W2.6i", "W2.6r",
-                   "W2.7t", "W2.7i", "W2.7r"},
+                   "W2.7t", "W2.7i", "W2.7r",
+                   "S2.0", "S2.0Fast"},
 }
 
 
@@ -652,6 +660,8 @@ VIDEO_GENERATION_TYPES = {
     "W2.7i":       ["FIRST&LAST", "CONTINUATION"],
     "W2.7t":       ["TEXT"],
     "W2.7r":       ["REFERENCE"],
+    "S2.0":        ["TEXT", "FIRST&LAST", "REFERENCE"],
+    "S2.0Fast":    ["TEXT", "FIRST&LAST", "REFERENCE"],
 }
 
 # ratio whitelist per model (matchVideoRatioOptions). W2.6i / W2.7i derive from
@@ -666,6 +676,8 @@ VIDEO_RATIOS = {
     "klingV3Omni": ["1:1", "16:9", "9:16"],
     "W2.7t":       ["1:1", "3:4", "4:3", "16:9", "9:16"],
     "W2.7r":       ["1:1", "3:4", "4:3", "16:9", "9:16"],
+    "S2.0":        ["adaptive", "1:1", "3:4", "4:3", "16:9", "9:16", "21:9"],
+    "S2.0Fast":    ["adaptive", "1:1", "3:4", "4:3", "16:9", "9:16", "21:9"],
 }
 
 # resolution whitelist per model (matchVideoQualityOptions). klingV3Omni does
@@ -681,6 +693,8 @@ VIDEO_RESOLUTIONS = {
     "W2.7i":       ["720p", "1080p"],
     "W2.7t":       ["720p", "1080p"],
     "W2.7r":       ["720p", "1080p"],
+    "S2.0":        ["480p", "720p", "1080p"],
+    "S2.0Fast":    ["480p", "720p"],
 }
 
 # Image quality whitelist (matchImageQualityOptions, active models only).
@@ -743,6 +757,8 @@ VIDEO_RESTRICTIONS = {
     "W2.7i":       {"textLength": 2500, "negativeTextLength": 250, "targetMaxSize": 20, "targetMinLength": 240, "targetMaxLength": 8000},
     "W2.7t":       {"textLength": 2500, "negativeTextLength": 250, "targetMaxSize": 20, "targetMinLength": 240, "targetMaxLength": 8000},
     "W2.7r":       {"textLength": 2500, "negativeTextLength": 250, "targetMaxSize": 10, "targetMinLength": 240, "targetMaxLength": 5000},
+    "S2.0":        {"textLength": 1000, "targetMaxSize": 30, "targetMinLength": 300, "targetMaxLength": 6000},
+    "S2.0Fast":    {"textLength": 1000, "targetMaxSize": 30, "targetMinLength": 300, "targetMaxLength": 6000},
 }
 
 IMAGE_RESTRICTIONS = {
@@ -1113,6 +1129,50 @@ MODEL_CONFIGS = {
             "durationList": [],
         }
     },
+    "S2.0": {
+        "media_type": "video",
+        "type": "9",
+        "methodType": "17",
+        "source_name": "DeepSop·S2.0",
+        "description": "Seedance2.0 物理一致性更优 多模态融合（图像/视频/音频参考）支持联网搜索",
+        "default_ratio": "16:9",
+        "default_resolution": "720p",
+        "default_duration": 10,
+        "extra_params": {
+            "generationType": "TEXT",
+            "imageUrlList": None,
+            "firstImageUrl": None,
+            "lastImageUrl": None,
+            "videoUrlList": [],
+            "audioUrlList": [],
+            "durationList": [],
+            "generateAudio": True,
+            "webSearch": False,
+            "durationSwitch": "1",
+        }
+    },
+    "S2.0Fast": {
+        "media_type": "video",
+        "type": "9",
+        "methodType": "18",
+        "source_name": "DeepSop·S2.0Fast",
+        "description": "Seedance2.0 Fast 快速版 多模态融合（图像/视频/音频参考）支持联网搜索 最高 720P",
+        "default_ratio": "16:9",
+        "default_resolution": "720p",
+        "default_duration": 10,
+        "extra_params": {
+            "generationType": "TEXT",
+            "imageUrlList": None,
+            "firstImageUrl": None,
+            "lastImageUrl": None,
+            "videoUrlList": [],
+            "audioUrlList": [],
+            "durationList": [],
+            "generateAudio": True,
+            "webSearch": False,
+            "durationSwitch": "1",
+        }
+    },
     # ----- Video models currently hiddenState=1 (kept for future reactivation) -----
     "Sora2-BetaMax": {
         "media_type": "video",
@@ -1190,7 +1250,7 @@ def create_video_task(prompt, model="V3.1FB", ratio=None, resolution=None,
                       element_list=None, first_clip_url=None, multi_shot=None,
                       n=None, person_generation=None, resize_mode=None,
                       negative_prompt=None, duration_switch=None,
-                      multi_prompt=None):
+                      multi_prompt=None, audio_url_list=None, web_search=None):
     """Create a video generation task.
 
     Args:
@@ -1315,6 +1375,18 @@ def create_video_task(prompt, model="V3.1FB", ratio=None, resolution=None,
     wan_models = wan_text_models | wan_image_models | wan_ref_models
     pixel_size_models = {"W2.6t", "W2.6r"}  # only these use '1280*720' form
 
+    seedance2_models = {"S2.0", "S2.0Fast"}
+
+    if model in seedance2_models:
+        # Seedance2.0 / Seedance2.0 Fast: duration 4-15s (frontend matchVideoDurationInfo)
+        if effective_duration < 4 or effective_duration > 15:
+            print(f"{model} 时长必须是 4-15 秒，当前 {effective_duration} 秒，自动调整为 10 秒",
+                  file=sys.stderr)
+            effective_duration = 10
+            parameter["duration"] = effective_duration
+        # Size as ratio string (not pixel-serialized)
+        parameter["size"] = effective_ratio
+
     if model in wan_models or model == "klingV3Omni":
         # Duration range
         if model == "W2.6r":
@@ -1392,6 +1464,10 @@ def create_video_task(prompt, model="V3.1FB", ratio=None, resolution=None,
         parameter["durationSwitch"] = duration_switch
     if multi_prompt is not None:
         parameter["multiPrompt"] = multi_prompt
+    if audio_url_list is not None:
+        parameter["audioUrlList"] = audio_url_list
+    if web_search is not None:
+        parameter["webSearch"] = bool(web_search)
 
     # klingV3Omni customize shotType requires multiPrompt
     if model == "klingV3Omni" and parameter.get("shotType") == "customize" \
@@ -1477,7 +1553,8 @@ def generate_video(prompt, model="V3.1FB", ratio=None, resolution=None,
                    element_list=None, first_clip_url=None, multi_shot=None,
                    n=None, person_generation=None, resize_mode=None,
                    negative_prompt=None, duration_switch=None,
-                   multi_prompt=None, max_wait=1200):
+                   multi_prompt=None, audio_url_list=None, audio_path_list=None,
+                   web_search=None, max_wait=1200):
     """Generate a video from a text prompt.
 
     Args:
@@ -1512,6 +1589,15 @@ def generate_video(prompt, model="V3.1FB", ratio=None, resolution=None,
         last_image_url = upload_file(last_image_path)
     if audio_path and not audio_url:
         audio_url = upload_file(audio_path)
+    # Multi audio upload for Seedance2.0 series
+    if audio_path_list:
+        uploaded = []
+        for p in audio_path_list:
+            u = upload_file(p)
+            if u:
+                uploaded.append(u)
+        if uploaded:
+            audio_url_list = (audio_url_list or []) + uploaded
     
     config = MODEL_CONFIGS.get(model, {})
     effective_ratio = ratio or config.get("default_ratio", "16:9")
@@ -1555,6 +1641,8 @@ def generate_video(prompt, model="V3.1FB", ratio=None, resolution=None,
         negative_prompt=negative_prompt,
         duration_switch=duration_switch,
         multi_prompt=multi_prompt,
+        audio_url_list=audio_url_list,
+        web_search=web_search,
     )
     if not task_id:
         return None
@@ -1916,7 +2004,11 @@ if __name__ == "__main__":
                         help="[视频] 生成数量 1-4 (仅 V3.1Fast) | [图片] 生成数量 1-10 (仅 Image2)")
     parser.add_argument("--person-generation", default=None, help="[视频] allow_adult/dont_allow (仅 V3.1Fast)")
     parser.add_argument("--resize-mode", default=None, help="[视频] pad/crop (仅 V3.1Fast)")
-    parser.add_argument("--duration-switch", default=None, help="[视频] 1=手选秒数, 2=智能时长 (仅 S1.5Pro)")
+    parser.add_argument("--duration-switch", default=None, help="[视频] 1=手选秒数, 2=智能时长 (S1.5Pro / S2.0 / S2.0Fast)")
+    parser.add_argument("--audio-url-list", default=None,
+                        help="[视频] 多音频参考 URL，逗号分隔 (仅 S2.0 / S2.0Fast)")
+    parser.add_argument("--audio-path-list", default=None,
+                        help="[视频] 多音频本地路径，逗号分隔，自动上传 (仅 S2.0 / S2.0Fast)")
     # 通用参数
     parser.add_argument("--interval", type=int, default=5, help="轮询间隔秒数")
     parser.add_argument("--max-wait", type=int, default=1200, help="任务轮询最长等待秒数 (默认 1200)")
@@ -1981,6 +2073,9 @@ if __name__ == "__main__":
             person_generation=args.person_generation,
             resize_mode=args.resize_mode,
             duration_switch=args.duration_switch,
+            audio_url_list=[u.strip() for u in args.audio_url_list.split(",") if u.strip()] if args.audio_url_list else None,
+            audio_path_list=[p.strip() for p in args.audio_path_list.split(",") if p.strip()] if args.audio_path_list else None,
+            web_search=args.web_search,
             max_wait=args.max_wait,
         )
         # Send result to Feishu if webhook is configured

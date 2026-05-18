@@ -7,13 +7,13 @@ description: |
   需要 API Key 授权：已有账号请前往 https://ai.deepsop.com/login?source=2 登录获取；没有账号请前往 https://ai.deepsop.com/register?source=2 注册后获取。
 
   支持图片模型：**3.1Nano2-Evo（默认）**、S5.0L、N2、W2.7、W2.7Pro、Nano2-Beta-Evo、**Image2（GPTimage-2）**。
-  支持视频模型：**V3.1FB（默认）**、S1.5Pro、V3.1PB、V3.1Fast、W2.6t / W2.6i / W2.6r、klingV3Omni、W2.7t / W2.7i / W2.7r。
+  支持视频模型：**V3.1FB（默认）**、S1.5Pro、V3.1PB、V3.1Fast、W2.6t / W2.6i / W2.6r、klingV3Omni、W2.7t / W2.7i / W2.7r、**S2.0 / S2.0Fast**（Seedance2.0 系列，支持多音频参考与联网搜索）。
   查看当前服务端激活的模型请运行：`python3 scripts/generate_image.py --list-models`。
 
   触发场景：
   - 用户要求生成图片，如"生成一匹狼"、"画一只猫"、"风景画"、"帮我画"等。
   - 用户要求生成视频，如"生成视频"、"文生视频"、"图生视频"、"生成一段...的视频"等。
-  - 用户指定模型：N2、S5.0L、W2.7、W2.7Pro、3.1Nano2-Evo、Nano2-Beta-Evo、Image2、GPTimage-2、gpt-image-2、S1.5Pro、V3.1FB、V3.1PB、V3.1Fast、W2.6t、W2.6i、W2.6r、klingV3Omni、W2.7t、W2.7i、W2.7r。
+  - 用户指定模型：N2、S5.0L、W2.7、W2.7Pro、3.1Nano2-Evo、Nano2-Beta-Evo、Image2、GPTimage-2、gpt-image-2、S1.5Pro、V3.1FB、V3.1PB、V3.1Fast、W2.6t、W2.6i、W2.6r、klingV3Omni、W2.7t、W2.7i、W2.7r、S2.0、S2.0Fast、Seedance2.0。
   - 用户上传参考图/参考视频时，自动先调用文件上传 API 转换为可访问 URL。
 ---
 
@@ -301,6 +301,8 @@ if result and result["status"] == "SUCCESS":
 | `W2.7i` | DeepSop·W2.7i | `14` | `16:9` | `720p` | 10s | 图生视频，首尾帧平滑过渡，动作延展与视频续写 |
 | `W2.7t` | DeepSop.W2.7t | `15` | `16:9` | `720p` | 10s | 文生视频，智能多镜头剪辑，自动配音，2K 高清 |
 | `W2.7r` | DeepSop.W2.7r | `16` | `16:9` | `720p` | 10s | 参考视频生成，保留角色音色，多模态融合编辑 |
+| `S2.0` | DeepSop·S2.0 | `17` | `16:9` | `720p` | 10s | Seedance2.0，4-15s，支持多音频参考（`audioUrlList`）+ 联网搜索（`webSearch`），分辨率 480p/720p/1080p |
+| `S2.0Fast` | DeepSop·S2.0Fast | `18` | `16:9` | `720p` | 10s | Seedance2.0 Fast 快速版，4-15s，多音频参考 + 联网搜索，最高 720p |
 
 **V3.1 系列时长（来自前端 `matchVideoDurationInfo`）：**
 - `V3.1FB` / `V3.1PB`：**时长固定为 8 秒**
@@ -315,6 +317,18 @@ if result and result["status"] == "SUCCESS":
 - 比例：`W2.6t` / `W2.6r` / `W2.7t` / `W2.7r` 支持 1:1 / 3:4 / 4:3 / 16:9 / 9:16；`W2.6i` / `W2.7i` 不可选比例（由首帧决定）；`klingV3Omni` 仅 1:1 / 16:9 / 9:16
 - `W2.6i` / Sora2 系列不支持尾帧图片（仅 `W2.7i` 支持）
 - `W2.6t` / `W2.6i` / `W2.7*` 支持传入自定义音频（`audioUrl`）
+
+**Seedance2.0 系列（`S2.0` / `S2.0Fast`）：**
+- 生成类型：`TEXT` / `FIRST&LAST` / `REFERENCE`
+- 时长：**4-15 秒**，默认 10s，支持智能时长（`durationSwitch=2`）
+- 比例：`adaptive` / `1:1` / `3:4` / `4:3` / `16:9` / `9:16` / `21:9`，`size` 直接提交比例字符串
+- 分辨率：`S2.0` 支持 480p / 720p / 1080p；`S2.0Fast` 仅 480p / 720p
+- 独有参数：
+  - `audioUrlList`：多音频参考（至多 3 个，时长 2-15s，总时长 ≤ 15s）
+  - `videoUrlList`：参考视频（至多 3 个，时长 2-15s，总时长 ≤ 15s）
+  - `webSearch`：是否启用联网搜索
+  - `generateAudio`：是否生成音频（默认开启）
+- 校验：当传入 `audioUrlList` 时，必须至少提供一张参考图或一个参考视频
 
 ## 使用示例
 
@@ -386,6 +400,12 @@ python3 scripts/generate_image.py "品牌短片自动配音 2K" --model W2.7t --
 python3 scripts/generate_image.py "水晶灯展示" --model W2.6i --first-image "./lamp.jpg" --ratio "9:16" --resolution "720p" --duration 8
 python3 scripts/generate_image.py "角色动作延展" --model W2.7i --first-image "./char.jpg" --last-image "./char_end.jpg" --duration 8
 
+# S2.0 / S2.0Fast - Seedance2.0 文生视频
+python3 scripts/generate_image.py "海浪拍打礁石" --model S2.0 --ratio "16:9" --resolution "1080p" --duration 10
+python3 scripts/generate_image.py "城市夜景延时" --model S2.0Fast --ratio "9:16" --resolution "720p" --duration 6 --web-search
+# S2.0 多音频参考（自动上传本地音频）
+python3 scripts/generate_image.py "猫咪互动" --model S2.0 --first-image "./cat.jpg" --audio-path-list "./bg.mp3,./voice.wav"
+
 # W2.6r / W2.7r - 参考视频生成（CLI 需传已上传 URL，或使用程序化调用）
 python3 scripts/generate_image.py "参考素材风格生成" --model W2.6r --ratio "16:9" --resolution "720p" --duration 10
 python3 scripts/generate_image.py "保留角色音色迁移场景" --model W2.7r --ratio "16:9" --resolution "720p" --duration 10
@@ -451,6 +471,21 @@ result = generate_video(
     ratio="16:9",
     resolution="720p",
     duration=10
+)
+
+# S2.0 - Seedance2.0 多模态融合（图像 + 多音频参考 + 联网搜索）
+result = generate_video(
+    prompt="海浪拍打礁石，海鸥飞过",
+    model="S2.0",
+    first_image_url="https://example.com/sea.jpg",
+    audio_url_list=[
+        "https://example.com/wave.mp3",
+        "https://example.com/seagull.mp3",
+    ],
+    web_search=True,
+    ratio="16:9",
+    resolution="1080p",
+    duration=10,
 )
 
 # klingV3Omni - 多模态融合（按张计费）
