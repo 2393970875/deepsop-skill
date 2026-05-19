@@ -75,6 +75,10 @@ API_PATHS: Final[dict[str, str]] = {
     "data_count":                      "/ai/data/count",
     # 20
     "data_list":                       "/ai/data/list",
+    # 21
+    "customer_search_list":            "/ai/customer/customerList",
+    # 22
+    "system_file_upload":              "/system/fileUpload/upload",
 }
 
 
