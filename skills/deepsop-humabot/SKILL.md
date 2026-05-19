@@ -20,9 +20,9 @@ description: 人机协作台技能。用户输入自然语言销售指令，AI�
 - **自动提交任务**：调用 deepsop API 提交任务，后台异步执行
 - **定时查询结果**：任务提交后询问用户期望等待时长，按用户指定时间自动查询并推送结果（默认 8 分钟）
 - **生成 xlsx 报表**：AiWa 客户数据自动生成带样式的 Excel 文件返回
-- **Frank 邮件统计**：查询邮件发送总数、成功数、已读数、回复数、点击数，并展示发送详情
-- **Fran 电话销售**：自动查询号码池与场景库，由用户选择后提交电话销售任务（必须与 AiWa 搭配使用）
-- **Lisa 短信统计**：查询短信发送总数、成功数、失败数，并展示发送详情（必须与 AiWa 搭配使用）
+- **Frank 邮件统计**：查询邮件发送总数、成功数、已读数、回复数、点击数，并展示发送详情（可与 AiWa 搭配，或在无 AiWa 协同时通过客户来源选择 xlsx 上传 / 公司搜索 指定客户）
+- **Fran 电话销售**：自动查询号码池与场景库，由用户选择后提交电话销售任务（可与 AiWa 搭配，或在无 AiWa 协同时通过客户来源选择 xlsx 上传 / 公司搜索 指定客户）
+- **Lisa 短信统计**：查询短信发送总数、成功数、失败数，并展示发送详情（可与 AiWa 搭配，或在无 AiWa 协同时通过客户来源选择指定客户）
 - **Toby TikTok 发布统计**：查询视频发布数、播放量、点赞、评论、分享等数据，并展示每条视频明细和 TikTok 链接
 
 ---
@@ -95,6 +95,8 @@ DEEPSOP_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxx
 | 18 | Step 5-D-2 Lisa 短信详情 | `POST` | `/ai/sms/getSmsResultList?pageNum=1&pageSize=10` |
 | 19 | Step 5-E-1 Toby 视频统计 | `GET` | `/ai/data/count?taskId={tobyDagTaskId}&customerPoolId={tobyCustomerPoolId}&platform=1` |
 | 20 | Step 5-E-2 Toby 视频列表 | `GET` | `/ai/data/list?pageNum=1&pageSize=10&taskId={tobyDagTaskId}&customerPoolId={tobyCustomerPoolId}&platform=1` |
+| 21 | Step 1.6 途径B 客户搜索（无 AiWa 销售任务） | `POST` | `/ai/customer/customerList?pageNum={pageNum}&pageSize=10` |
+| 22 | Step 1.6 途径A xlsx 上传到 OSS | `POST` | `/system/fileUpload/upload`（multipart/form-data, 字段名 `file`） |
 
 > 🔁 **本清单与下文各 Step 中"接口："标注的路径完全一致**。如发现两处不一致，**以下文 Step 中的标注为准**（本清单仅为快速比对索引），同时立即向用户报告该不一致以便修正。
 
@@ -164,14 +166,13 @@ DEEPSOP_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxx
 1. **不支持的员工拦截**：当 `employeeList` 包含 `Jack`、`Leo`、`Sophia`、`Alex` 中的任意一个时，**终止任务**，回复：
    > ⚠️ 数字员工「{员工名}」尚未接入人机协作台，当前支持的员工为：AiWa、Frank、Fran、Lisa、Toby。请调整指令后重试。
 
-2. **销售员工必须搭配 AiWa**：当 `employeeList` 包含 `Frank`、`Fran`、`Lisa` 中的任意一个或多个，但**不包含** `AiWa` 时，**禁止**继续下任务，直接回复用户（`{缺失员工}` 替换为实际缺失的员工名称列表，如 `Frank`、`Frank、Fran`）：
-   > ⚠️ {缺失员工}（邮件/电话/短信销售）必须与 AiWa（客户挖掘）一起使用，无法单独执行销售动作。请在指令中补充客户挖掘需求，例如「帮我找50个美国做服装的客户并发邮件/打电话/发短信」。
-
-   并终止当前流程，等待用户补充指令后重新从 Step 1 开始。
+2. **销售员工无 AiWa 协同时必须指定客户来源**：当 `employeeList` 包含 `Frank`、`Fran`、`Lisa` 中的任意一个或多个，且**不包含** `AiWa` 时，**不再终止任务**；改为进入「Step 1.6 客户来源选择」流程，由用户通过「上传 xlsx 文件」或「搜索选择公司」两种方式指定要执行销售动作的客户来源，待客户来源确认完成（`fileList` / `addressFileList` / `suppurIds` 三者中至少一个非空）后再继续后续步骤。
+   - 若用户最终未提供任何客户来源（取消、放弃或多次留空），则终止任务并回复：
+     > ⚠️ 未指定任何客户来源，无法执行销售动作。请在指令中补充「客户挖掘」需求（如「帮我找50个美国做服装的客户并发邮件」），或上传客户/地址簿 xlsx 文件、搜索并选择公司后重试。
 
 3. **Toby 可独立执行**：Toby（TikTok 视频发布）不依赖 AiWa 客户池，可以单独执行或与其他员工组合使用。
 
-> 说明：Frank（邮件）、Fran（电话）、Lisa（短信）均属于“销售动作”员工，必须依赖 AiWa 产出的客户池，因此不能脱离 AiWa 单独下任务。Toby 不受此限制。
+> 说明：Frank（邮件）、Fran（电话）、Lisa（短信）属于“销售动作”员工。客户池来源有两种途径：① 与 AiWa 联合挖掘产出；② 由用户通过 Step 1.6 直接指定（xlsx 上传或公司搜索）。Toby 不受此限制。
 
 ---
 
@@ -296,6 +297,204 @@ priceKCoin = actualPrice × (discountRate / 100) × rate
 **⑤ 回到 Step 1.5 重新拉取 `/ai/presetEmployee/list` 校验**，该员工状态正常后继续剩余流程。
 
 > ⚠️ 如果剩余 employeeList 中还有其他员工需要走签约流程，回到 Step 1.5.1 处理下一个员工时，**步骤 ③ 必须重新调用 `/ai/vip/balance` 拉取最新余额**（因为本员工的 ④ 已经扣过 K 币，旧余额已失效）。**禁止**用「上一员工查到的 balance − 上一员工 priceKCoin」自行推算结果作为下一员工的余额判断依据。
+
+---
+
+### Step 1.6：客户来源选择（仅当 employeeList 含 Frank/Fran/Lisa 但**不含** AiWa 时执行）
+
+本步骤用于在没有 AiWa 协同的销售任务里，由用户直接指定本次销售动作要面向的客户池。所有数据最终写入 `collaborationSubmitTaskParam.sourceSettings` 对象（结构见本步骤末尾「最终装配规则」）。
+
+**触发条件回顾：** `employeeList` 不含 `AiWa`，且至少含 `Frank` / `Fran` / `Lisa` 之一。`employeeList` 含 `AiWa`（无论是否还含销售员工）或仅含 `Toby` 时，**跳过本步骤**。
+
+**首次提问：让用户在两种来源中二选一（也可两者并用、累加生效）：**
+
+```
+🧭 检测到本次任务无 AiWa 客户挖掘协同，请选择客户来源（可二选一，也可两种叠加）：
+
+1. 上传 xlsx 文件
+   - 客户管理（公司导入）模板：
+     https://kocgo-ai-sales-test.oss-cn-hangzhou.aliyuncs.com/deepsopSkill/deepsopHumabot/公司导入模板.xlsx
+   - 地址簿（地址簿导入）模板：
+     https://kocgo-ai-sales-test.oss-cn-hangzhou.aliyuncs.com/deepsopSkill/deepsopHumabot/地址簿导入模板.xlsx
+   你可以直接上传 xlsx 文件，也可以以文字形式按模板格式提供客户/地址簿信息，由我代为整理成对应 xlsx 后上传。
+
+2. 搜索选择公司
+   通过关键词搜索系统内已存在的公司（客户），由你勾选若干条，对应的客户 ID 会进入 suppurIds。
+
+请回复「1」「2」或「1+2」，并附上你的具体输入。
+```
+
+#### 途径 A：上传 xlsx 文件
+
+1. **确认文件归属**：用户每上传一个 xlsx 文件，**必须**先反问其归属于哪种模板：
+   > 请确认本次上传的 xlsx 属于哪种类型？
+   > - A. **客户管理（公司导入）** —— 对应模板：`公司导入模板.xlsx`
+   > - B. **地址簿（地址簿导入）** —— 对应模板：`地址簿导入模板.xlsx`
+
+   用户回复 A → 该文件归入「客户管理」；用户回复 B → 归入「地址簿」。**不得**自行猜测归属。
+
+2. **文字形式补充**：如果用户没有上传文件、而是以文字方式描述客户/地址簿信息，应按对应模板的列结构整理成 xlsx 文件，再走相同的上传 / 归属确认流程。整理时遵循模板列顺序与字段名，**禁止**自行新增列或合并列。
+
+3. **转 OSS 链接**：调用 DeepSOP 的统一文件上传接口（API 清单 #22），后端会把文件落到阿里云 OSS 并返回公网可访问的 `https://...aliyuncs.com/...` 链接。
+
+   **接口：**
+   ```
+   POST https://ai.deepsop.com/prod-api/system/fileUpload/upload
+   ```
+
+   请求头：
+   - `x-api-key: $DEEPSOP_API_KEY`
+   - `Content-Type: multipart/form-data`（让 HTTP 客户端自动带 boundary，不要手填）
+
+   请求体（form-data）：
+   - `file`：xlsx 文件本身（**字段名严格为 `file`，不得改成 `upload` / `xlsx` / `attachment`**）
+
+   等价 curl：
+   ```bash
+   curl --location --request POST 'https://ai.deepsop.com/prod-api/system/fileUpload/upload' \
+        --header 'x-api-key: $DEEPSOP_API_KEY' \
+        --form 'file=@"<本地 xlsx 绝对路径>"'
+   ```
+
+   **成功响应示例：**
+   ```json
+   {
+     "msg": "操作成功",
+     "code": 200,
+     "fileName": "公司导入.xlsx",
+     "url": "https://kocgo-ai-sales-test.oss-cn-hangzhou.aliyuncs.com/material/100/xxx.xlsx"
+   }
+   ```
+
+   **响应解析规则：**
+   - 当且仅当 `code === 200` 视为成功；其它 `code` 一律按上传失败处理，把 `msg` 原样回给用户并要求重试，**不得**继续。
+   - 取顶层 `url`（**不是** `data.url`，本接口的成功结构是平铺字段）作为 OSS 链接。
+   - 该 URL 必须满足：`https://` 开头 + 域名含 `aliyuncs.com`。不满足则视为上传失败，**不得**写入 `fileList` / `addressFileList`。
+
+4. **落位规则**：
+   - 类型 A（客户管理 / 公司导入）→ 该 URL 字符串追加到 `sourceSettings.fileList` 数组中。
+   - 类型 B（地址簿 / 地址簿导入）→ 该 URL 字符串追加到 `sourceSettings.addressFileList` 数组中。
+   - 同一类型可累加多个文件，按上传顺序追加。
+
+5. **`updateSupport`（仅 `fileList` 非空时生效）**：
+   - 含义：xlsx 中存在与系统内已有客户**公司名完全相同**时，是否覆盖更新已有客户信息。
+   - 取值：`1` = 更新（默认）；`0` = 不更新。
+   - 用户未明确说明时使用默认值 `1`；用户表达「不要覆盖 / 保留原数据 / 不要更新已有客户」等含义时改为 `0`。
+
+#### 途径 B：搜索选择公司（`sourceType === 'search'`）
+
+此途径对应前端 Vue 项目的「客户搜索栏」逻辑（`sourceType === 'search'` 分支），与前端共用同一个客户列表接口。
+
+**接口（API 清单 #21）：**
+```
+POST https://ai.deepsop.com/prod-api/ai/customer/customerList?pageNum={pageNum}&pageSize=10
+```
+
+请求头：`x-api-key: $DEEPSOP_API_KEY`
+
+**Query 参数（与 body 中同名字段冗余传递，与前端 Vue 的 `params` 对齐）：**
+- `pageNum`：从 `1` 开始的页码
+- `pageSize`：**固定为 `10`，禁止改写**
+
+**Body（JSON）：**
+```json
+{
+  "pageNum": <同上>,
+  "pageSize": 10,
+  "name": "<公司名搜索关键词，无关键词时填空字符串 \"\">",
+  "searchSort": "<排序字段：\"\" | \"email\" | \"phone\">",
+  "type": 0
+}
+```
+
+> 🔒 **Body 字段硬约束：**
+> 1. `type` **恒为数字 `0`**（不是字符串、不是 `1`），来自前端 `getCustomerList` 中 `{ ...customerQueryParams, type: 0 }` 的硬编码。
+> 2. `searchSort` 仅允许三种值：`""`（默认不排序）、`"email"`（按邮箱排序）、`"phone"`（按电话排序）。任何其他值都属于编造。
+> 3. `name` 为空时必须显式传 `""`，**不要**省略键也不要传 `null`。
+> 4. 同一次会话中，每次发起搜索都需把上述 5 个键全部带上，缺键属于错误。
+
+**响应字段：**
+- `total`：搜索到的总条数（数字）
+- `rows`：当前页的客户数组，每条至少含：
+  - `id`：客户唯一 ID（用于装入 `suppurIds`）
+  - `name`：公司名
+  - `countryName` / `countryValue`：国家中文名 / 国家代码（如 `cn`、`us`，前端用作国旗图片名）
+  - `email` / `phone`：联系邮箱 / 电话（可能为空，空时取 `aiCustomers[0]` 的对应字段）
+  - `stageLabel`：客户阶段对象 `{ stageLabel, backgroundColor, color }`（可空）
+  - `groupName` / `groupId`：客户分组（可空）
+  - `level`：客户星级（0–5）
+  - `aiSuppurLabels`：客户标签数组 `[{labelName, backgroundColor, color}, ...]`
+  - `aiCustomers`：联系人数组；当 `email` / `phone` 为空时，前端会取 `aiCustomers[0].email` / `aiCustomers[0].phone` 兜底（对齐 Vue 的 `handlePropLabel`）。
+  - `aiDynamics` / `aiEmails` / `aiPhoneCalls`：跟进动态 / 邮件 / 电话数组，**后端原始返回**，前端 `calculateLastFollowInfo` 用它们衍生出 `lastFollowInfo` 字段。
+
+> ℹ️ **`lastFollowInfo` 不是后端返回字段**，是前端纯展示衍生数据。SKILL 侧只需要 `id` 用于 `suppurIds`，无需复刻 `calculateLastFollowInfo` 的衍生逻辑；如需在对话里展示"最近动态"，可参考 Vue `calculateLastFollowInfo`：从 `aiDynamics` / `aiEmails`(`emailSubject` 当 content、`createTime` 当 time) / `aiPhoneCalls`(解析 `describeJobJson.body.job.contacts[0].phoneNumber + tasks[0].status`) 三个列表中各取最新一条，再按 `time` 取最大者作为该客户的"最近动态"。
+
+**交互流程：**
+
+1. **首次进入搜索**：用户选择途径 2 后，先以默认参数 `{ pageNum: 1, pageSize: 10, name: "", searchSort: "", type: 0 }` 拉取一次列表（与 Vue `watch.sourceType` 中 `if (newVal === 'search' && !this.customerTableData.length)` 行为一致），再让用户输入关键词。
+
+2. **关键词搜索**：用户给出公司名 / 关键词时，把它作为 `name` 重发请求，并把 `pageNum` 重置为 `1`（对齐 Vue 的 `handleCustomerQuery`）。
+
+3. **结果展示**：每次返回向用户输出：
+   > 共搜到 **{total}** 条数据，当前为第 **{pageNum}** 页 / 共 **{Math.ceil(total/10)}** 页（每页 10 条）。
+   >
+   > 1. {name} | {countryName} | {email or phone} | 阶段：{stageLabel?.stageLabel || '—'} | 等级：{level}星
+   > 2. ...
+   >
+   > 回复「页码 N」切换分页；回复「{name 关键词}」重新搜索；回复要选中的条目序号（多个用逗号分隔，如 `1,3,5`）或「全选当前页」加入选择；回复「清空选中」可重置已选；回复「确认」结束选择。
+
+4. **翻页**：用户回复「页码 N」时，保持 `name` / `searchSort` 不变，仅更新 `pageNum = N` 后重新调用接口。`N` 必须 ∈ `[1, ceil(total/10)]`，越界则回复并要求重输。
+
+5. **排序切换（可选）**：当用户表达"按邮箱排序" / "按电话排序"时，把 `searchSort` 设为 `"email"` / `"phone"`，否则保持 `""`（对齐 Vue 的 `handleCustomerSortChange`：再次点击同一列时回到 `""`）。
+
+6. **勾选 / 全选 / 清空**（对齐 Vue 的 `handleCustomerSelect` / `handleCustomerSelectAll` / `handleClearCustomerSelection`）：
+   - 单选：`selection` 数组中存在该 `id` 则移除，否则追加。
+   - 全选当前页：把当前 `rows` 中尚未在 `selection` 内的全部加进去；取消全选则把当前 `rows` 中已选的从 `selection` 移除（**只影响当前页**，不清掉其他页已选）。
+   - 清空：`selection` 置空。
+   - 翻页或重新搜索时**不要清空 `selection`**（Vue 中 `getCustomerList(false)` 的 `clearSelectionFlag=false` 路径），需要在新页面里把已勾选过的行用接口返回的 `id` 集合**回显**为已选。
+
+7. **同步到 `sourceSettings.suppurIds`**（对齐 Vue 的 `syncCustomerIds`）：每次 `selection` 变更立即执行：
+   ```
+   sourceSettings.suppurIds = selection.map(item => item.id)
+   ```
+   **字段名是 `suppurIds`（拼写：`suppur` 非 `supplier`），不得改写为 `supplierIds` / `customerIds`。** `id` 类型保持接口返回原样（数字或字符串），不做 toString / parseInt 转换。
+
+8. **结束选择**：用户回复「确认」（或表达完成选择的等价语义）后退出途径 B。**未确认前**不进入 Step 2/3。
+
+#### 最终装配规则
+
+完成客户来源选择后，本步骤产出的 `sourceSettings` **必须**严格采用以下结构（键集与示例一致，键序不限）：
+
+```json
+{
+  "groupId": [],
+  "stageId": [],
+  "labelId": [],
+  "level": [],
+  "seasGroupIds": [],
+  "addressId": [],
+  "fileList": [],
+  "updateSupport": 1,
+  "addressFileList": [],
+  "suppurIds": []
+}
+```
+
+字段说明（仅 `fileList` / `updateSupport` / `addressFileList` / `suppurIds` 由本步骤填充，其余固定为空数组）：
+
+| 字段 | 类型 | 来源 | 说明 |
+|---|---|---|---|
+| `groupId` / `stageId` / `labelId` / `level` / `seasGroupIds` / `addressId` | `array` | 固定空数组 `[]` | 当前 SKILL 不暴露这些维度的选择，恒为 `[]` |
+| `fileList` | `string[]` | 途径 A 类型 A | 客户管理（公司导入）xlsx 的 OSS URL 列表 |
+| `updateSupport` | `0 \| 1` | 途径 A 用户确认 | 公司同名是否覆盖更新，默认 `1` |
+| `addressFileList` | `string[]` | 途径 A 类型 B | 地址簿（地址簿导入）xlsx 的 OSS URL 列表 |
+| `suppurIds` | `(string\|number)[]` | 途径 B | 用户搜索选中的客户 ID 列表 |
+
+**最终硬校验（继续后续步骤前必过）**：
+- `fileList.length > 0` **或** `addressFileList.length > 0` **或** `suppurIds.length > 0`，三者**至少一个**非空。
+- 若三者全空，回到本步骤开头重新询问用户；连续 2 次询问仍全空，按 Step 1「员工组合校验」第 2 条的终止文案结束任务。
+
+> 🔒 **本步骤产出的 `sourceSettings` 优先级最高**：当 `employeeList` 不含 AiWa 但含销售员工时，最终提交请求体中的 `sourceSettings` 必须是本步骤产出的对象，**禁止**使用 AiWa 联合场景下含 `cascader` / `aiMining` / `customerMining` / `seasMining` / `uploadMining` / `countryId` / `addressMining` 的旧版结构。
 
 ---
 
@@ -457,7 +656,7 @@ x-api-key: $DEEPSOP_API_KEY
 >    - ❌ `account_id` / `privacy_level` / `comment_disabled` / `duet_disabled` / `stitch_disabled` / `disable_comment` / `disable_duet` / `disable_stitch` / `is_public_account` / `brand_content_toggle` / `brand_organic_toggle` → 全部保持 camelCase
 >    - ❌ `release_type` / `time_zone` / `interval_type` / `start_time` / `publish_count` / `publish_interval` → 全部保持 camelCase
 >    - ❌ `delay_day` / `email_subject` / `email_text` → ✅ `delayDay` / `emailSubject` / `emailText`
->    - ❌ `country_id` / `address_id` / `file_list` / `update_support` / `seas_group_ids` / `group_id` / `stage_id` / `label_id` → 全部保持 camelCase（`groupId` / `stageId` / `labelId` / `seasGroupIds` / `fileList` / `updateSupport` / `addressId` / `countryId`）
+>    - ❌ `country_id` / `address_id` / `file_list` / `update_support` / `seas_group_ids` / `group_id` / `stage_id` / `label_id` / `address_file_list` / `suppur_ids` → 全部保持 camelCase（`groupId` / `stageId` / `labelId` / `seasGroupIds` / `fileList` / `updateSupport` / `addressId` / `countryId` / `addressFileList` / `suppurIds`）。**注意：`suppurIds` 不是 `supplierIds` / `customerIds`，保持原拼写不得"修正"。**
 >    - ❌ `staff_id` / `video_items` → ✅ `staffId` / `videoItems`
 > 3. **不得做单复数改造**：复数字段必须保留 `List` / 复数后缀，单数字段不得加 `s`。
 >    - `emailPlanList` 不得写成 `emailPlans` / `emailPlan`
@@ -1023,7 +1222,9 @@ curl -s -H "x-api-key: $DEEPSOP_API_KEY" 'https://ai.deepsop.com/prod-api/ai/use
 }
 ```
 
-> ⚠️ 当 `employeeList` 包含 `Fran` 或 `Lisa` 时，`sourceSettings` 必须按上述完整对象填充（不能为 `null`），且 `currentModule` 固定为 `"content"`。
+> ⚠️ 当 `employeeList` **同时包含 `AiWa` 与 `Fran`/`Lisa`** 时，`sourceSettings` 必须按上述完整对象填充（不能为 `null`），且 `currentModule` 固定为 `"content"`。
+>
+> ⚠️ 若 `employeeList` 含 `Fran`/`Lisa` 但**不含 `AiWa`**，`sourceSettings` 改用 Step 1.6 产出的客户来源对象（结构是 `groupId / stageId / labelId / level / seasGroupIds / addressId / fileList / updateSupport / addressFileList / suppurIds`），**不要**沿用上面这份带 `cascader / aiMining / customerMining / seasMining / uploadMining / countryId / addressMining` 的旧版结构。
 
 **Lisa 参数构建规则：**
 - `incrementalTarget`：固定填 100
@@ -1291,11 +1492,17 @@ curl -s -H "x-api-key: $DEEPSOP_API_KEY" 'https://ai.deepsop.com/prod-api/ai/use
 | AiWa + Frank + Toby | `"content"` | `null` | 邮件销售 + TikTok |
 | AiWa + Fran + Toby | `"content"` | 完整 sourceSettings 对象 | 电话销售 + TikTok |
 | AiWa + Lisa + Toby | `"content"` | 完整 sourceSettings 对象 | 短信销售 + TikTok |
+| 仅 Frank（无 AiWa） | `"content"` | Step 1.6 产出的客户来源对象 | 仅邮件销售，客户来源由用户指定 |
+| 仅 Fran（无 AiWa） | `"content"` | Step 1.6 产出的客户来源对象 | 仅电话销售，客户来源由用户指定 |
+| 仅 Lisa（无 AiWa） | `"content"` | Step 1.6 产出的客户来源对象 | 仅短信销售，客户来源由用户指定 |
+| Frank/Fran/Lisa 任意组合（无 AiWa） | `"content"` | Step 1.6 产出的客户来源对象 | 多通道销售但无 AiWa 协同 |
+| 上述组合 + Toby（无 AiWa） | `"content"` | Step 1.6 产出的客户来源对象 | 销售 + TikTok，客户来源由用户指定 |
 
 > 🔍 **快速判定规则**：
 > - `currentModule` 始终为 `"content"`（无任何例外分支）。
-> - 含 `Fran` 或 `Lisa` → `sourceSettings` **必须是完整对象**（不能为 `null`）；
-> - 不含 `Fran` 也不含 `Lisa` → `sourceSettings` 为 `null`。
+> - **含 AiWa**：含 `Fran` 或 `Lisa` → `sourceSettings` 为完整对象（含 `cascader` / `aiMining` 等键，见 Fran/Lisa 示例）；其他子组合 → `sourceSettings` 为 `null`。
+> - **不含 AiWa 且含 `Frank`/`Fran`/`Lisa` 任一**：`sourceSettings` **必须**为 Step 1.6 产出的客户来源对象（含 `fileList` / `addressFileList` / `suppurIds` 等键，**不要**带 `cascader` / `aiMining` 等 AiWa 联合场景的旧键），且 `fileList` / `addressFileList` / `suppurIds` 三者至少一个非空。
+> - **既不含 AiWa 也不含 `Frank`/`Fran`/`Lisa`**（如仅 Toby）：`sourceSettings` 为 `null`。
 
 > 🚫 **组合场景常见错例：**
 >
