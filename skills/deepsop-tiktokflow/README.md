@@ -13,8 +13,8 @@
 ## 🚀 快速开始
 
 1. **获取 API Key**
-   - 已有账号 → [https://ai.deepsop.com/login?source=3](https://ai.deepsop.com/login?source=3)
-   - 没有账号 → [https://ai.deepsop.com/register?source=3](https://ai.deepsop.com/register?source=3)
+   - 已有账号 → [https://ai.deepsop.com/login?source=5](https://ai.deepsop.com/login?source=5)
+   - 没有账号 → [https://ai.deepsop.com/register?source=5](https://ai.deepsop.com/register?source=5)
    - 复制以 `sk-` 开头的密钥
 
 2. **配置环境变量**
