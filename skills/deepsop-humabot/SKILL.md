@@ -82,6 +82,8 @@ DEEPSOP_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxx
 | 5.1 | Step 1.7 / 前置 A-2 兜底 创建+审核场景 | `POST` | `/ai/outBound/createOrModifyScriptAndSubmitScriptReview` |
 | 5.2 | Step 1.7 轮询场景审核状态 | `POST` | `/ai/outBound/describeScript` |
 | 5.3 | Step 1.7 修改场景时回填机器人设定 | `POST` | `/ai/outBound/getAgentProfile` |
+| 5.4 | Step 1.7 辅 单独重新提交场景审核 | `POST` | `/ai/outBound/submitScriptReview` |
+| 5.5 | Step 1.7 辅 撤销场景审核 | `POST` | `/ai/outBound/withdrawScriptReview` |
 | 6 | Step 3 前置 B0 邮箱绑定检查 | `GET` | `/ai/emailconfig/list?pageSize=1000&pageNum=1&status=1` |
 | 7 | Step 3 前置 B 用户 Profile | `GET` | `/ai/user/profile` |
 | 8 | Step 3 前置 D-1 短信模板列表 | `GET` | `/ai/sms/querySmsTemplateList?pageNum=1&pageSize=20&pageNumber=1` |
@@ -127,6 +129,8 @@ DEEPSOP_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxx
 > - 「创建电话场景」「新建外呼话术」「新建电话机器人」「新建场景」「做一个外呼场景」
 > - 「场景审核」「提交场景审核」「话术审核」「让阿里云审一下」
 > - 「修改场景 / 修改话术 / 改一下场景库」（带或不带 scriptId）
+> - 「撤销场景审核 / 撤回场景审核 / 取消场景审核」 → 走 [Step 1.7.6 辅助操作](#step-176场景审核辅助操作用户已有草稿审核中场景) 中的 `withdrawScriptReview` 分支
+> - 「重新提交场景审核 / 重审已有场景」（用户明确说明是已有 scriptId、不要改内容） → 走 [Step 1.7.6 辅助操作](#step-176场景审核辅助操作用户已有草稿审核中场景) 中的 `submitScriptReview` 分支
 >
 > 命中此意图 → **跳过下方 Step 1 任务拆解 prompt + Step 1.5/1.6/2/3/3.5/4/5 的销售流程**，直接进入 [Step 1.7：电话场景创建/审核子流程](#step-17电话场景创建审核子流程独立入口)。
 >
@@ -526,36 +530,35 @@ POST https://ai.deepsop.com/prod-api/ai/customer/customerList?pageNum={pageNum}&
 
 #### Step 1.7.1：澄清场景基础信息
 
-向用户依次询问以下槽位。**每一轮只问 1～2 个槽位**，等用户回复后才追问下一组。
+向用户依次询问以下槽位。**每一轮只问 1～2 个槽位**，等用户回复后才追问下一组。**所有 `promptJson.*` 字段名与上限均与前端 Vue 表单严格对齐，超长会被后端拒绝或截断**：
 
-| 槽位 | 必填 | 默认值 | 说明 |
-|---|---|---|---|
-| `industry` | 否 | `"通用"` | 行业，如"家纺""教育培训" |
-| `scene` | 否 | `"通用"` | 场景，如"老客户回访""促销邀约" |
-| `scriptName` | 是 | — | 场景库名称（≤30 字），用户必须明确给一个 |
-| `agentName` | 否 | `"AI 客服"` | 机器人名字，对应 `promptJson.name` |
-| `goals` | 是 | — | 这次电话的目标（如：邀约客户参加 4 月 20 日新品发布会） |
-| `openingPrompt` | 是 | — | 开场白原文（直接对用户读出来的话） |
+| 槽位 | 必填 | 默认 | 上限（字符） | 说明（与 Vue 表单 label 一致） |
+|---|---|---|---|---|
+| `industry` | 否 | `"通用"` | — | 行业（scriptParams.industry） |
+| `scene` | 否 | `"通用"` | — | 场景（scriptParams.scene） |
+| `scriptName` | 是 | — | ≤30 | 场景库名称（scriptParams.scriptName） |
+| `promptJson.openingPrompt` 👋 开场白 | **是** | — | **200** | 开场白原文，直接对客户读出来的话 |
+| `promptJson.goals` 🚩 目标 | **是** | — | **1000** | 此次呼叫的目的，如「调研上次服务的满意度情况」 |
+| `promptJson.background` 📌 背景 | 否 | `""` | 2000 | 呼叫背景，活动信息、FAQ 等 |
+| `promptJson.skills` 🛠️ 技能 | 否 | `""` | 1000 | 机器人能执行的具体事项（多条用编号） |
+| `promptJson.workflow` 🧰 流程 | 否 | `""` | 4000 | 与客户交流的过程骨架 |
+| `promptJson.constraint` 📦 约束 | 否 | `""` | 3000 | 对话约束/异常话术（专业用语、情绪识别等） |
 
-> ⛔ **禁止 LLM 自己脑补 `goals` 与 `openingPrompt`**：必须由用户至少给出大致内容；若用户说"你帮我编一个"，先草拟一版后**展示给用户确认**，等待用户回复"确认/就这个"才能继续。
+> ⛔ **禁止 LLM 自己脑补 `openingPrompt` 与 `goals`**：必须由用户至少给出大致内容；若用户说"你帮我编一个"，先草拟一版**展示给用户确认**，等待用户回复"确认/就这个"才能继续。
+>
+> ⛔ **禁止超长**：每个字段提交前自检 `len(value) ≤ 上限`；接近上限时（≥80%）主动提醒用户精简，避免脚本 pre-flight 校验报 `TOO_LONG`。
+>
+> ⛔ **不要再向用户索要 Vue 表单未暴露的字段**（如 `name` / `gender` / `age` / `role` / `communicationStyle` / `output` / `aiHangupOutput` / `aiSilenceTimeoutOutput`）。这些字段在 schema 里存在，但 Vue UI 不让用户填，本 SKILL 同样**统一以空字符串占位**，由后端使用其默认行为。
 
-可选槽位（一并以"可选"标注询问，用户跳过则填空字符串）：
-- `background`：公司/产品背景说明
-- `skills`：机器人的"特长"（如：能识别客户身份验证、可智能转人工）
-- `workflow`：通话流程脚本（多步话术骨架）
-- `constraint`：禁止做的事（如：不主动报价、不承诺退款）
-- `output`：标准结束语
-- `aiHangupOutput`：客户挂机时的 AI 收尾话术
-- `aiSilenceTimeoutOutput`：客户长时间沉默时的话术
+线索字段（`agentForm.labelsJson`，对应 Vue 底部「线索收集管理」表格，非必填，可多次追加）：
+让用户列出"这通电话需要收集的客户信息"，每条 3 列：
+- **线索名称**（`name`）：要收集的字段名，如「客户兴趣」「能否到访」
+- **线索描述**（`description`）：用于让机器人正确判定该线索的解释
+- **线索关键词**（`valueList`）：候选取值数组（Vue UI 是"+ 关键词"逐个加 tag），如 `["有兴趣","没兴趣","待跟进"]`；用户可以不填，留空数组 `[]` 表示开放收集
 
-线索字段（`labelsJson`，非必填，可多次追加）：让用户列出"这通电话需要收集的客户信息"，每条形如：
-```
-- 名称：客户兴趣（name）
-  描述：客户对产品是否有兴趣的判断（description）
-  取值列表：有兴趣, 没兴趣, 待跟进（valueList，逗号分隔多个）
-```
+> 装配时 `valueList` 必须**先转成 JSON 字符串**（如 `"[\"有兴趣\",\"没兴趣\"]"`），这是阿里云 Chatbot 的格式硬要求；脚本内 `validate_script_params.py` 会强校验此点。
 
-变量字段（`variablesJson`，非必填）：通话过程中需要替换的占位变量名（如 `customerName`），每条 `{name, description}`。
+变量字段（`agentForm.variablesJson`，非必填）：通话过程中需要替换的占位变量名（如 `customerName`），每条 `{name, description}`，最终也是 JSON 字符串。
 
 #### Step 1.7.2：TTS 音色配置
 
@@ -576,34 +579,87 @@ POST https://ai.deepsop.com/prod-api/ai/customer/customerList?pageNum={pageNum}&
 
 #### Step 1.7.3：装配请求体（两段 JSON 字符串）
 
-待全部槽位收齐，按以下结构装配。注意 `agentParams.promptJson` / `labelsJson` / `variablesJson` 都是**先建对象/数组再 `JSON.stringify` 一次**得到的字符串；`scriptParams.ttsConfig` 同理。
+待全部槽位收齐，按以下结构装配。**严格对齐 Vue 数据模型**：`promptJson` 内部包含全部 14 个 schema 字段，但只有 6 个用户可填字段会有值，其余字段统一使用空字符串占位。
 
-```json
-{
-  "agentParams": {
-    "model": "model_001",
-    "agentProfileId": "",
-    "promptJson": "{\"name\":\"AI 客服\",\"gender\":\"不指定\",\"age\":\"\",\"role\":\"\",\"communicationStyle\":\"\",\"goals\":\"邀约客户参加 4 月 20 日新品发布会\",\"background\":\"\",\"skills\":\"\",\"workflow\":\"\",\"constraint\":\"\",\"openingPrompt\":\"您好，我是XX公司客服助理\",\"output\":\"\",\"aiHangupOutput\":\"\",\"aiSilenceTimeoutOutput\":\"\"}",
-    "labelsJson": "[]",
-    "variablesJson": "[]"
-  },
-  "scriptParams": {
-    "scriptId": "",
-    "scriptName": "4月新品发布邀约",
-    "industry": "通用",
-    "scene": "通用",
-    "nluEngine": "Prompts",
-    "nluAccessType": "Managed",
-    "ttsConfig": "{\"voice\":\"CosyVoice:longcheng\",\"voiceShow\":[0,\"CosyVoice:longcheng\"],\"volume\":50,\"speechRate\":0,\"pitchRate\":0,\"globalInterruptible\":true,\"engine\":\"ali\",\"nlsServiceType\":\"Managed\"}"
-  }
-}
-```
+`agentParams.promptJson` / `labelsJson` / `variablesJson` / `scriptParams.ttsConfig` 都是**先建对象/数组再 `JSON.stringify` 一次**得到的字符串；其中 `labelsJson[*].valueList` 还要再 `JSON.stringify` 一次（**二次 stringify**）。
+
+构建步骤建议（按顺序，避免 LLM 拼错引号）：
+
+1. 先构造 promptJson 的 **对象**：
+   ```json
+   {
+     "name": "", "gender": "", "age": "", "role": "", "communicationStyle": "",
+     "openingPrompt": "您好，我是XX公司客服助理...",
+     "goals":         "邀约客户参加 4 月 20 日新品发布会",
+     "background":    "",
+     "skills":        "",
+     "workflow":      "",
+     "constraint":    "",
+     "output": "", "aiHangupOutput": "", "aiSilenceTimeoutOutput": ""
+   }
+   ```
+   再 `JSON.stringify` 一次得到 `agentParams.promptJson` 字符串。
+
+2. 构造 labelsJson 的 **数组**（用户每条线索）：
+   ```json
+   [
+     { "name": "客户兴趣", "description": "客户对产品是否有兴趣的判断", "valueList": ["有兴趣", "没兴趣", "待跟进"] }
+   ]
+   ```
+   **遍历**对每个元素的 `valueList` 单独 `JSON.stringify`：
+   ```json
+   [
+     { "name": "客户兴趣", "description": "客户对产品是否有兴趣的判断", "valueList": "[\"有兴趣\",\"没兴趣\",\"待跟进\"]" }
+   ]
+   ```
+   再对整个数组 `JSON.stringify` 一次得到 `agentParams.labelsJson`。
+
+3. 构造 ttsConfig 的 **对象**，再整体 `JSON.stringify` 得到 `scriptParams.ttsConfig`：
+   ```json
+   {
+     "voice": "CosyVoice:longcheng",
+     "voiceShow": [0, "CosyVoice:longcheng"],
+     "volume": 50,
+     "speechRate": 0,
+     "pitchRate": 0,
+     "globalInterruptible": true,
+     "engine": "ali",
+     "nlsServiceType": "Managed"
+   }
+   ```
+
+4. 最终请求体（与 Vue `getProcessData()` 输出 1:1 对齐）：
+   ```json
+   {
+     "agentParams": {
+       "model": "model_001",
+       "agentProfileId": "",
+       "promptJson":     "<上方第 1 步 stringify 后的字符串>",
+       "labelsJson":     "<上方第 2 步 stringify 后的字符串>",
+       "variablesJson":  "[]"
+     },
+     "scriptParams": {
+       "scriptId": "",
+       "scriptName": "4月新品发布邀约",
+       "industry": "通用",
+       "scene": "通用",
+       "nluEngine": "Prompts",
+       "nluAccessType": "Managed",
+       "ttsConfig": "<上方第 3 步 stringify 后的字符串>"
+     }
+   }
+   ```
 
 > 🔒 **字段名零改写规则同样适用于本步骤**（参见 Step 3 总规约「字段名零改写规则」）：
 > - `agentParams` ≠ `agent_params` / `AgentParams`；`scriptParams` ≠ `script_params`
 > - `promptJson` / `labelsJson` / `variablesJson` 必须是 **JSON 字符串**（外层套引号、内层用 `\"`），**不得**直接放对象/数组
 > - `ttsConfig` 同上，是 JSON 字符串而不是对象
 > - `labelsJson` 元素里的 `valueList` 是**二次 stringify 过的字符串**（如 `"[\"v1\",\"v2\"]"`），不是数组
+> - **修改场景**（Fran 流程兜底外的「编辑现有草稿」入口）需在 `agentParams.agentProfileId` 与 `scriptParams.scriptId` 填入既有值；新建场景这两个字段一律为空字符串 `""`，**禁止省略键名**
+
+> 🔡 **UTF-8 传输强约束**（这是脚本存在的核心理由）：
+> - LLM 在 Windows 终端**禁止**直接用 `curl` / `Invoke-RestMethod` 提交以上请求体——cp936 代码页会把 `openingPrompt` / `goals` / `background` 等中文字段静默转码导致后端审核拒绝
+> - **必须**通过 `python3 scripts/submit_script_review.py <<'SCRIPT_BODY_EOF' ... SCRIPT_BODY_EOF` 走脚本，脚本内部以 `bytes = json.dumps(body, ensure_ascii=False).encode("utf-8")` + `Content-Type: application/json; charset=utf-8` 显式发送字节，已和 `submit_task.py` 同级别强约束
 
 #### Step 1.7.4：提交并轮询审核
 
@@ -647,6 +703,31 @@ SCRIPT_BODY_EOF
 - **触发方式 B**（Fran 兜底）：把 `{scriptId, agentProfileId}` 当作前置 A-2 的最终选定结果，**不再**回调 `listScripts`，直接进入 Step 3 前置 B（若需要）或最终装配。在装配 Fran 子对象时：
   - `scriptId` ← 本步骤拿到的字符串原值（不得改名、不得二次包裹引号）
   - `agentProfileId` ← 本步骤拿到的字符串原值（不得改名为 `agentId` / `chatbotId` / `profileId`）
+
+#### Step 1.7.6：场景审核辅助操作（用户已有草稿/审核中场景）
+
+当用户**不是**要新建/编辑场景内容，而是想：
+
+- **重新提交既有草稿/已发布场景进入审核**（如已存在 `DRAFTED` / `ROLLBACK_FAILED` / `PUBLISH_FAILED` / 已 `PUBLISHED` 但想重审的场景）→ 用 5.4 `submitScriptReview`
+- **撤销正在审核中的场景**（`TO_BE_REVIEWED` 等）→ 用 5.5 `withdrawScriptReview`
+
+**前置确认**（必须先做，禁止直接发请求）：
+1. 调用 5 `listScripts`（请求体 `{"pageNumber":1,"pageSize":20,"scriptName":"<可选关键词>"}`）拿到列表；
+2. 将 `scriptName + status + 创建时间` 渲染给用户挑选；
+3. 等用户明确选定后才取出对应 `scriptId`。
+
+**请求体**（两个接口结构一致）：
+
+```json
+{
+  "scriptId": "<上一步选定>",
+  "description": "提交审核"
+}
+```
+
+> 与 `submit_script_review.py` 不同，本步骤**不**走 pre-flight 校验（请求体足够简单），可以直接发送，但仍需通过 `python -c "import urllib.request,json; ..."` 或临时小脚本以 **UTF-8 字节路径**发出，**禁止** PowerShell 原生 `Invoke-RestMethod`（避免 cp936 影响 `description` 字段，虽然此处通常是固定文案）。
+
+成功后**必须**调用 `describeScript` 复查一次 `status` 再回复用户实际状态变化（如 `DRAFTED → TO_BE_REVIEWED`），不要凭返回 `code:200` 就声称"已通过审核"。
 
 ---
 
