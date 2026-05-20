@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 """
 api_paths.py
-DeepSOP humabot 技能的 **API 路径权威清单（代码侧单一来源）**。
+DeepSOP TikTokFlow 技能的 **API 路径权威清单（代码侧单一来源）**。
 
-此文件必须与 `SKILL.md` 顶部「📋 API 路径权威清单」的 20 条路径**完全一致**。
+此文件必须与 `SKILL.md` 顶部「📋 API 路径权威清单」**完全一致**。
 任何脚本需要发起 HTTP 请求时，**必须**：
-  1. 从本模块导入对应的常量或调用 `build_url(name, **query)`；
+  1. 从本模块导入对应的常量或调用 `build_url(name)`；
   2. 严禁在脚本中拼接、改写、私加 query 参数；
   3. 若 SKILL.md 增删改路径，必须同步更新本文件，否则视为 bug。
 
 为什么要在代码侧再设一份：
-  - SKILL.md 的清单约束的是 LLM/Agent 的行为；
-  - api_paths.py 约束的是脚本（Python）行为；
+  - SKILL.md 的清单约束 LLM/Agent 行为；
+  - api_paths.py 约束脚本（Python）行为；
   - 二者构成"双轨强约束"，避免任一侧偷偷绕过。
 
 校验：本模块自带 `verify_against_skill_md()`，可在 CI 或 dev 环境中比对
@@ -25,51 +25,32 @@ from typing import Final
 BASE_URL: Final[str] = "https://ai.deepsop.com/prod-api"
 
 
-# 与 SKILL.md「📋 API 路径权威清单」编号一致 —— 任何修改必须同步两侧
+# 与 SKILL.md「📋 API 路径权威清单」一致 —— 任何修改必须同步两侧
 API_PATHS: Final[dict[str, str]] = {
-    # 1
+    # 1：数字员工可用性
     "preset_employee_list":            "/ai/presetEmployee/list",
-    # 1.1
+    # 1.1：签约套餐列表
     "signup_package_list":             "/ai/setting/list?packageType=3",
-    # 1.2
+    # 1.2：人民币→K币汇率
     "kcoin_rate_config":               "/system/config/configKey/CNY_TO_KCOIN",
-    # 1.3
+    # 1.3：K币余额查询
     "kcoin_balance":                   "/ai/vip/balance",
-    # 1.4
+    # 1.4：提交签约（扣K币）
     "purchase_package_by_ktoken":      "/ai/order/purchaseIndependentPackageByKToken",
-    # 2
-    "preset_employee_submit_task":     "/ai/presetEmployee/submitTask",
-    # 3
-    "outbound_describe_instance":      "/ai/outBound/describeInstance",
-    # 4
-    "outbound_caller_number_list":     "/ai/outBound/callerNumber/list",
-    # 5
-    "outbound_list_scripts":           "/ai/outBound/listScripts",
-    # 6
-    "emailconfig_list":                "/ai/emailconfig/list",
-    # 7
+    # 1.5：用户 Profile（取 userId）
     "user_profile":                    "/ai/user/profile",
-    # 8
-    "sms_query_template_list":         "/ai/sms/querySmsTemplateList",
-    # 9（已迁移到 deepsop-tiktokflow）— Toby/TikTok 相关接口已移除
-    # 12
-    "preset_employee_pool_detail":     "/ai/presetEmployee/getCustomerPoolDetail",
-    # 13
-    "email_get_task_email_count":      "/ai/email/getTaskEmailCount",
-    # 14
-    "email_task_list":                 "/ai/email/taskList",
-    # 15
-    "preset_employee_collab_stat":     "/ai/presetEmployee/collaborationTaskStatistics",
-    # 16
-    "preset_employee_collab_call":     "/ai/presetEmployee/collaborationCallResult",
-    # 17
-    "sms_get_task_sms_count":          "/ai/sms/getTaskSmsCount",
-    # 18
-    "sms_get_sms_result_list":         "/ai/sms/getSmsResultList",
-    # 21
-    "customer_search_list":            "/ai/customer/customerList",
-    # 22
-    "system_file_upload":              "/system/fileUpload/upload",
+    # 2：提交任务
+    "preset_employee_submit_task":     "/ai/presetEmployee/submitTask",
+    # 3：TikTok 账号列表
+    "authaccount_list":                "/ai/authaccount/list",
+    # 4：TikTok 账号权限
+    "tiktok_get_creator_info":         "/ai/auth/tiktok/getCreatorInfo",
+    # 5：视频模型列表
+    "consume_source_list":             "/ai/consumeSource/list",
+    # 6：视频统计
+    "data_count":                      "/ai/data/count",
+    # 7：视频列表
+    "data_list":                       "/ai/data/list",
 }
 
 
@@ -103,7 +84,6 @@ def verify_against_skill_md(skill_md_path: str | None = None) -> list[str]:
     """
     对照 SKILL.md 中所有形如 https://ai.deepsop.com/prod-api/... 的路径，
     检查它们是否都出现在本文件 API_PATHS 的值集合中。返回不一致项列表。
-    （供 CI / 排查使用，不在运行时调用。）
     """
     import re
     from pathlib import Path
