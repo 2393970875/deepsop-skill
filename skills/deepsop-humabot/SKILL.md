@@ -1,6 +1,6 @@
 ---
 name: deepsop-humabot
-description: 人机协作台技能。用户输入自然语言销售指令，AI自动分析拆解任务参数，调用 deepsop 平台接口提交任务，等待后查询结果并推送。触发场景：用户说「帮我找客户」「挖掘XXX行业客户」「找XXX个客户」「提交任务」等与客户挖掘、销售任务相关的指令；「发TikTok视频」「生成视频发布到TikTok」等TikTok视频发布指令；或收到包含 [DeepSOP-AutoQuery] 标记的系统定时事件（cron 回调，用于自动查询并推送任务结果）。需要提前配置环境变量 DEEPSOP_API_KEY。⚠️ 调用本 SKILL 前必须先完整阅读 SKILL.md。提交 agentSubmitTask **必须**走 scripts/submit_task.py（通过 heredoc 把 body 喂给 stdin），脚本内部串行跑 validate_employee_params.py + validate_sms_template_params.py + UTF-8 安全 HTTP 提交，**禁止**直接写 curl 命令（会因 Windows cp936 代码页导致 taskName/taskDescription 中文乱码）。脚本退出码 0 才算成功；非 0 必须把 summary/errors 原样回给用户后修正重试，禁止绕过校验或假装成功。
+description: 人机协作台技能。用户输入自然语言销售指令，AI自动分析拆解任务参数，调用 deepsop 平台接口提交任务，等待后查询结果并推送。触发场景：用户说「帮我找客户」「挖掘XXX行业客户」「找XXX个客户」「提交任务」等与客户挖掘、销售任务相关的指令；或用户说「创建电话场景」「新建外呼话术」「新建电话机器人」「提交场景审核」「我要做一个外呼场景」等与场景创建/审核相关的指令；或收到包含 [DeepSOP-AutoQuery] 标记的系统定时事件（cron 回调，用于自动查询并推送任务结果）。需要提前配置环境变量 DEEPSOP_API_KEY。⚠️ 调用本 SKILL 前必须先完整阅读 SKILL.md。提交 agentSubmitTask **必须**走 scripts/submit_task.py、创建/审核场景 **必须**走 scripts/submit_script_review.py（均通过 heredoc 把 body 喂给 stdin），脚本内部串行跑参数校验 + UTF-8 安全 HTTP 提交，**禁止**直接写 curl 命令（会因 Windows cp936 代码页导致中文字段乱码）。脚本退出码 0 才算成功；非 0 必须把 summary/errors 原样回给用户后修正重试，禁止绕过校验或假装成功。
 ---
 
 # 人机协作台（Human-AI Collaboration）
@@ -16,14 +16,13 @@ description: 人机协作台技能。用户输入自然语言销售指令，AI�
   - **Frank**：邮件销售
   - **Fran**：电话销售
   - **Lisa**：短信销售
-  - **Toby**：AI 视频生成并发布到 TikTok
 - **自动提交任务**：调用 deepsop API 提交任务，后台异步执行
 - **定时查询结果**：任务提交后询问用户期望等待时长，按用户指定时间自动查询并推送结果（默认 8 分钟）
 - **生成 xlsx 报表**：AiWa 客户数据自动生成带样式的 Excel 文件返回
 - **Frank 邮件统计**：查询邮件发送总数、成功数、已读数、回复数、点击数，并展示发送详情（可与 AiWa 搭配，或在无 AiWa 协同时通过客户来源选择 xlsx 上传 / 公司搜索 指定客户）
 - **Fran 电话销售**：自动查询号码池与场景库，由用户选择后提交电话销售任务（可与 AiWa 搭配，或在无 AiWa 协同时通过客户来源选择 xlsx 上传 / 公司搜索 指定客户）
 - **Lisa 短信统计**：查询短信发送总数、成功数、失败数，并展示发送详情（可与 AiWa 搭配，或在无 AiWa 协同时通过客户来源选择指定客户）
-- **Toby TikTok 发布统计**：查询视频发布数、播放量、点赞、评论、分享等数据，并展示每条视频明细和 TikTok 链接
+- **电话场景创建/审核**：用户可主动说「创建电话场景」「新建外呼话术」直接走 Step 1.7 子流程，也可在 Fran 提交时若无可用场景库时被引导即时创建并提交阿里云审核（场景+TTS+机器人 prompt 三合一）
 
 ---
 
@@ -80,12 +79,12 @@ DEEPSOP_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxx
 | 3 | Step 3 前置 A-0 外呼实例 | `GET` | `/ai/outBound/describeInstance` |
 | 4 | Step 3 前置 A-1 号码池 | `GET` | `/ai/outBound/callerNumber/list` |
 | 5 | Step 3 前置 A-2 场景库 | `POST` | `/ai/outBound/listScripts` |
+| 5.1 | Step 1.7 / 前置 A-2 兜底 创建+审核场景 | `POST` | `/ai/outBound/createOrModifyScriptAndSubmitScriptReview` |
+| 5.2 | Step 1.7 轮询场景审核状态 | `POST` | `/ai/outBound/describeScript` |
+| 5.3 | Step 1.7 修改场景时回填机器人设定 | `POST` | `/ai/outBound/getAgentProfile` |
 | 6 | Step 3 前置 B0 邮箱绑定检查 | `GET` | `/ai/emailconfig/list?pageSize=1000&pageNum=1&status=1` |
 | 7 | Step 3 前置 B 用户 Profile | `GET` | `/ai/user/profile` |
 | 8 | Step 3 前置 D-1 短信模板列表 | `GET` | `/ai/sms/querySmsTemplateList?pageNum=1&pageSize=20&pageNumber=1` |
-| 9 | Step 3 前置 E-1 TikTok 账号列表 | `GET` | `/ai/authaccount/list?pageNum=1&pageSize=999&platform=1&status=1` |
-| 10 | Step 3 前置 E-2 TikTok 账号权限 | `GET` | `/ai/auth/tiktok/getCreatorInfo?authAccountId={id}` |
-| 11 | Step 3 前置 E-3 视频模型列表 | `POST` | `/ai/consumeSource/list?pageNum=1&pageSize=999` |
 | 12 | Step 5-A AiWa 客户池详情 | `POST` | `/ai/presetEmployee/getCustomerPoolDetail?pageNum=1&pageSize=10` |
 | 13 | Step 5-B-1 Frank 邮件统计 | `GET` | `/ai/email/getTaskEmailCount?taskId={frankDagTaskId}` |
 | 14 | Step 5-B-2 Frank 邮件列表 | `GET` | `/ai/email/taskList?pageNum=1&pageSize=2000&taskId={frankDagTaskId}` |
@@ -93,8 +92,6 @@ DEEPSOP_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxx
 | 16 | Step 5-C-2 Fran 电话详情 | `POST` | `/ai/presetEmployee/collaborationCallResult?pageNum=1&pageSize=10` |
 | 17 | Step 5-D-1 Lisa 短信统计 | `POST` | `/ai/sms/getTaskSmsCount` |
 | 18 | Step 5-D-2 Lisa 短信详情 | `POST` | `/ai/sms/getSmsResultList?pageNum=1&pageSize=10` |
-| 19 | Step 5-E-1 Toby 视频统计 | `GET` | `/ai/data/count?taskId={tobyDagTaskId}&customerPoolId={tobyCustomerPoolId}&platform=1` |
-| 20 | Step 5-E-2 Toby 视频列表 | `GET` | `/ai/data/list?pageNum=1&pageSize=10&taskId={tobyDagTaskId}&customerPoolId={tobyCustomerPoolId}&platform=1` |
 | 21 | Step 1.6 途径B 客户搜索（无 AiWa 销售任务） | `POST` | `/ai/customer/customerList?pageNum={pageNum}&pageSize=10` |
 | 22 | Step 1.6 途径A xlsx 上传到 OSS | `POST` | `/system/fileUpload/upload`（multipart/form-data, 字段名 `file`） |
 
@@ -117,12 +114,28 @@ DEEPSOP_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxx
 
 检查当前输入内容是否包含 `[DeepSOP-AutoQuery]` 标记：
 
-- **包含该标记**：这是 cron 定时回调。**不得询问用户是否继续，不得等待确认，不得说「我将开始查询」。立即从输入文本中解析变量（`taskId`、`aiwaDagTaskId`、`aiwaCustomerPoolId`、`frankDagTaskId`、`franDagTaskId`、`franCustomerPoolId`、`lisaDagTaskId`、`lisaCustomerPoolId`、`tobyDagTaskId`、`tobyCustomerPoolId`、`taskName`、`totalTarget`、`employeeList`、`feishuChatId`），跳过 Step 1～4 直接执行 Step 5 的全部内容（查询接口 → 生成 xlsx → 发送文件 → 回复文字摘要），直到所有参与员工的结果都处理完毕。
+- **包含该标记**：这是 cron 定时回调。**不得询问用户是否继续，不得等待确认，不得说「我将开始查询」。立即从输入文本中解析变量（`taskId`、`aiwaDagTaskId`、`aiwaCustomerPoolId`、`frankDagTaskId`、`franDagTaskId`、`franCustomerPoolId`、`lisaDagTaskId`、`lisaCustomerPoolId`、`taskName`、`totalTarget`、`employeeList`、`feishuChatId`），跳过 Step 1～4 直接执行 Step 5 的全部内容（查询接口 → 生成 xlsx → 发送文件 → 回复文字摘要），直到所有参与员工的结果都处理完毕。
 - **不包含该标记**：这是用户主动指令，继续执行 Step 1。
 
 ---
 
-### Step 1：第一轮 AI 分析（任务拆解）
+### Step 1：第一轮 AI 分析（任务拆解 + 意图分流）
+
+> 🔀 **意图分流前置（在跑下方拆解 prompt 之前先判断）：**
+>
+> 如果用户输入**明确**包含以下关键词之一且**不**带销售目标数量（如「找 N 个客户」「发邮件」「打电话推销」），判定为「场景创建意图」：
+> - 「创建电话场景」「新建外呼话术」「新建电话机器人」「新建场景」「做一个外呼场景」
+> - 「场景审核」「提交场景审核」「话术审核」「让阿里云审一下」
+> - 「修改场景 / 修改话术 / 改一下场景库」（带或不带 scriptId）
+>
+> 命中此意图 → **跳过下方 Step 1 任务拆解 prompt + Step 1.5/1.6/2/3/3.5/4/5 的销售流程**，直接进入 [Step 1.7：电话场景创建/审核子流程](#step-17电话场景创建审核子流程独立入口)。
+>
+> 若用户句子里**同时**有销售意图（如「先建一个外呼场景，再用它给我打 50 个家纺客户的电话」），按以下顺序处理：
+>   1. 先走 Step 1.7 完成场景创建+审核，拿到 `scriptId / agentProfileId`；
+>   2. 再回到下方 Step 1 拆解销售意图，进入 Step 1.5/1.6/2/3 流程；
+>   3. 进入 Step 3 前置 A-2 时，把 Step 1.7 拿到的 `scriptId / agentProfileId` 作为已选场景直接复用，**不要**再调 `listScripts` 让用户选。
+>
+> 未命中场景创建关键词 → 进入下方常规销售任务拆解。
 
 用以下 prompt 分析用户指令，严格返回 JSON，不含任何额外文字：
 
@@ -138,7 +151,6 @@ DEEPSOP_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxx
     - 邮件销售职能（Frank）：匹配包含“邮件”、“发邮件”等关键词的描述
     - 电话销售职能（Fran）：匹配包含“电话”、“打电话”、“电话销售”等关键词的描述
     - 短信销售职能（Lisa）：匹配包含“短信”、“发短信”等关键词的描述
-    - TikTok职能（Toby）：匹配包含“TikTok”、“抖音国际版”等关键词的描述
     - 生产视频职能（Jack）：匹配包含“视频”、“生产视频”等关键词的描述
     - 智能SEO优化职能（Sophia）：匹配包含“SEO”、“优化”、“搜索引擎”等关键词的描述
     - AI剪辑师职能（Alex）：匹配包含“剪辑”、“视频剪辑”等关键词的描述
@@ -146,12 +158,11 @@ DEEPSOP_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxx
     如果拆分后只有一个子任务且没有匹配上员工，则默认匹配挖掘客户职能（AiWa）
     最后汇总所有匹配到的员工名称组成一个,拼接的字符串并返回（去重）",
   "language": "判断描述中是否明确提及国家或地区，若提及了国家或地区但和中国没有关联则返回'英文'其他情况返回'中文'",
-  "tiktokContent": "根据描述总结出一个TikTok内容发布的内容主题"
 }
 ```
 
 解析结果字段（**注意：这些只是 SKILL 内部用的解析变量，不要原样塞到最终 API 请求体里**）：
-- `totalTarget`：目标数量（数字）— 仅作为 `employeeParams.AiWa.totalTarget` 或 `employeeParams.Toby.totalTarget` 的值来源，**不得**作为根级字段
+- `totalTarget`：目标数量（数字）— 仅作为 `employeeParams.AiWa.totalTarget` 的值来源，**不得**作为根级字段
 - `employeeList`：参与员工逗号字符串，如 `"AiWa"` 或 `"AiWa,Frank"` — **仅本 SKILL 内部用于决定要构造哪些 `employeeParams.{Name}` 子对象，绝不允许出现在最终请求体的任何层级**
 - `language`：`"中文"` 或 `"英文"` — **仅作为 `employeeParams.Frank.language` 的值，不得挂到根级或其他员工子对象**
 - `taskName`：任务名称（→ `collaborationSubmitTaskParam.taskName`）
@@ -159,20 +170,16 @@ DEEPSOP_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxx
   - 后端枚举：`"周期性任务" = 0`，`"定额任务" = 1`
   - 🔒 **当前阶段强制规则：无论 LLM 识别结果是定额还是周期性，提交请求体时 `executionMode` 一律硬编码为数字 `1`（即按定额任务下达）**。
   - **绝不允许**把中文字符串直接塞进请求体（如 `"executionMode": "定额任务"`），会被后端 schema 校验拒绝；也不得写成 `"1"`（带引号字符串）、`true`、`null`。
-- `tiktokContent`：任务描述中涉及 TikTok 发布的内容主题（仅作为 `employeeParams.Toby.content` 与 `employeeParams.Toby.param.text` 的值来源，**不得**作为独立字段出现在请求体中）
 
 **员工组合校验：**
 
 1. **不支持的员工拦截**：当 `employeeList` 包含 `Jack`、`Leo`、`Sophia`、`Alex` 中的任意一个时，**终止任务**，回复：
-   > ⚠️ 数字员工「{员工名}」尚未接入人机协作台，当前支持的员工为：AiWa、Frank、Fran、Lisa、Toby。请调整指令后重试。
+   > ⚠️ 数字员工「{员工名}」尚未接入人机协作台，当前支持的员工为：AiWa、Frank、Fran、Lisa。请调整指令后重试。
 
 2. **销售员工无 AiWa 协同时必须指定客户来源**：当 `employeeList` 包含 `Frank`、`Fran`、`Lisa` 中的任意一个或多个，且**不包含** `AiWa` 时，**不再终止任务**；改为进入「Step 1.6 客户来源选择」流程，由用户通过「上传 xlsx 文件」或「搜索选择公司」两种方式指定要执行销售动作的客户来源，待客户来源确认完成（`fileList` / `addressFileList` / `suppurIds` 三者中至少一个非空）后再继续后续步骤。
    - 若用户最终未提供任何客户来源（取消、放弃或多次留空），则终止任务并回复：
      > ⚠️ 未指定任何客户来源，无法执行销售动作。请在指令中补充「客户挖掘」需求（如「帮我找50个美国做服装的客户并发邮件」），或上传客户/地址簿 xlsx 文件、搜索并选择公司后重试。
 
-3. **Toby 可独立执行**：Toby（TikTok 视频发布）不依赖 AiWa 客户池，可以单独执行或与其他员工组合使用。
-
-> 说明：Frank（邮件）、Fran（电话）、Lisa（短信）属于“销售动作”员工。客户池来源有两种途径：① 与 AiWa 联合挖掘产出；② 由用户通过 Step 1.6 直接指定（xlsx 上传或公司搜索）。Toby 不受此限制。
 
 ---
 
@@ -183,7 +190,7 @@ DEEPSOP_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxx
 **请求头：** `x-api-key: $DEEPSOP_API_KEY`
 
 响应 `data` 数组中每条记录关键字段：
-- `name`：员工名称（与 employeeList 中的名称对应，如 `AiWa`、`Frank`、`Fran`、`Lisa`、`Toby`）
+- `name`：员工名称（与 employeeList 中的名称对应，如 `AiWa`、`Frank`、`Fran`、`Lisa`）
 - `status`：启用状态，`0` = 启用，`1` = 禁用
 - `remainingDays`：剩余可用天数（可为 null）
 
@@ -304,7 +311,7 @@ priceKCoin = actualPrice × (discountRate / 100) × rate
 
 本步骤用于在没有 AiWa 协同的销售任务里，由用户直接指定本次销售动作要面向的客户池。所有数据最终写入 `collaborationSubmitTaskParam.sourceSettings` 对象（结构见本步骤末尾「最终装配规则」）。
 
-**触发条件回顾：** `employeeList` 不含 `AiWa`，且至少含 `Frank` / `Fran` / `Lisa` 之一。`employeeList` 含 `AiWa`（无论是否还含销售员工）或仅含 `Toby` 时，**跳过本步骤**。
+**触发条件回顾：** `employeeList` 不含 `AiWa`，且至少含 `Frank` / `Fran` / `Lisa` 之一。`employeeList` 含 `AiWa`（无论是否还含销售员工）时，**跳过本步骤**。
 
 **首次提问：让用户在两种来源中二选一（也可两者并用、累加生效）：**
 
@@ -498,6 +505,151 @@ POST https://ai.deepsop.com/prod-api/ai/customer/customerList?pageNum={pageNum}&
 
 ---
 
+### Step 1.7：电话场景创建/审核子流程（独立入口）
+
+> 触发方式（**任一**）：
+> - **A. 用户主动触发**：Step 1 意图分流命中"场景创建"关键词。
+> - **B. Fran 流程兜底**：Step 3 前置 A-2 的 `listScripts` 返回空、或全部场景 `status` 都不是 `PUBLISHED`，且用户回复"创建/我自己建/帮我建一个"。
+>
+> 出口：拿到 `scriptId` + `agentProfileId`（场景已 PUBLISHED）。
+> - 触发方式 A 完成后：直接回复用户"场景已发布，可用于后续电话销售任务"，**不再**自动进入销售流程；
+> - 触发方式 B 完成后：把 `scriptId` / `agentProfileId` 当作前置 A-2 的选定结果，继续 Step 3 前置 B / D / 最终提交流程。
+
+#### Step 1.7.0：环境前置自检
+
+进入子流程前，先校验外呼实例可用性（与 Step 3 前置 A-0 同接口）：
+
+接口：`GET https://ai.deepsop.com/prod-api/ai/outBound/describeInstance`，请求头 `x-api-key: $DEEPSOP_API_KEY`。
+
+- 实例并发数为 0：终止子流程，回复用户"外呼实例并发数为 0，请联系管理员开通后再尝试创建场景"；
+- 实例可用：继续。
+
+#### Step 1.7.1：澄清场景基础信息
+
+向用户依次询问以下槽位。**每一轮只问 1～2 个槽位**，等用户回复后才追问下一组。
+
+| 槽位 | 必填 | 默认值 | 说明 |
+|---|---|---|---|
+| `industry` | 否 | `"通用"` | 行业，如"家纺""教育培训" |
+| `scene` | 否 | `"通用"` | 场景，如"老客户回访""促销邀约" |
+| `scriptName` | 是 | — | 场景库名称（≤30 字），用户必须明确给一个 |
+| `agentName` | 否 | `"AI 客服"` | 机器人名字，对应 `promptJson.name` |
+| `goals` | 是 | — | 这次电话的目标（如：邀约客户参加 4 月 20 日新品发布会） |
+| `openingPrompt` | 是 | — | 开场白原文（直接对用户读出来的话） |
+
+> ⛔ **禁止 LLM 自己脑补 `goals` 与 `openingPrompt`**：必须由用户至少给出大致内容；若用户说"你帮我编一个"，先草拟一版后**展示给用户确认**，等待用户回复"确认/就这个"才能继续。
+
+可选槽位（一并以"可选"标注询问，用户跳过则填空字符串）：
+- `background`：公司/产品背景说明
+- `skills`：机器人的"特长"（如：能识别客户身份验证、可智能转人工）
+- `workflow`：通话流程脚本（多步话术骨架）
+- `constraint`：禁止做的事（如：不主动报价、不承诺退款）
+- `output`：标准结束语
+- `aiHangupOutput`：客户挂机时的 AI 收尾话术
+- `aiSilenceTimeoutOutput`：客户长时间沉默时的话术
+
+线索字段（`labelsJson`，非必填，可多次追加）：让用户列出"这通电话需要收集的客户信息"，每条形如：
+```
+- 名称：客户兴趣（name）
+  描述：客户对产品是否有兴趣的判断（description）
+  取值列表：有兴趣, 没兴趣, 待跟进（valueList，逗号分隔多个）
+```
+
+变量字段（`variablesJson`，非必填）：通话过程中需要替换的占位变量名（如 `customerName`），每条 `{name, description}`。
+
+#### Step 1.7.2：TTS 音色配置
+
+向用户提供以下默认值，并允许用户调整：
+
+```
+默认 TTS 配置：
+- 发音人：CosyVoice:longcheng（女声 / 通用）
+- 引擎：ali（阿里云标准 TTS）
+- 音量：50（0–100）
+- 语速：0（-500 ~ +500）
+- 语调：0（-500 ~ +500）
+- 全局可打断：开
+- 服务类型：Managed
+```
+
+用户可单点或整体替换；若选择克隆音色，引擎须改为 `bailian`。**禁止**让用户自由输入 `nlsServiceType` / `nluEngine` / `nluAccessType`，全部按下方"参数固定值"装配。
+
+#### Step 1.7.3：装配请求体（两段 JSON 字符串）
+
+待全部槽位收齐，按以下结构装配。注意 `agentParams.promptJson` / `labelsJson` / `variablesJson` 都是**先建对象/数组再 `JSON.stringify` 一次**得到的字符串；`scriptParams.ttsConfig` 同理。
+
+```json
+{
+  "agentParams": {
+    "model": "model_001",
+    "agentProfileId": "",
+    "promptJson": "{\"name\":\"AI 客服\",\"gender\":\"不指定\",\"age\":\"\",\"role\":\"\",\"communicationStyle\":\"\",\"goals\":\"邀约客户参加 4 月 20 日新品发布会\",\"background\":\"\",\"skills\":\"\",\"workflow\":\"\",\"constraint\":\"\",\"openingPrompt\":\"您好，我是XX公司客服助理\",\"output\":\"\",\"aiHangupOutput\":\"\",\"aiSilenceTimeoutOutput\":\"\"}",
+    "labelsJson": "[]",
+    "variablesJson": "[]"
+  },
+  "scriptParams": {
+    "scriptId": "",
+    "scriptName": "4月新品发布邀约",
+    "industry": "通用",
+    "scene": "通用",
+    "nluEngine": "Prompts",
+    "nluAccessType": "Managed",
+    "ttsConfig": "{\"voice\":\"CosyVoice:longcheng\",\"voiceShow\":[0,\"CosyVoice:longcheng\"],\"volume\":50,\"speechRate\":0,\"pitchRate\":0,\"globalInterruptible\":true,\"engine\":\"ali\",\"nlsServiceType\":\"Managed\"}"
+  }
+}
+```
+
+> 🔒 **字段名零改写规则同样适用于本步骤**（参见 Step 3 总规约「字段名零改写规则」）：
+> - `agentParams` ≠ `agent_params` / `AgentParams`；`scriptParams` ≠ `script_params`
+> - `promptJson` / `labelsJson` / `variablesJson` 必须是 **JSON 字符串**（外层套引号、内层用 `\"`），**不得**直接放对象/数组
+> - `ttsConfig` 同上，是 JSON 字符串而不是对象
+> - `labelsJson` 元素里的 `valueList` 是**二次 stringify 过的字符串**（如 `"[\"v1\",\"v2\"]"`），不是数组
+
+#### Step 1.7.4：提交并轮询审核
+
+把装配好的 body 通过 stdin 喂给 `scripts/submit_script_review.py`，**禁止**写 curl：
+
+```bash
+python3 scripts/submit_script_review.py <<'SCRIPT_BODY_EOF'
+{
+  "agentParams":  { ... },
+  "scriptParams": { ... }
+}
+SCRIPT_BODY_EOF
+```
+
+脚本内部串行执行：
+1. UTF-8 解码 stdin；
+2. 跑 `validate_script_params.py` 做结构/取值层 pre-flight 校验；
+3. POST `/ai/outBound/createOrModifyScriptAndSubmitScriptReview` 提交场景+TTS+机器人设定；
+4. 拿到返回中的 `scriptId` / `agentProfileId`；
+5. 每 10s 轮询一次 `/ai/outBound/describeScript` 直到 `data.body.script.status === "PUBLISHED"` 或超时（默认 600s）。
+
+可选参数：
+- `--no-poll`：提交完立即返回（不等审核），用于"先入库再异步等"的场景。
+- `--max-wait-seconds N`：自定义最长等待时长（秒）。
+- `--dry-run`：只跑校验，不发任何 HTTP。
+
+输出（stdout 单行 JSON）：
+- 成功：`{"ok":true,"stage":"done","scriptId":"...","agentProfileId":"...","status":"PUBLISHED","elapsed_seconds":47}`
+- 校验失败：`{"ok":false,"stage":"validate","summary":"...","errors":[{path,code,msg,suggestion}]}`
+- 网络/服务端非 2xx：`stage` 为 `http`，含 `response`
+- 审核未在超时内完成：`stage` 为 `polling`，含 `scriptId` 与最后一次 `status`
+- 审核被驳回（status ∈ {`FAIL_REVIEW`,`REJECT`,`FAILED`}）：`ok:false`，须把错误信息原样回给用户后让其调整 prompt 后重试
+
+> ⛔ **退出码 0 才算成功**；非 0 必须把 `summary` / `errors` 原样回报用户，**禁止**绕过校验或假装成功。
+
+#### Step 1.7.5：审核完成后的处理
+
+- **触发方式 A**（用户主动）：回复
+  > ✅ 场景"{scriptName}"已通过阿里云审核（scriptId=`...`，agentProfileId=`...`），后续提交 Fran 电话任务时可直接选用。
+
+- **触发方式 B**（Fran 兜底）：把 `{scriptId, agentProfileId}` 当作前置 A-2 的最终选定结果，**不再**回调 `listScripts`，直接进入 Step 3 前置 B（若需要）或最终装配。在装配 Fran 子对象时：
+  - `scriptId` ← 本步骤拿到的字符串原值（不得改名、不得二次包裹引号）
+  - `agentProfileId` ← 本步骤拿到的字符串原值（不得改名为 `agentId` / `chatbotId` / `profileId`）
+
+---
+
 ### Step 2：第二轮 AI 分析（仅当 employeeList 包含 AiWa）
 
 用以下 prompt 对同一用户指令做第二轮分析，严格返回 JSON。**该 prompt 的 JSON 字段名、结构、取值类型不得改写**——下游 `validate_employee_params.py` 与 `addressObjList` 的 `type=1/0` 构建逻辑都依赖此契约。
@@ -581,7 +733,7 @@ POST https://ai.deepsop.com/prod-api/ai/customer/customerList?pageNum={pageNum}&
 > - `sourceSettings`: 见下方「员工组合 → sourceSettings 对照表」（含 Fran/Lisa 时为完整对象，否则为 `null`）
 >
 > **`employeeParams` 规约：**
-> - 是一个对象，key 为参与员工的 PascalCase 名称（`AiWa` / `Frank` / `Fran` / `Lisa` / `Toby`），value 为该员工自己的参数对象。
+> - 是一个对象，key 为参与员工的 PascalCase 名称（`AiWa` / `Frank` / `Fran` / `Lisa`），value 为该员工自己的参数对象。
 > - **包含哪些员工**由 Step 1 解析出的 `taskDescription` + `employeeList` 共同决定：任务里识别出几个员工，`employeeParams` 就有几个对应的 key，**多一个、少一个、错一个都不允许**。
 > - 例：任务里同时有 AiWa 和 Frank → `employeeParams: { "AiWa": {...}, "Frank": {...} }`，两个员工的参数都是各自独立的对象，不得混合到同一个对象里，也不得只挂一个员工的参数。
 >
@@ -590,14 +742,13 @@ POST https://ai.deepsop.com/prod-api/ai/customer/customerList?pageNum={pageNum}&
 > - `Frank`: `incrementalTarget` / `upperLimitTarget` / `senderEmail` / `language` / `templateId` / `emailPlanList`（`emailPlanList` 元素含 `delayDay` / `emailSubject` / `emailText` / `loading`）。
 > - `Fran`: `priority` / `scriptId` / `callingNumber` / `agentProfileId` / `minConcurrency` / `ringingDuration` / `incrementalTarget` / `upperLimitTarget`。
 > - `Lisa`: `signName` / `templateCode` / `templateType` / `templateContent` / `incrementalTarget` / `upperLimitTarget` / `qualificationName` / `templateParamList`。
-> - `Toby`: `param`（嵌套对象）/ `content` / `videoItems` / `totalTarget` / `publishTemplates` / `upperLimitTarget` / `accountConfigList` / `incrementalTarget` / `staffId`。
 >
 > **必须遵守的硬规则（违反任意一条，后端立即拒绝）：**
 > 1. `currentModule` 永远等于字符串 `"content"`，禁止写 `"analysis"` / `"Content"` / `null` / 省略。
 > 2. `executionMode` 永远等于数字 `1`，禁止写 `0` / `2` / `"1"` / `true` / `"定额任务"` / `"周期性任务"`。
 > 3. `taskDescription` 透传用户原始指令文本，禁止改写为 AI 总结后的简短描述（那是 `taskName` 的活儿）。
-> 4. `employeeParams` 子键必须是 PascalCase 原样（`AiWa` / `Frank` / `Fran` / `Lisa` / `Toby`），不得改成 `aiwa` / `aiwaParam` / `aiwaParams` 等任何变体。
-> 5. Step 1/Step 2 的内部解析变量（`employeeList` / `language` / `tiktokContent` / 根级 `totalTarget`）一律不得出现在最终请求体中——它们只能流到对应员工子对象内的指定字段。
+> 4. `employeeParams` 子键必须是 PascalCase 原样（`AiWa` / `Frank` / `Fran` / `Lisa`），不得改成 `aiwa` / `aiwaParam` / `aiwaParams` 等任何变体。
+> 5. Step 1/Step 2 的内部解析变量（`employeeList` / `language` / 根级 `totalTarget`）一律不得出现在最终请求体中——它们只能流到对应员工子对象内的指定字段。
 >
 > **下方各员工的"参数构建规则"、"结构强约束"、"请求体示例"是上述规约的展开细节，构建请求体时必须先按本规约确定整体形状，再按对应员工的小节填充值。**
 
@@ -750,8 +901,15 @@ x-api-key: $DEEPSOP_API_KEY
 - `data.chatbotIdList[]`：与场景库配套的 chatbot id 列表，取第一个作为 `agentProfileId`
 
 处理规则：
-- `list` 为空，或过滤后无 `status === "PUBLISHED"` 的场景：**终止任务**，回复用户：
-  > ⚠️ 当前账号下没有可用（已发布）的场景库，请先登录 https://ai.deepsop.com 创建场景库，并将其状态发布为 `PUBLISHED` 后再试。
+- `list` 为空，或过滤后无 `status === "PUBLISHED"` 的场景：**不再立即终止**。改为向用户提供「即时创建」与「自行去后台创建」两个选项，格式：
+  ```
+  ⚠️ 当前账号下没有可用（已发布）的场景库。可以二选一：
+  1. 我现在引导您创建一个外呼场景（回复"创建"）— 含场景信息 + TTS 音色 + 机器人 prompt + 阿里云审核（约 1～5 分钟）
+  2. 前往 https://ai.deepsop.com 自行创建并发布场景后重试（回复"取消"）
+  ```
+  - 用户回复"创建/我自己建/帮我建一个" → **暂存当前 Fran 流程上下文**，跳转到 [Step 1.7：电话场景创建/审核子流程](#step-17电话场景创建审核子流程独立入口)；待 Step 1.7 拿到 `scriptId / agentProfileId` 后**回到本步骤的"已选定场景"分支**，直接使用，**不再重查** `listScripts`。
+  - 用户回复"取消/不创建" → 按原文案终止任务。
+  - 用户多轮不明确回复（≥2 次） → 默认按"取消"终止任务，提示同上。
 - 仅 1 条 `PUBLISHED` 场景：**不得自动选用**，必须列出并等待用户明确确认，格式：
   ```
   检测到以下可用场景库，请确认是否使用（回复「确认」即可）：
@@ -959,109 +1117,6 @@ curl -s -H "x-api-key: $DEEPSOP_API_KEY" 'https://ai.deepsop.com/prod-api/ai/use
    ```
    其中 `variableLabel` = 占位符名（不含 `${}`），`variableAttribute` = 匹配到的 code。
 
-**前置 E：Toby TikTok 账号与发布参数配置（当 employeeList 包含 Toby 时必须先执行）**
-
-**E-1：查询 TikTok 绑定账号**
-
-接口：`GET https://ai.deepsop.com/prod-api/ai/authaccount/list?pageNum=1&pageSize=999&platform=1&status=1`
-
-请求头：`x-api-key: $DEEPSOP_API_KEY`
-
-关键字段：
-- `rows[].id`：账号 ID
-- `rows[].account`：TikTok 账号名
-- `rows[].fansNum`：粉丝数
-- `rows[].groupNames`：分组名称
-- `rows[].expiredTime`：授权过期时间
-
-处理规则：
-- `rows` 为空：**终止任务**，回复：
-  > ⚠️ 当前账号未绑定任何 TikTok 授权账号，请先登录 https://ai.deepsop.com 添加 TikTok 授权账号后再试。
-- `rows` 只有 1 条：付列出并等待用户确认，格式：
-  ```
-  检测到以下 TikTok 账号，请确认是否使用（回复「确认」即可）：
-  1. @{account}（粉丝：{fansNum}，分组：{groupNames}）
-  ```
-- `rows` 有多条：列出供用户多选，格式：
-  ```
-  检测到以下 TikTok 授权账号，请选择本次要发布的账号（可多选，用逗号分隔序号）：
-  1. @{account}（粉丝：{fansNum}，分组：{groupNames}）
-  2. ...
-  ```
-
-**等待用户确认/选择后**，将选中账号的 `id` 列表记为 `selectedAccountIds`。未收到确认不得继续。
-
-**E-2：获取账号权限信息**
-
-针对第一个选中账号调用：
-接口：`GET https://ai.deepsop.com/prod-api/ai/auth/tiktok/getCreatorInfo?authAccountId={selectedAccountIds[0]}`
-
-请求头：`x-api-key: $DEEPSOP_API_KEY`
-
-提取字段（用于构建 `accountConfigList`）：
-- `data.privacyLevelOptions[]`：可用隐私级别列表
-- `data.commentDisabled`：是否禁评
-- `data.duetDisabled`：是否禁合拍
-- `data.stitchDisabled`：是否禁缝合
-
-若 `privacyLevelOptions` 有多个选项，让用户选择隐私级别，格式：
-```
-请选择该账号的视频隐私设置（回复序号）：
-1. PUBLIC_TO_EVERYONE — 全公开
-2. MUTUAL_FOLLOW_FRIENDS — 互关好友
-3. SELF_ONLY — 仅自己可见
-```
-
-**E-3：AI 视频生成模型（默认）**
-
-`param.methodType` **默认固定为 `"3"`**，无需用户选择。如需查看全部可用模型，可调用以下接口获取列表并告知用户当前默认模型名称（展示对应 `sourceValue === "3"` 的 `sourceName`）：
-
-接口：`POST https://ai.deepsop.com/prod-api/ai/consumeSource/list?pageNum=1&pageSize=999`
-请求体：`{"sourceTypeList":["VIDEO_MODEL"],"hiddenState":"0"}`
-
-视频其他参数亦默认如下，无需用户配置（默认 methodType=`"3"` Veo3.1 Fast Lite 下，详见 Step 3 「Toby 参数构建规则」与「methodType → 取值约束表」）：
-- `resolution`：`720p`
-- `ratio`：`16:9`
-- `duration`：`8` 秒（methodType=`"3"` 唯一允许值）
-- `generationType`：`"FIRST&LAST"`
-- `shotType`：`"single"`
-- `mode`：`"pro"`
-- `keepOriginalSound`：`"yes"`
-- `personGeneration`：`"allow_adult"`
-- `resizeMode`：`"pad"`
-- `n`：`1`
-- `generateAudio`：`true`
-- `enhancePrompt` / `promptExtend` / `multiShot`：`false`
-- `durationSwitch`：`"1"`
-
-> 若用户明确要求换其他视频模型（如指定 `Veo3.1 Pro` / `Sora2 Pro` / `kling-v3-omni` 等），先调上面的 `consumeSource/list` 接口拿到候选模型的 `sourceValue`，让用户回复选定的 sourceValue，再据此 methodType 去 Step 3 的「methodType → 取值约束表」校正 `generationType` / `resolution` / `ratio` / `duration` / `shotType` 等依赖字段，**不得**沿用 methodType=`"3"` 的默认值。
-
-**E-4：视频生成提示词确认（必题用户，禁止跳过）**
-
-以 Step 1 解析出的 `tiktokContent` 作为默认提示词，强制询问用户是否需要修改：
-
-```
-当前 AI 视频生成提示词为：「{tiktokContent}」
-是否需要修改？（回复「不用」直接使用，或直接输入新的提示词）
-```
-
-- 用户回复「不用」或类似否定语：保持 `tiktokContent` 不变
-- 用户输入新提示词：将 `content` 和 `param.text` 替换为用户输入的内容
-
-**未收到用户回复不得继续。**
-
-**E-5：发布参数配置（必须由用户指定，禁止自动填充）**
-
-针对每个选中的账号，强制用户指定以下参数（如选了多个账号，依次询问每个）：
-```
-请为账号 @{account} 配置发布参数：
-- 每天发布视频数（publishCount，如 3）：
-- 定时发布开始时间（startTime，HH:mm 格式，如 09:30）：
-- 视频发布间隔（publishInterval，分钟，如 60）：
-```
-
-**等待用户回复后**，构建该账号的 `publishTemplates` 条目。未收到所有账号的参数不得继续。
-
 **AiWa 参数构建规则：**
 - `totalTarget`：定额模式下填 Step 1 的 totalTarget，周期模式下为 null
 - `incrementalTarget`：必填，固定填 5000（不可为 null）
@@ -1090,8 +1145,7 @@ curl -s -H "x-api-key: $DEEPSOP_API_KEY" 'https://ai.deepsop.com/prod-api/ai/use
 > 3. **以下来自 Step 1/Step 2 的"内部解析变量"是给本 SKILL 内部流程用的，绝不允许出现在最终请求体的任何层级**：
 >    - `employeeList`（Step 1 用来分发员工，请求体只关心 `employeeParams` 里的子键）
 >    - `language`（仅在 `employeeParams.Frank` 子对象内部使用，禁止挂到根级或 AiWa 子对象内）
->    - `tiktokContent`（仅在构建 `employeeParams.Toby.content` / `param.text` 时取值，禁止挂到请求体任何层级）
->    - `totalTarget`（**只能**作为 `employeeParams.AiWa.totalTarget` 或 `employeeParams.Toby.totalTarget`，**不得**挂到 `collaborationSubmitTaskParam` 根级）
+>    - `totalTarget`（**只能**作为 `employeeParams.AiWa.totalTarget`，**不得**挂到 `collaborationSubmitTaskParam` 根级）
 > 4. AiWa 必填的 9 个键：`totalTarget` / `incrementalTarget` / `upperLimitTarget` / `keywordList` / `continent` / `country` / `countryCodeList` / `addressObjList` / `industryList`，**一个都不能漏**。
 > 5. `currentModule` 必须在 `collaborationSubmitTaskParam` 内，**值固定为 `"content"`**（任何员工组合下都不得写 `"analysis"`）。
 
@@ -1280,208 +1334,17 @@ curl -s -H "x-api-key: $DEEPSOP_API_KEY" 'https://ai.deepsop.com/prod-api/ai/use
 }
 ```
 
-**Toby 参数构建规则：**
-- `totalTarget`：定额模式下填 Step 1 的 totalTarget，周期模式下为 null
-- `incrementalTarget`：周期模式下填用户指定的每天发布数，定额模式下固定填 10
-- `upperLimitTarget`：固定 10
-- `content`：来自 Step 1 的 `tiktokContent`
-- `staffId`：固定为空字符串 `""`
-- `param`：嵌套对象，**有且仅有以下 27 个键**，必须按官方默认模板的键集与顺序构建（`text` 取自 E-4 确认后的最终提示词；`methodType` 默认 `"3"` Veo3.1 Fast Lite，来自 E-3）。**注意：当前 methodType 下 UI 不显的字段也必须传默认值，禁止裁剪 key**：
-
-  | 字段 | 默认值 | 类型 | 说明 |
-  |---|---|---|---|
-  | `methodType` | `"3"` | string | 视频生成模型，默认 Veo3.1 Fast Lite；其他可选值见下方 methodType 约束表 |
-  | `multiShot` | `false` | boolean | 是否多镜头（仅 methodType=`"10"` 实际生效，其他模型固定 `false`） |
-  | `generationType` | `"FIRST&LAST"` | string | 生成类型；可选值受 methodType 约束（见下表） |
-  | `text` | `""` → 取 E-4 提示词 | string | 视频生成提示词，与 `Toby.content` 相同 |
-  | `multiPrompt` | `[]` | string[] | 多镜头分镜提示词（仅 `shotType="customize"` 时填） |
-  | `negativePrompt` | `""` | string | 反向提示词（仅 methodType ∈ {5,6,7,8,9,14,15,16} 实际生效） |
-  | `imageUrlList` | `[]` | string[] | 参考图（仅 `generationType` ∈ {REFERENCE,EDIT,FEATURE} 时填） |
-  | `firstImageUrl` | `null` | string\|null | 首帧图（仅 `generationType="FIRST&LAST"` 时填） |
-  | `lastImageUrl` | `null` | string\|null | 尾帧图（仅 `generationType="FIRST&LAST"` 且 methodType ∉ {auto,1,8,11,12} 时填） |
-  | `firstClipUrl` | `null` | string\|null | 续写/编辑/参考视频（仅 methodType ∈ {10,14} 且 `generationType` ∈ {CONTINUATION,EDIT,FEATURE} 时填） |
-  | `elementList` | `[]` | array | 参考主体（仅 methodType=`"10"` 时填） |
-  | `videoUrlList` | `[]` | string[] | 参考视频（仅 methodType ∈ {9,16,17,18} 时填） |
-  | `audioUrl` | `null` | string\|null | 参考音频单（仅 methodType ∈ {7,8,14,15,16} 时填） |
-  | `keepOriginalSound` | `"yes"` | string | 保留视频原声（仅 methodType=`"10"` 时实际生效） |
-  | `durationList` | `[]` | array | 多段时长配置 |
-  | `mode` | `"pro"` | string | 生成模式（仅 methodType=`"10"` 时实际生效） |
-  | `resolution` | `"720p"` | string | 分辨率；可选值受 methodType 约束（见下表） |
-  | `ratio` | `"16:9"` | string | 画面比例；可选值受 methodType 约束（见下表） |
-  | `generateAudio` | `true` | boolean | 是否生成声音（仅 methodType ∈ {2,5,6,10,17,18} 实际生效） |
-  | `enhancePrompt` | `false` | boolean | 是否翻译为英文（仅 methodType ∈ {3,4,5,6} 实际生效） |
-  | `n` | `1` | number | 生成数量（仅 methodType ∈ {5,6} 实际生效） |
-  | `personGeneration` | `"allow_adult"` | string | 是否允许人物（仅 methodType ∈ {5,6} 实际生效） |
-  | `resizeMode` | `"pad"` | string | 图像缩放模式（仅 methodType ∈ {5,6} 实际生效） |
-  | `promptExtend` | `false` | boolean | 智能改写（仅 methodType ∈ {7,8,9,14,15,16} 实际生效） |
-  | `shotType` | `"single"` | string | 镜头模式；可选值受 methodType 约束（见下表） |
-  | `durationSwitch` | `"1"` | string | 生成时长模式（仅 methodType ∈ {2,17,18} 实际生效） |
-  | `duration` | 由 methodType 决定，默认 `8`（case `"3"`） | number | 视频时长（秒）；范围与默认值受 methodType 约束（见下表） |
-- `videoItems`：固定为 `[]`
-- `publishTemplates`：每个选中账号一条，字段：
-  - `publishCount`：用户指定（字符串）
-  - `releaseType`：固定 `"1"`
-  - `timeZone`：固定 `"1"`
-  - `intervalType`：固定 `"1"`
-  - `startTime`：用户指定（HH:mm）
-  - `accountId`：对应账号的 `id`（字符串）
-  - `publishInterval`：用户指定（整数，分钟）
-- `accountConfigList`：仅一条，取前置 E-2 中第一个选中账号的权限信息，字段：
-  - `accountId`：`selectedAccountIds[0]`（字符串）
-  - `privacyLevel`：用户选定的隐私级别
-  - `disableDuet`：来自 `data.duetDisabled`（布尔转字符串）
-  - `disableStitch`：来自 `data.stitchDisabled`
-  - `disableComment`：来自 `data.commentDisabled`
-  - `expand`：固定 `false`
-  - `brandContentToggle`：固定 `"false"`
-  - `brandOrganicToggle`：固定 `"false"`
-  - `isPublicAccount`：固定 `true`
-  - `commentDisabled`：同 `data.commentDisabled`（布尔转字符串）
-  - `duetDisabled`：同 `data.duetDisabled`
-  - `stitchDisabled`：同 `data.stitchDisabled`
-
-> ⛔ **Toby 结构强约束：**
-> 1. 子对象 key 必须是 **`Toby`**（首字母大写、4 个字母原样），不是 `toby` / `TOBY` / `tobyParam` / `tobyParams`。
-> 2. 必须嵌在 `collaborationSubmitTaskParam.employeeParams.Toby` 之下。
-> 3. **`param` 必须保持为嵌套对象**：所有视频生成参数（`methodType` / `text` / `resolution` / `ratio` / `duration` / `multiShot` / `generationType` / `negativePrompt` / `imageUrlList` / `firstImageUrl` / `lastImageUrl` / `firstClipUrl` / `elementList` / `videoUrlList` / `audioUrl` / `keepOriginalSound` / `durationList` / `mode` / `generateAudio` / `enhancePrompt` / `n` / `personGeneration` / `resizeMode` / `promptExtend` / `shotType` / `durationSwitch` / `multiPrompt`）都是 `param` **对象内部**的键，**禁止**把它们提升到 Toby 根部（错例：`Toby.methodType`、`Toby.text`）。
-> 4. `tiktokContent` **不是请求体字段**，它的值要落到 `Toby.content` 与 `Toby.param.text` 两处（同一个字符串），但不得自己再加一个 `tiktokContent` 键。
-> 5. `publishTemplates` 必须是数组，每个选中账号一条，每条对象必填 7 个键：`publishCount` / `releaseType` / `timeZone` / `intervalType` / `startTime` / `accountId` / `publishInterval`。
-> 6. `accountConfigList` 必须是数组（即使只有一条），每条对象必填 12 个键（见示例）。
-> 7. `staffId` 必填，空字符串 `""` 也得给（不得省略此键）。
-> 8. `videoItems` 必填，空数组 `[]` 也得给。
-> 9. Toby 根部必填 8 个键：`totalTarget` / `incrementalTarget` / `upperLimitTarget` / `content` / `staffId` / `param` / `videoItems` / `publishTemplates` / `accountConfigList`（注意 `param` 内部还有自己的必填子键集）。
-> 10. **`param` 27 个键全量传**：即使当前 `methodType` 在 UI 上隐藏了某些字段（如 methodType=`"3"` 时 `audioUrl` / `firstClipUrl` / `elementList` / `videoUrlList` / `mode` / `durationSwitch` / `multiShot` / `negativePrompt` / `keepOriginalSound` / `promptExtend` / `shotType` 等不显），**请求体仍按上表的默认值传值，不得裁剪 key**。后端依赖固定的字段集合做反序列化。
-
-**📐 methodType → 取值约束表（构建 `param` 时必须参照此表选取/校验各依赖字段的合法值）：**
-
-下表中"固定值"列表示该 methodType 下唯一可用值，"可选值"列以英文逗号分隔，"默认值"列为本 SKILL 在用户未指定时的默认选择。
-
-| methodType | 模型 | `generationType` 可选 | `resolution` 可选 | `ratio` 可选 | `duration`（步长/最小/最大/默认） | `shotType` 可选 |
-|---|---|---|---|---|---|---|
-| `"auto"` | Auto | `FIRST&LAST` | `720p` | `16:9`,`9:16` | 由模型自动决定，**不传 `duration`**（仍保留键，值给默认 `8`） | `single` |
-| `"1"` | Sora2 BetaMax | `TEXT`,`FIRST&LAST` | `720p` | `16:9`,`9:16` | step=5, 10–15, 默认 `10` | `single` |
-| `"2"` | Seedance1.5 Pro | `TEXT`,`FIRST&LAST` | `480p`,`720p`,`1080p` | `adaptive`,`1:1`,`3:4`,`4:3`,`16:9`,`9:16`,`21:9` | step=1, 4–12, 默认 `4` | `single` |
-| `"3"`（**默认**） | Veo3.1 Fast Lite | `TEXT`,`FIRST&LAST`,`REFERENCE` | `720p`,`1080p`,`4K` | `adaptive`,`16:9`,`9:16` | step=1, 8–8, 默认 `8`（**唯一允许 8**） | `single` |
-| `"4"` | Veo3.1 Pro Lite | `TEXT`,`FIRST&LAST` | `720p`,`1080p`,`4K` | `adaptive`,`16:9`,`9:16` | step=1, 8–8, 默认 `8` | `single` |
-| `"5"` | Veo3.1 Fast | `TEXT`,`FIRST&LAST` | `720p`,`1080p`,`4K` | `adaptive`,`16:9`,`9:16` | step=2, 4–8, 默认 `4` | `single` |
-| `"6"` | Veo3.1 Pro | `TEXT`,`FIRST&LAST` | `720p`,`1080p`,`4K` | `adaptive`,`16:9`,`9:16` | step=2, 4–8, 默认 `4` | `single` |
-| `"7"` | Wan2.6 t2v | `TEXT` | `720p`,`1080p` | `1:1`,`3:4`,`4:3`,`16:9`,`9:16` | step=1, 3–15, 默认 `3` | `single`,`multi` |
-| `"8"` | Wan2.6 i2v | `FIRST&LAST` | `720p`,`1080p` | **不传 `ratio`** | step=1, 3–15, 默认 `3` | `single`,`multi` |
-| `"9"` | Wan2.6 r2v | `REFERENCE` | `720p`,`1080p` | `1:1`,`3:4`,`4:3`,`16:9`,`9:16` | step=1, 3–10, 默认 `3` | `single`,`multi` |
-| `"10"` | kling-v3-omni | `TEXT`,`FIRST&LAST`,`REFERENCE`,`EDIT`,`FEATURE` | **不传 `resolution`** | `1:1`,`16:9`,`9:16` | step=1, 3–15, 默认 `3` | `single`,`multi`,`customize` |
-| `"11"` | Sora2 | `TEXT`,`FIRST&LAST` | `720p` | `16:9`,`9:16` | step=4, 4–12, 默认 `4` | `single` |
-| `"12"` | Sora2 Pro | `TEXT`,`FIRST&LAST` | `720p`,`2K` | `16:9`,`9:16`,`7:4`,`4:7` | step=4, 4–12, 默认 `4` | `single` |
-| `"14"` | Wan2.7 i2v | `FIRST&LAST`,`CONTINUATION` | `720p`,`1080p` | **不传 `ratio`** | step=1, 3–15, 默认 `3` | `single` |
-| `"15"` | Wan2.7 t2v | `TEXT` | `720p`,`1080p` | `1:1`,`3:4`,`4:3`,`16:9`,`9:16` | step=1, 3–15, 默认 `3` | `single` |
-| `"16"` | Wan2.7 r2v | `REFERENCE` | `720p`,`1080p` | `1:1`,`3:4`,`4:3`,`16:9`,`9:16` | 有 `videoUrlList` 时 step=1, 3–10；否则 step=1, 3–15；默认 `3` | `single` |
-| `"17"` | Seedance2.0 | `TEXT`,`FIRST&LAST`,`REFERENCE` | `480p`,`720p`,`1080p` | `adaptive`,`1:1`,`3:4`,`4:3`,`16:9`,`9:16`,`21:9` | step=1, 4–15, 默认 `4` | `single` |
-| `"18"` | Seedance2.0 Fast | `TEXT`,`FIRST&LAST`,`REFERENCE` | `480p`,`720p` | `adaptive`,`1:1`,`3:4`,`4:3`,`16:9`,`9:16`,`21:9` | step=1, 4–15, 默认 `4` | `single` |
-
-> 🔒 **填值硬规则：**
-> 1. `generationType` / `resolution` / `ratio` / `shotType` 必须从该 methodType 行内的"可选值"中取，**不得**取该行未列出的值（例如 methodType=`"3"` 时 `ratio` 不得写 `1:1`，`generationType` 不得写 `EDIT`）。
-> 2. `duration` 必须落在该行的[最小, 最大]闭区间内，且 `(duration - 最小) % 步长 === 0`；用户未指定时取该行默认值。methodType=`"3"` 时只能是 `8`。
-> 3. methodType=`"8"` / `"14"` 时**不传 `ratio` 字段**（请求体里仍保留键，值给默认 `"16:9"`，但后端会忽略）；methodType=`"10"` 时**不传 `resolution` 字段**（同上，键保留、值给默认 `"720p"`）；methodType=`"auto"` 时 `duration` 由后端自动决定（键保留、值给默认 `8`）。即"不传"指**业务上不生效**，结构上**键仍必填**（呼应规则 10：27 个键全量传）。
-> 4. 字段间依赖：
->    - `generationType="FIRST&LAST"` → `firstImageUrl` 必填、`lastImageUrl` 必填（除非 methodType ∈ {auto,1,8,11,12} 则 `lastImageUrl` 留 `null`）。
->    - `generationType ∈ {REFERENCE, EDIT, FEATURE}` → `imageUrlList` 至少 1 项。
->    - `generationType ∈ {CONTINUATION, EDIT, FEATURE}` → `firstClipUrl` 必填（仅 methodType ∈ {10,14} 才支持这些类型）。
->    - `shotType="customize"` → `multiPrompt` 至少 1 项；同时 `text` 可留空。
->    - `methodType ∈ {9,16,17,18}` → 视业务需要填 `videoUrlList`。
-> 5. 默认 methodType=`"3"` 下，本 SKILL 的合法 `param` 默认快照为：`generationType="FIRST&LAST"`、`resolution="720p"`、`ratio="16:9"`、`duration=8`、`shotType="single"`、`enhancePrompt=false`，其他依赖字段（`firstImageUrl` / `lastImageUrl` / `imageUrlList` / `firstClipUrl` / `videoUrlList` / `audioUrl` / `elementList` / `multiPrompt`）保持空值（`null` 或 `[]`）。
-
-**Toby 任务请求体示例：**
-```json
-{
-  "collaborationSubmitTaskParam": {
-    "taskName": "AI宣传视频TikTok分发",
-    "taskDescription": "生成库阔AI宣传视频分发到tiktok",
-    "executionMode": 1,
-    "employeeParams": {
-      "Toby": {
-        "totalTarget": 1,
-        "incrementalTarget": 10,
-        "upperLimitTarget": 10,
-        "content": "库阔AI宣传视频",
-        "staffId": "",
-        "param": {
-          "methodType": "3",
-          "multiShot": false,
-          "generationType": "FIRST&LAST",
-          "text": "库阔AI宣传视频",
-          "multiPrompt": [],
-          "negativePrompt": "",
-          "imageUrlList": [],
-          "firstImageUrl": null,
-          "lastImageUrl": null,
-          "firstClipUrl": null,
-          "elementList": [],
-          "videoUrlList": [],
-          "audioUrl": null,
-          "keepOriginalSound": "yes",
-          "durationList": [],
-          "mode": "pro",
-          "resolution": "720p",
-          "ratio": "16:9",
-          "generateAudio": true,
-          "enhancePrompt": false,
-          "n": 1,
-          "personGeneration": "allow_adult",
-          "resizeMode": "pad",
-          "promptExtend": false,
-          "shotType": "single",
-          "durationSwitch": "1",
-          "duration": 8
-        },
-        "videoItems": [],
-        "publishTemplates": [
-          {
-            "publishCount": "1",
-            "releaseType": "1",
-            "timeZone": "1",
-            "intervalType": "1",
-            "startTime": "15:10",
-            "accountId": "130",
-            "publishInterval": 60
-          }
-        ],
-        "accountConfigList": [
-          {
-            "accountId": "130",
-            "privacyLevel": "PUBLIC_TO_EVERYONE",
-            "disableDuet": "false",
-            "disableStitch": "false",
-            "disableComment": "false",
-            "expand": false,
-            "brandContentToggle": "false",
-            "brandOrganicToggle": "false",
-            "isPublicAccount": true,
-            "commentDisabled": "false",
-            "duetDisabled": "false",
-            "stitchDisabled": "false"
-          }
-        ]
-      }
-    },
-    "sourceSettings": null,
-    "currentModule": "content"
-  },
-  "completed": true
-}
-```
-
 ---
 
 **📋 员工组合 → `currentModule` / `sourceSettings` 对照表**
 
 构建请求体前，按本次任务实际包含的员工组合从下表查 `currentModule` 与 `sourceSettings` 的取值，**严禁自行推断**：
 
-> 🔒 **`currentModule` 全局固定为 `"content"`**：无论员工组合是哪种、是否含销售员工、是否含 Toby，`currentModule` 字段都是字符串字面量 `"content"`，**不得**写成 `"analysis"` / `"Content"` / `"CONTENT"` / `null` / 省略。
+> 🔒 **`currentModule` 全局固定为 `"content"`**：无论员工组合是哪种、是否含销售员工，`currentModule` 字段都是字符串字面量 `"content"`，**不得**写成 `"analysis"` / `"Content"` / `"CONTENT"` / `null` / 省略。
 
 | 员工组合 | `currentModule` | `sourceSettings` | 备注 |
 |---|---|---|---|
 | 仅 AiWa | `"content"` | `null` | 单纯客户挖掘 |
-| 仅 Toby | `"content"` | `null` | 单纯 TikTok 发布 |
-| AiWa + Toby | `"content"` | `null` | 挖客户 + 同步 TikTok 发布 |
 | AiWa + Frank | `"content"` | `null` | 挖客户 + 邮件销售 |
 | AiWa + Fran | `"content"` | 完整 sourceSettings 对象（见 Fran 示例） | 挖客户 + 电话销售 |
 | AiWa + Lisa | `"content"` | 完整 sourceSettings 对象（见 Lisa 示例） | 挖客户 + 短信销售 |
@@ -1489,26 +1352,21 @@ curl -s -H "x-api-key: $DEEPSOP_API_KEY" 'https://ai.deepsop.com/prod-api/ai/use
 | AiWa + Frank + Lisa | `"content"` | 完整 sourceSettings 对象 | 多通道销售 |
 | AiWa + Fran + Lisa | `"content"` | 完整 sourceSettings 对象 | 多通道销售 |
 | AiWa + Frank + Fran + Lisa | `"content"` | 完整 sourceSettings 对象 | 全通道销售 |
-| AiWa + Frank + Toby | `"content"` | `null` | 邮件销售 + TikTok |
-| AiWa + Fran + Toby | `"content"` | 完整 sourceSettings 对象 | 电话销售 + TikTok |
-| AiWa + Lisa + Toby | `"content"` | 完整 sourceSettings 对象 | 短信销售 + TikTok |
 | 仅 Frank（无 AiWa） | `"content"` | Step 1.6 产出的客户来源对象 | 仅邮件销售，客户来源由用户指定 |
 | 仅 Fran（无 AiWa） | `"content"` | Step 1.6 产出的客户来源对象 | 仅电话销售，客户来源由用户指定 |
 | 仅 Lisa（无 AiWa） | `"content"` | Step 1.6 产出的客户来源对象 | 仅短信销售，客户来源由用户指定 |
 | Frank/Fran/Lisa 任意组合（无 AiWa） | `"content"` | Step 1.6 产出的客户来源对象 | 多通道销售但无 AiWa 协同 |
-| 上述组合 + Toby（无 AiWa） | `"content"` | Step 1.6 产出的客户来源对象 | 销售 + TikTok，客户来源由用户指定 |
 
 > 🔍 **快速判定规则**：
 > - `currentModule` 始终为 `"content"`（无任何例外分支）。
 > - **含 AiWa**：含 `Fran` 或 `Lisa` → `sourceSettings` 为完整对象（含 `cascader` / `aiMining` 等键，见 Fran/Lisa 示例）；其他子组合 → `sourceSettings` 为 `null`。
 > - **不含 AiWa 且含 `Frank`/`Fran`/`Lisa` 任一**：`sourceSettings` **必须**为 Step 1.6 产出的客户来源对象（含 `fileList` / `addressFileList` / `suppurIds` 等键，**不要**带 `cascader` / `aiMining` 等 AiWa 联合场景的旧键），且 `fileList` / `addressFileList` / `suppurIds` 三者至少一个非空。
-> - **既不含 AiWa 也不含 `Frank`/`Fran`/`Lisa`**（如仅 Toby）：`sourceSettings` 为 `null`。
+> - **既不含 AiWa 也不含 `Frank`/`Fran`/`Lisa`**：`sourceSettings` 为 `null`。
 
 > 🚫 **组合场景常见错例：**
 >
-> 1. 仅 AiWa / 仅 Toby / AiWa+Toby 任务把 `currentModule` 写成 `"analysis"`：错。**任何组合**都必须 `"content"`。
+> 1. 仅 AiWa 任务把 `currentModule` 写成 `"analysis"`：错。**任何组合**都必须 `"content"`。
 > 2. AiWa+Fran 联合任务把 `sourceSettings` 写成 `null`：错。含 Fran 必须填完整对象。
-> 3. AiWa+Toby 联合任务把 `sourceSettings` 写成 `{}`：错。应为 `null`。
 > 4. 多员工组合时把不同员工塞进同一个员工 key（如 `employeeParams.AiWaFrank: {...}`）：错。每个员工是 `employeeParams` 下独立的同级 key。
 > 5. 多员工组合时漏掉某个员工的子对象（仅在 `employeeList` 字符串里出现，但 `employeeParams` 里没有对应键）：错。`employeeList` 里写了的员工，`employeeParams` 必须有对应子对象。
 
@@ -1576,20 +1434,7 @@ curl -s -H "x-api-key: $DEEPSOP_API_KEY" 'https://ai.deepsop.com/prod-api/ai/use
 - `templateType`：数字，来自模板 `outerTemplateType`
 - `templateParamList`：数组（无变量时为 `[]`，不可缺少此字段）
 
-**Toby（当 employeeList 包含 Toby 时）：**
-- `totalTarget`：定额模式下为正整数，周期模式下为 null
-- `incrementalTarget`：正整数
-- `upperLimitTarget`：`10`
-- `content`：非空字符串，来自 `tiktokContent`
-- `staffId`：空字符串 `""`
-- `param`：嵌套对象，**全量 27 个键齐全**（按 Step 3「Toby 参数构建规则」表中默认值快照填充，未指定 methodType 时全部按 methodType=`"3"` 默认快照传）
-- `param.methodType`：非空字符串，默认 `"3"`；若用户切换模型，必须从 E-3 接口拿到的 `sourceValue` 取值
-- `param.text`：非空字符串（与 `Toby.content` 同值）
-- `param.generationType` / `resolution` / `ratio` / `duration` / `shotType`：取值必须与 `param.methodType` 在「methodType → 取值约束表」内的可选值完全匹配，否则停止提交并校正
-- `publishTemplates`：非空数组，每个账号一条，且 `publishCount`/`startTime`/`publishInterval`/`accountId` 均非空
-- `accountConfigList`：包含且仅一条，`accountId`/`privacyLevel` 非空
-
-> ⚠️ **`sourceSettings` 与 `currentModule` 是根级字段，取值取决于本次任务的员工组合，请查阅上文「员工组合 → `currentModule` / `sourceSettings` 对照表」，不能因为含 Toby 就一律写成 `null`/`"analysis"`。**例如 `AiWa+Lisa+Toby` 时，`sourceSettings` 必须是完整对象、`currentModule` 为 `"content"`。
+> ⚠️ **`sourceSettings` 与 `currentModule` 是根级字段，取值取决于本次任务的员工组合，请查阅上文「员工组合 → `currentModule` / `sourceSettings` 对照表」，请勿一律写成 `null`/`"analysis"`。**例如 `AiWa+Lisa` 时，`sourceSettings` 必须是完整对象、`currentModule` 为 `"content"`。
 
 **发现任何字段缺失或值不合法时，停止提交，先补全后再执行提交。**
 
@@ -1597,7 +1442,7 @@ curl -s -H "x-api-key: $DEEPSOP_API_KEY" 'https://ai.deepsop.com/prod-api/ai/use
 
 `submit_task.py` 已串联以下三件事，**LLM 只需调一次**即可完成"校验 + 提交"，不需要再单独调 `validate_employee_params.py` 或 `validate_sms_template_params.py`：
 
-1. 内部调用 `validate_employee_params.py`（结构 + 取值，覆盖 AiWa/Frank/Fran/Lisa/Toby 全员）
+1. 内部调用 `validate_employee_params.py`（结构 + 取值，覆盖 AiWa/Frank/Fran/Lisa 全员）
 2. 含 Lisa 模板变量时，自动调用 `validate_sms_template_params.py` 做内容校验
 3. 任一步校验失败立即退出（退出码 1），**不会**触发 HTTP 提交
 4. 校验全过才以 `Content-Type: application/json; charset=utf-8` POST 到 `/ai/presetEmployee/submitTask`
@@ -1612,16 +1457,15 @@ TASK_BODY_EOF
 ```
 
 **校验覆盖范围**（详见 `validate_employee_params.py` / `validate_sms_template_params.py` 源码）：
-- Step 1/2 内部变量（`employeeList` / `language` / `tiktokContent` / 根级 `totalTarget`）泄漏到根或 `collaborationSubmitTaskParam` 层
+- Step 1/2 内部变量（`employeeList` / `language` / 根级 `totalTarget`）泄漏到根或 `collaborationSubmitTaskParam` 层
 - 员工 key 大小写错（`aiwa` / `aiwaParam` / `franParam` 等都会被纠错为 PascalCase）
 - `executionMode` 必须是数字 `1`（拦截 `"1"` / `true` / `"定额任务"` 等）
 - `currentModule` 必须固定为 `"content"`；含 `Fran`/`Lisa` 时 `sourceSettings` 必须是完整对象
-- 各员工必填键、固定值（如 AiWa.incrementalTarget=5000、Frank.upperLimitTarget=1000、Fran.priority="Daily"、Lisa.incrementalTarget=100、Toby.upperLimitTarget=10）
+- 各员工必填键、固定值（如 AiWa.incrementalTarget=5000、Frank.upperLimitTarget=1000、Fran.priority="Daily"、Lisa.incrementalTarget=100）
 - 数组类字段类型（`keywordList` / `industryList` / `countryCodeList` / `callingNumber` / `templateParamList` / `publishTemplates` / `accountConfigList`）
 - AiWa.addressObjList 占位规则与 `type=0/1` 与 `address` / `province/city/county` 的互斥
 - Frank.emailPlanList 长度恰为 1 与子键完整
 - Lisa.templateParamList 数组结构 + 每项三键齐全 + 变量内容合规（如 `time` 类禁止含中文"年"）
-- Toby.param 必须包含全部 27 个键、`methodType` 与 `generationType` / `resolution` / `ratio` / `duration` / `shotType` 的依赖关系（依据「methodType → 取值约束表」）
 
 **行为约束：**
 - **必须**用 heredoc + 单引号定界符（`<<'TASK_BODY_EOF'`），不能用 argv 传 JSON。
@@ -1637,10 +1481,6 @@ TASK_BODY_EOF
 - Lisa 参与时：✅ 用户已选择/确认短信模板（`templateCode` 非空，且用户有明确回复确认）
 - Lisa 参与时（模板含变量）：✅ 已通过 `scripts/submit_task.py` 完成提交（脚本内部已串行跑过 `validate_employee_params.py` + `validate_sms_template_params.py`）；脚本退出码 ≠ 0 时禁止重试，必须把脚本返回的 `summary`/`errors` 原样回给用户、修正后再重跑。**禁止**绕过 `submit_task.py` 自己拼 curl。**特别注意 `time` 类变量**——值中**不得**出现中文"年"，脚本会直接拒绝
 - Frank 参与时：✅ 用户 profile 已获取（`senderEmail` 非空），邮件内容已 AI 生成
-- Toby 参与时：✅ 用户已选择/确认 TikTok 账号（`selectedAccountIds` 非空）
-- Toby 参与时：✅ 用户已确认或修改视频生成提示词（`content` 已确定）
-- Toby 参与时：✅ 用户已为每个账号填写 `publishCount`、`startTime`、`publishInterval`
-- Toby 参与时：✅ 用户已选择隐私级别（`privacyLevel` 非空）
 
 **若上述任一项未完成，禁止调用提交接口。**
 
@@ -1718,10 +1558,8 @@ TASK_BODY_EOF
 - `franCustomerPoolId`：遍历 `data.employeeList`，找到 `nodeType === "FRAN"` 的条目，取其 `customerPoolId`，用于 **Fran** 电话统计/详情查询；无则为 null
 - `lisaDagTaskId`：遍历 `data.employeeList`，找到 `nodeType === "LISA"` 的条目，取其 `dagTaskId`，用于 **Lisa** 短信查询；无则为 null
 - `lisaCustomerPoolId`：遍历 `data.employeeList`，找到 `nodeType === "LISA"` 的条目，取其 `customerPoolId`，用于 **Lisa** 短信统计/详情查询；无则为 null
-- `tobyDagTaskId`：遍历 `data.employeeList`，找到 `nodeType === "TOBY"` 的条目，取其 `dagTaskId`，用于 **Toby** 任务查询；无则为 null
-- `tobyCustomerPoolId`：遍历 `data.employeeList`，找到 `nodeType === "TOBY"` 的条目，取其 `customerPoolId`，用于 **Toby** 视频统计/列表查询；无则为 null
 
-> ⚠️ **`nodeType` 大写统一**：后端返回的 `nodeType` 是**全大写**（`AIWA` / `FRANK` / `FRAN` / `LISA` / `TOBY`），不是 PascalCase 的 `AiWa` / `Frank` 。上面 5 条提取规则里的字符串只能是大写形式。如果某次调用发现某个员工总拿不到 `dagTaskId`，优先检查是不是这里的大写写错了。
+> ⚠️ **`nodeType` 大写统一**：后端返回的 `nodeType` 是**全大写**（`AIWA` / `FRANK` / `FRAN` / `LISA`），不是 PascalCase 的 `AiWa` / `Frank` 。上面 4 条提取规则里的字符串只能是大写形式。如果某次调用发现某个员工总拿不到 `dagTaskId`，优先检查是不是这里的大写写错了。
 
 提交成功后，告知用户并询问等待时间：
 > 任务已提交！任务名：{taskName}，目标数量：{totalTarget}，任务ID：{taskId}。
@@ -1762,7 +1600,7 @@ TASK_BODY_EOF
     "wakeMode": "now",
     "payload": {
       "kind": "systemEvent",
-      "text": "[DeepSOP-AutoQuery] 人机协作台定时结果推送，请立即跳转 Step 5 执行结果查询并主动推送，不要等待用户提问，不要执行 Step 1-4。taskId={taskId}，aiwaDagTaskId={aiwaDagTaskId}，aiwaCustomerPoolId={aiwaCustomerPoolId}，frankDagTaskId={frankDagTaskId}，franDagTaskId={franDagTaskId}，franCustomerPoolId={franCustomerPoolId}，lisaDagTaskId={lisaDagTaskId}，lisaCustomerPoolId={lisaCustomerPoolId}，tobyDagTaskId={tobyDagTaskId}，tobyCustomerPoolId={tobyCustomerPoolId}，任务名：{taskName}，目标数量：{totalTarget}，参与员工：{employeeList}，feishuChatId={feishuChatId}。【AiWa部分，仅当employeeList包含AiWa时执行】1. 调用 POST https://ai.deepsop.com/prod-api/ai/presetEmployee/getCustomerPoolDetail?pageNum=1&pageSize=10 查询结果，参数 {"taskId":"{aiwaDagTaskId}","customerPoolId":{aiwaCustomerPoolId},"startTime":null,"endTime":null}；2. 将完整响应JSON传给脚本生成xlsx：python3 ~/.openclaw/workspace/skills/deepsop-humabot/scripts/format_customers.py '<JSON>' '/tmp/aiwa_{aiwaDagTaskId前8位}.xlsx'；3. 执行 cp /tmp/aiwa_{aiwaDagTaskId前8位}.xlsx ~/.openclaw/workspace/aiwa_{aiwaDagTaskId前8位}.xlsx 并执行 openclaw message send --channel feishu --target {feishuChatId} --media ~/.openclaw/workspace/aiwa_{aiwaDagTaskId前8位}.xlsx --message 'AiWa 客户挖掘完成，共找到客户数据，详见附件' 将文件发送到飞书群；4. 同时在当前会话回复前5条客户摘要。【Toby部分，仅当employeeList包含Toby且tobyDagTaskId不为null时执行】1. 调用 GET https://ai.deepsop.com/prod-api/ai/data/count?taskId={tobyDagTaskId}&customerPoolId={tobyCustomerPoolId}&platform=1 查询统计；2. 调用 GET https://ai.deepsop.com/prod-api/ai/data/list?pageNum=1&pageSize=10&taskId={tobyDagTaskId}&customerPoolId={tobyCustomerPoolId}&platform=1 查询视频列表；3. 展示统计数据（播放、点赞、评论、分享、发布总数）并列出每条视频的titleName、platformUrl、播放量、点赞数、评论数、转发数、displayCreateTime；4. 在当前会话回复结果摘要。【Frank部分，仅当employeeList包含Frank且frankDagTaskId不为null时执行】1. 调用 GET https://ai.deepsop.com/prod-api/ai/email/getTaskEmailCount?taskId={frankDagTaskId} 查询邮件统计（使用frankDagTaskId）；2. 调用 GET https://ai.deepsop.com/prod-api/ai/email/taskList?pageNum=1&pageSize=2000&taskId={frankDagTaskId} 查询邮件列表（使用frankDagTaskId）；3. 生成xlsx：python3 ~/.openclaw/workspace/skills/deepsop-humabot/scripts/format_emails.py '<JSON>' '/tmp/frank_{frankDagTaskId前8位}.xlsx'；4. 执行 cp /tmp/frank_{frankDagTaskId前8位}.xlsx ~/.openclaw/workspace/frank_{frankDagTaskId前8位}.xlsx 并执行 openclaw message send --channel feishu --target {feishuChatId} --media ~/.openclaw/workspace/frank_{frankDagTaskId前8位}.xlsx --message 'Frank 邮件发送完成，详见附件' 将文件发送到飞书群；5. 同时在当前会话回复邮件统计摘要和前5条详情。【Lisa部分，仅当employeeList包含Lisa且lisaCustomerPoolId不为null时执行】1. 调用 POST https://ai.deepsop.com/prod-api/ai/sms/getTaskSmsCount 查询短信统计，参数 {"taskId":"{taskId}","customerPoolId":{lisaCustomerPoolId}}；2. 调用 POST https://ai.deepsop.com/prod-api/ai/sms/getSmsResultList?pageNum=1&pageSize=10 查询短信列表，参数 {"taskId":"{taskId}","customerPoolId":{lisaCustomerPoolId},"success":null,"startTime":null,"endTime":null}；3. 生成xlsx：python3 ~/.openclaw/workspace/skills/deepsop-humabot/scripts/format_sms.py '<JSON>' '/tmp/lisa_{taskId前8位}.xlsx'；4. 发送文件并在当前会话展示短信统计摘要和前5条短信详情。【Toby部分，仅当employeeList包含Toby且tobyDagTaskId不为null时执行】1. 调用 GET https://ai.deepsop.com/prod-api/ai/data/count?taskId={tobyDagTaskId}&customerPoolId={tobyCustomerPoolId}&platform=1 查询视频统计；2. 调用 GET https://ai.deepsop.com/prod-api/ai/data/list?pageNum=1&pageSize=10&taskId={tobyDagTaskId}&customerPoolId={tobyCustomerPoolId}&platform=1 查询视频列表；3. 在当前会话回复统计概览（发布视频数/播放/点赞/评论/分享）并列出每条视频的标题、链接、各项数据及发布时间。"
+      "text": "[DeepSOP-AutoQuery] 人机协作台定时结果推送，请立即跳转 Step 5 执行结果查询并主动推送，不要等待用户提问，不要执行 Step 1-4。taskId={taskId}，aiwaDagTaskId={aiwaDagTaskId}，aiwaCustomerPoolId={aiwaCustomerPoolId}，frankDagTaskId={frankDagTaskId}，franDagTaskId={franDagTaskId}，franCustomerPoolId={franCustomerPoolId}，lisaDagTaskId={lisaDagTaskId}，lisaCustomerPoolId={lisaCustomerPoolId}，任务名：{taskName}，目标数量：{totalTarget}，参与员工：{employeeList}，feishuChatId={feishuChatId}。【AiWa部分，仅当employeeList包含AiWa时执行】1. 调用 POST https://ai.deepsop.com/prod-api/ai/presetEmployee/getCustomerPoolDetail?pageNum=1&pageSize=10 查询结果，参数 {"taskId":"{aiwaDagTaskId}","customerPoolId":{aiwaCustomerPoolId},"startTime":null,"endTime":null}；2. 将完整响应JSON传给脚本生成xlsx：python3 ~/.openclaw/workspace/skills/deepsop-humabot/scripts/format_customers.py '<JSON>' '/tmp/aiwa_{aiwaDagTaskId前8位}.xlsx'；3. 执行 cp /tmp/aiwa_{aiwaDagTaskId前8位}.xlsx ~/.openclaw/workspace/aiwa_{aiwaDagTaskId前8位}.xlsx 并执行 openclaw message send --channel feishu --target {feishuChatId} --media ~/.openclaw/workspace/aiwa_{aiwaDagTaskId前8位}.xlsx --message 'AiWa 客户挖掘完成，共找到客户数据，详见附件' 将文件发送到飞书群；4. 同时在当前会话回复前5条客户摘要。【Frank部分，仅当employeeList包含Frank且frankDagTaskId不为null时执行】1. 调用 GET https://ai.deepsop.com/prod-api/ai/email/getTaskEmailCount?taskId={frankDagTaskId} 查询邮件统计（使用frankDagTaskId）；2. 调用 GET https://ai.deepsop.com/prod-api/ai/email/taskList?pageNum=1&pageSize=2000&taskId={frankDagTaskId} 查询邮件列表（使用frankDagTaskId）；3. 生成xlsx：python3 ~/.openclaw/workspace/skills/deepsop-humabot/scripts/format_emails.py '<JSON>' '/tmp/frank_{frankDagTaskId前8位}.xlsx'；4. 执行 cp /tmp/frank_{frankDagTaskId前8位}.xlsx ~/.openclaw/workspace/frank_{frankDagTaskId前8位}.xlsx 并执行 openclaw message send --channel feishu --target {feishuChatId} --media ~/.openclaw/workspace/frank_{frankDagTaskId前8位}.xlsx --message 'Frank 邮件发送完成，详见附件' 将文件发送到飞书群；5. 同时在当前会话回复邮件统计摘要和前5条详情。【Lisa部分，仅当employeeList包含Lisa且lisaCustomerPoolId不为null时执行】1. 调用 POST https://ai.deepsop.com/prod-api/ai/sms/getTaskSmsCount 查询短信统计，参数 {"taskId":"{taskId}","customerPoolId":{lisaCustomerPoolId}}；2. 调用 POST https://ai.deepsop.com/prod-api/ai/sms/getSmsResultList?pageNum=1&pageSize=10 查询短信列表，参数 {"taskId":"{taskId}","customerPoolId":{lisaCustomerPoolId},"success":null,"startTime":null,"endTime":null}；3. 生成xlsx：python3 ~/.openclaw/workspace/skills/deepsop-humabot/scripts/format_sms.py '<JSON>' '/tmp/lisa_{taskId前8位}.xlsx'；4. 发送文件并在当前会话展示短信统计摘要和前5条短信详情。"
     },
     "deleteAfterRun": true
   }
@@ -2133,65 +1971,6 @@ python3 ~/.openclaw/workspace/skills/deepsop-humabot/scripts/format_emails.py "$
 > 任务ID：{taskId}
 > 你可以告诉我「再查Frank结果」，我会立即重新查询。
 
-#### Step 5-E：Toby 结果处理（仅当 employeeList 包含 Toby 且 tobyDagTaskId 不为 null）
-
-**5-E-1：查询统计数据**
-
-接口：`GET https://ai.deepsop.com/prod-api/ai/data/count?taskId={tobyDagTaskId}&customerPoolId={tobyCustomerPoolId}&platform=1`
-
-请求头：`x-api-key: $DEEPSOP_API_KEY`
-
-关键字段：
-- `data.playCount`：总播放量
-- `data.likeCount`：总点赞数
-- `data.commentCount`：总评论数
-- `data.shareCount`：总分享数
-- `data.totalTiktokCount`：已发布视频数
-
-**5-E-2：查询视频列表**
-
-接口：`GET https://ai.deepsop.com/prod-api/ai/data/list?pageNum=1&pageSize=10&taskId={tobyDagTaskId}&customerPoolId={tobyCustomerPoolId}&platform=1`
-
-请求头：`x-api-key: $DEEPSOP_API_KEY`
-
-关键字段：
-- `rows[].titleName`：视频标题
-- `rows[].platformUrl`：TikTok 链接
-- `rows[].url`：视频文件地址
-- `rows[].playNum`：播放量
-- `rows[].likesNum`：点赞数
-- `rows[].commentNum`：评论数
-- `rows[].transmitNum`：转发数
-- `rows[].displayCreateTime`：发布时间
-- `total`：列表总数
-
-**5-E-3：回复结果摘要（在当前会话回复，不需发文件）**
-
-格式：
-```
-🎥 Toby TikTok 视频发布结果
-任务：{taskName}
-
-� 数据概览：
-   发布视频数：{totalTiktokCount}
-   总播放量：{playCount}
-   总点赞数：{likeCount}
-   总评论数：{commentCount}
-   总分享数：{shareCount}
-
-📋 视频明细（共 {total} 条）：
-1. 《{titleName}》
-   播放：{playNum} | 点赞：{likesNum} | 评论：{commentNum} | 转发：{transmitNum}
-   发布时间：{displayCreateTime}
-   TikTok 链接：{platformUrl}
-2. ...
-```
-
-**情况：两个接口均返回非 200 或 data 为空**
-
-> Toby TikTok 视频任务数据暂未就绪，可能仍在生成/发布中。
-> 任务ID：{tobyDagTaskId}
-> 你可以告诉我「再查Toby结果」，我会立即重新查询。
 
 ---
 
@@ -2235,11 +2014,8 @@ python3 ~/.openclaw/workspace/skills/deepsop-humabot/scripts/format_emails.py "$
 - Lisa 统计/详情接口异常或计数全为 0：提示短信任务可能仍在发送中，给出 taskId 和 lisaCustomerPoolId 供用户告知「再查Lisa结果」
 - Fran 统计/详情接口异常或计数全为 0：提示电话任务可能仍在拨号中，给出 taskId 和 franCustomerPoolId 供用户告知「再查Fran结果」
 - Python 脚本执行失败：直接以文字列表格式返回客户数据，不中断流程
-- Toby TikTok 账号为空：终止任务，提示用户登录 https://ai.deepsop.com 添加 TikTok 授权账号
-- Toby 视频模型列表为空：终止任务，提示用户联系管理员开通视频生成权限
-- Toby 获取账号权限失败：提示用户重新授权该 TikTok 账号
-- Toby 统计/列表接口异常或数据为空：提示视频任务可能仍在生成/发布中，给出 tobyDagTaskId 供用户告知「再查Toby结果」
 - 数字员工禁用（status=1）：终止任务，提示联系管理员启用该员工
 - 数字员工使用天数耗尽（remainingDays≤0）：终止任务，提示前往 https://ai.deepsop.com 购买/续费
-- 不支持的员工（Jack/Leo/Sophia/Alex）：终止任务，提示当前仅支持 AiWa、Frank、Fran、Lisa、Toby
+- 不支持的员工（Jack/Leo/Sophia/Alex）：终止任务，提示当前仅支持 AiWa、Frank、Fran、Lisa
+- TikTok 视频生成与发布（Toby）：本技能不再支持，请改用 `deepsop-tiktokflow` 技能
 - 网络请求失败：展示 curl 错误信息
