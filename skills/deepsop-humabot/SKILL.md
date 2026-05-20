@@ -1,6 +1,6 @@
 ---
 name: deepsop-humabot
-description: 人机协作台技能。用户输入自然语言销售指令，AI自动分析拆解任务参数，调用 deepsop 平台接口提交任务，等待后查询结果并推送。触发场景：用户说「帮我找客户」「挖掘XXX行业客户」「找XXX个客户」「提交任务」等与客户挖掘、销售任务相关的指令；或收到包含 [DeepSOP-AutoQuery] 标记的系统定时事件（cron 回调，用于自动查询并推送任务结果）。需要提前配置环境变量 DEEPSOP_API_KEY。⚠️ 调用本 SKILL 前必须先完整阅读 SKILL.md。提交 agentSubmitTask **必须**走 scripts/submit_task.py（通过 heredoc 把 body 喂给 stdin），脚本内部串行跑 validate_employee_params.py + validate_sms_template_params.py + UTF-8 安全 HTTP 提交，**禁止**直接写 curl 命令（会因 Windows cp936 代码页导致 taskName/taskDescription 中文乱码）。脚本退出码 0 才算成功；非 0 必须把 summary/errors 原样回给用户后修正重试，禁止绕过校验或假装成功。
+description: 人机协作台技能。用户输入自然语言销售指令，AI自动分析拆解任务参数，调用 deepsop 平台接口提交任务，等待后查询结果并推送。触发场景：用户说「帮我找客户」「挖掘XXX行业客户」「找XXX个客户」「提交任务」等与客户挖掘、销售任务相关的指令；或用户说「创建电话场景」「新建外呼话术」「新建电话机器人」「提交场景审核」「我要做一个外呼场景」等与场景创建/审核相关的指令；或收到包含 [DeepSOP-AutoQuery] 标记的系统定时事件（cron 回调，用于自动查询并推送任务结果）。需要提前配置环境变量 DEEPSOP_API_KEY。⚠️ 调用本 SKILL 前必须先完整阅读 SKILL.md。提交 agentSubmitTask **必须**走 scripts/submit_task.py、创建/审核场景 **必须**走 scripts/submit_script_review.py（均通过 heredoc 把 body 喂给 stdin），脚本内部串行跑参数校验 + UTF-8 安全 HTTP 提交，**禁止**直接写 curl 命令（会因 Windows cp936 代码页导致中文字段乱码）。脚本退出码 0 才算成功；非 0 必须把 summary/errors 原样回给用户后修正重试，禁止绕过校验或假装成功。
 ---
 
 # 人机协作台（Human-AI Collaboration）
@@ -22,6 +22,7 @@ description: 人机协作台技能。用户输入自然语言销售指令，AI�
 - **Frank 邮件统计**：查询邮件发送总数、成功数、已读数、回复数、点击数，并展示发送详情（可与 AiWa 搭配，或在无 AiWa 协同时通过客户来源选择 xlsx 上传 / 公司搜索 指定客户）
 - **Fran 电话销售**：自动查询号码池与场景库，由用户选择后提交电话销售任务（可与 AiWa 搭配，或在无 AiWa 协同时通过客户来源选择 xlsx 上传 / 公司搜索 指定客户）
 - **Lisa 短信统计**：查询短信发送总数、成功数、失败数，并展示发送详情（可与 AiWa 搭配，或在无 AiWa 协同时通过客户来源选择指定客户）
+- **电话场景创建/审核**：用户可主动说「创建电话场景」「新建外呼话术」直接走 Step 1.7 子流程，也可在 Fran 提交时若无可用场景库时被引导即时创建并提交阿里云审核（场景+TTS+机器人 prompt 三合一）
 
 ---
 
@@ -78,6 +79,9 @@ DEEPSOP_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxx
 | 3 | Step 3 前置 A-0 外呼实例 | `GET` | `/ai/outBound/describeInstance` |
 | 4 | Step 3 前置 A-1 号码池 | `GET` | `/ai/outBound/callerNumber/list` |
 | 5 | Step 3 前置 A-2 场景库 | `POST` | `/ai/outBound/listScripts` |
+| 5.1 | Step 1.7 / 前置 A-2 兜底 创建+审核场景 | `POST` | `/ai/outBound/createOrModifyScriptAndSubmitScriptReview` |
+| 5.2 | Step 1.7 轮询场景审核状态 | `POST` | `/ai/outBound/describeScript` |
+| 5.3 | Step 1.7 修改场景时回填机器人设定 | `POST` | `/ai/outBound/getAgentProfile` |
 | 6 | Step 3 前置 B0 邮箱绑定检查 | `GET` | `/ai/emailconfig/list?pageSize=1000&pageNum=1&status=1` |
 | 7 | Step 3 前置 B 用户 Profile | `GET` | `/ai/user/profile` |
 | 8 | Step 3 前置 D-1 短信模板列表 | `GET` | `/ai/sms/querySmsTemplateList?pageNum=1&pageSize=20&pageNumber=1` |
@@ -115,7 +119,23 @@ DEEPSOP_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxx
 
 ---
 
-### Step 1：第一轮 AI 分析（任务拆解）
+### Step 1：第一轮 AI 分析（任务拆解 + 意图分流）
+
+> 🔀 **意图分流前置（在跑下方拆解 prompt 之前先判断）：**
+>
+> 如果用户输入**明确**包含以下关键词之一且**不**带销售目标数量（如「找 N 个客户」「发邮件」「打电话推销」），判定为「场景创建意图」：
+> - 「创建电话场景」「新建外呼话术」「新建电话机器人」「新建场景」「做一个外呼场景」
+> - 「场景审核」「提交场景审核」「话术审核」「让阿里云审一下」
+> - 「修改场景 / 修改话术 / 改一下场景库」（带或不带 scriptId）
+>
+> 命中此意图 → **跳过下方 Step 1 任务拆解 prompt + Step 1.5/1.6/2/3/3.5/4/5 的销售流程**，直接进入 [Step 1.7：电话场景创建/审核子流程](#step-17电话场景创建审核子流程独立入口)。
+>
+> 若用户句子里**同时**有销售意图（如「先建一个外呼场景，再用它给我打 50 个家纺客户的电话」），按以下顺序处理：
+>   1. 先走 Step 1.7 完成场景创建+审核，拿到 `scriptId / agentProfileId`；
+>   2. 再回到下方 Step 1 拆解销售意图，进入 Step 1.5/1.6/2/3 流程；
+>   3. 进入 Step 3 前置 A-2 时，把 Step 1.7 拿到的 `scriptId / agentProfileId` 作为已选场景直接复用，**不要**再调 `listScripts` 让用户选。
+>
+> 未命中场景创建关键词 → 进入下方常规销售任务拆解。
 
 用以下 prompt 分析用户指令，严格返回 JSON，不含任何额外文字：
 
@@ -485,6 +505,151 @@ POST https://ai.deepsop.com/prod-api/ai/customer/customerList?pageNum={pageNum}&
 
 ---
 
+### Step 1.7：电话场景创建/审核子流程（独立入口）
+
+> 触发方式（**任一**）：
+> - **A. 用户主动触发**：Step 1 意图分流命中"场景创建"关键词。
+> - **B. Fran 流程兜底**：Step 3 前置 A-2 的 `listScripts` 返回空、或全部场景 `status` 都不是 `PUBLISHED`，且用户回复"创建/我自己建/帮我建一个"。
+>
+> 出口：拿到 `scriptId` + `agentProfileId`（场景已 PUBLISHED）。
+> - 触发方式 A 完成后：直接回复用户"场景已发布，可用于后续电话销售任务"，**不再**自动进入销售流程；
+> - 触发方式 B 完成后：把 `scriptId` / `agentProfileId` 当作前置 A-2 的选定结果，继续 Step 3 前置 B / D / 最终提交流程。
+
+#### Step 1.7.0：环境前置自检
+
+进入子流程前，先校验外呼实例可用性（与 Step 3 前置 A-0 同接口）：
+
+接口：`GET https://ai.deepsop.com/prod-api/ai/outBound/describeInstance`，请求头 `x-api-key: $DEEPSOP_API_KEY`。
+
+- 实例并发数为 0：终止子流程，回复用户"外呼实例并发数为 0，请联系管理员开通后再尝试创建场景"；
+- 实例可用：继续。
+
+#### Step 1.7.1：澄清场景基础信息
+
+向用户依次询问以下槽位。**每一轮只问 1～2 个槽位**，等用户回复后才追问下一组。
+
+| 槽位 | 必填 | 默认值 | 说明 |
+|---|---|---|---|
+| `industry` | 否 | `"通用"` | 行业，如"家纺""教育培训" |
+| `scene` | 否 | `"通用"` | 场景，如"老客户回访""促销邀约" |
+| `scriptName` | 是 | — | 场景库名称（≤30 字），用户必须明确给一个 |
+| `agentName` | 否 | `"AI 客服"` | 机器人名字，对应 `promptJson.name` |
+| `goals` | 是 | — | 这次电话的目标（如：邀约客户参加 4 月 20 日新品发布会） |
+| `openingPrompt` | 是 | — | 开场白原文（直接对用户读出来的话） |
+
+> ⛔ **禁止 LLM 自己脑补 `goals` 与 `openingPrompt`**：必须由用户至少给出大致内容；若用户说"你帮我编一个"，先草拟一版后**展示给用户确认**，等待用户回复"确认/就这个"才能继续。
+
+可选槽位（一并以"可选"标注询问，用户跳过则填空字符串）：
+- `background`：公司/产品背景说明
+- `skills`：机器人的"特长"（如：能识别客户身份验证、可智能转人工）
+- `workflow`：通话流程脚本（多步话术骨架）
+- `constraint`：禁止做的事（如：不主动报价、不承诺退款）
+- `output`：标准结束语
+- `aiHangupOutput`：客户挂机时的 AI 收尾话术
+- `aiSilenceTimeoutOutput`：客户长时间沉默时的话术
+
+线索字段（`labelsJson`，非必填，可多次追加）：让用户列出"这通电话需要收集的客户信息"，每条形如：
+```
+- 名称：客户兴趣（name）
+  描述：客户对产品是否有兴趣的判断（description）
+  取值列表：有兴趣, 没兴趣, 待跟进（valueList，逗号分隔多个）
+```
+
+变量字段（`variablesJson`，非必填）：通话过程中需要替换的占位变量名（如 `customerName`），每条 `{name, description}`。
+
+#### Step 1.7.2：TTS 音色配置
+
+向用户提供以下默认值，并允许用户调整：
+
+```
+默认 TTS 配置：
+- 发音人：CosyVoice:longcheng（女声 / 通用）
+- 引擎：ali（阿里云标准 TTS）
+- 音量：50（0–100）
+- 语速：0（-500 ~ +500）
+- 语调：0（-500 ~ +500）
+- 全局可打断：开
+- 服务类型：Managed
+```
+
+用户可单点或整体替换；若选择克隆音色，引擎须改为 `bailian`。**禁止**让用户自由输入 `nlsServiceType` / `nluEngine` / `nluAccessType`，全部按下方"参数固定值"装配。
+
+#### Step 1.7.3：装配请求体（两段 JSON 字符串）
+
+待全部槽位收齐，按以下结构装配。注意 `agentParams.promptJson` / `labelsJson` / `variablesJson` 都是**先建对象/数组再 `JSON.stringify` 一次**得到的字符串；`scriptParams.ttsConfig` 同理。
+
+```json
+{
+  "agentParams": {
+    "model": "model_001",
+    "agentProfileId": "",
+    "promptJson": "{\"name\":\"AI 客服\",\"gender\":\"不指定\",\"age\":\"\",\"role\":\"\",\"communicationStyle\":\"\",\"goals\":\"邀约客户参加 4 月 20 日新品发布会\",\"background\":\"\",\"skills\":\"\",\"workflow\":\"\",\"constraint\":\"\",\"openingPrompt\":\"您好，我是XX公司客服助理\",\"output\":\"\",\"aiHangupOutput\":\"\",\"aiSilenceTimeoutOutput\":\"\"}",
+    "labelsJson": "[]",
+    "variablesJson": "[]"
+  },
+  "scriptParams": {
+    "scriptId": "",
+    "scriptName": "4月新品发布邀约",
+    "industry": "通用",
+    "scene": "通用",
+    "nluEngine": "Prompts",
+    "nluAccessType": "Managed",
+    "ttsConfig": "{\"voice\":\"CosyVoice:longcheng\",\"voiceShow\":[0,\"CosyVoice:longcheng\"],\"volume\":50,\"speechRate\":0,\"pitchRate\":0,\"globalInterruptible\":true,\"engine\":\"ali\",\"nlsServiceType\":\"Managed\"}"
+  }
+}
+```
+
+> 🔒 **字段名零改写规则同样适用于本步骤**（参见 Step 3 总规约「字段名零改写规则」）：
+> - `agentParams` ≠ `agent_params` / `AgentParams`；`scriptParams` ≠ `script_params`
+> - `promptJson` / `labelsJson` / `variablesJson` 必须是 **JSON 字符串**（外层套引号、内层用 `\"`），**不得**直接放对象/数组
+> - `ttsConfig` 同上，是 JSON 字符串而不是对象
+> - `labelsJson` 元素里的 `valueList` 是**二次 stringify 过的字符串**（如 `"[\"v1\",\"v2\"]"`），不是数组
+
+#### Step 1.7.4：提交并轮询审核
+
+把装配好的 body 通过 stdin 喂给 `scripts/submit_script_review.py`，**禁止**写 curl：
+
+```bash
+python3 scripts/submit_script_review.py <<'SCRIPT_BODY_EOF'
+{
+  "agentParams":  { ... },
+  "scriptParams": { ... }
+}
+SCRIPT_BODY_EOF
+```
+
+脚本内部串行执行：
+1. UTF-8 解码 stdin；
+2. 跑 `validate_script_params.py` 做结构/取值层 pre-flight 校验；
+3. POST `/ai/outBound/createOrModifyScriptAndSubmitScriptReview` 提交场景+TTS+机器人设定；
+4. 拿到返回中的 `scriptId` / `agentProfileId`；
+5. 每 10s 轮询一次 `/ai/outBound/describeScript` 直到 `data.body.script.status === "PUBLISHED"` 或超时（默认 600s）。
+
+可选参数：
+- `--no-poll`：提交完立即返回（不等审核），用于"先入库再异步等"的场景。
+- `--max-wait-seconds N`：自定义最长等待时长（秒）。
+- `--dry-run`：只跑校验，不发任何 HTTP。
+
+输出（stdout 单行 JSON）：
+- 成功：`{"ok":true,"stage":"done","scriptId":"...","agentProfileId":"...","status":"PUBLISHED","elapsed_seconds":47}`
+- 校验失败：`{"ok":false,"stage":"validate","summary":"...","errors":[{path,code,msg,suggestion}]}`
+- 网络/服务端非 2xx：`stage` 为 `http`，含 `response`
+- 审核未在超时内完成：`stage` 为 `polling`，含 `scriptId` 与最后一次 `status`
+- 审核被驳回（status ∈ {`FAIL_REVIEW`,`REJECT`,`FAILED`}）：`ok:false`，须把错误信息原样回给用户后让其调整 prompt 后重试
+
+> ⛔ **退出码 0 才算成功**；非 0 必须把 `summary` / `errors` 原样回报用户，**禁止**绕过校验或假装成功。
+
+#### Step 1.7.5：审核完成后的处理
+
+- **触发方式 A**（用户主动）：回复
+  > ✅ 场景"{scriptName}"已通过阿里云审核（scriptId=`...`，agentProfileId=`...`），后续提交 Fran 电话任务时可直接选用。
+
+- **触发方式 B**（Fran 兜底）：把 `{scriptId, agentProfileId}` 当作前置 A-2 的最终选定结果，**不再**回调 `listScripts`，直接进入 Step 3 前置 B（若需要）或最终装配。在装配 Fran 子对象时：
+  - `scriptId` ← 本步骤拿到的字符串原值（不得改名、不得二次包裹引号）
+  - `agentProfileId` ← 本步骤拿到的字符串原值（不得改名为 `agentId` / `chatbotId` / `profileId`）
+
+---
+
 ### Step 2：第二轮 AI 分析（仅当 employeeList 包含 AiWa）
 
 用以下 prompt 对同一用户指令做第二轮分析，严格返回 JSON。**该 prompt 的 JSON 字段名、结构、取值类型不得改写**——下游 `validate_employee_params.py` 与 `addressObjList` 的 `type=1/0` 构建逻辑都依赖此契约。
@@ -736,8 +901,15 @@ x-api-key: $DEEPSOP_API_KEY
 - `data.chatbotIdList[]`：与场景库配套的 chatbot id 列表，取第一个作为 `agentProfileId`
 
 处理规则：
-- `list` 为空，或过滤后无 `status === "PUBLISHED"` 的场景：**终止任务**，回复用户：
-  > ⚠️ 当前账号下没有可用（已发布）的场景库，请先登录 https://ai.deepsop.com 创建场景库，并将其状态发布为 `PUBLISHED` 后再试。
+- `list` 为空，或过滤后无 `status === "PUBLISHED"` 的场景：**不再立即终止**。改为向用户提供「即时创建」与「自行去后台创建」两个选项，格式：
+  ```
+  ⚠️ 当前账号下没有可用（已发布）的场景库。可以二选一：
+  1. 我现在引导您创建一个外呼场景（回复"创建"）— 含场景信息 + TTS 音色 + 机器人 prompt + 阿里云审核（约 1～5 分钟）
+  2. 前往 https://ai.deepsop.com 自行创建并发布场景后重试（回复"取消"）
+  ```
+  - 用户回复"创建/我自己建/帮我建一个" → **暂存当前 Fran 流程上下文**，跳转到 [Step 1.7：电话场景创建/审核子流程](#step-17电话场景创建审核子流程独立入口)；待 Step 1.7 拿到 `scriptId / agentProfileId` 后**回到本步骤的"已选定场景"分支**，直接使用，**不再重查** `listScripts`。
+  - 用户回复"取消/不创建" → 按原文案终止任务。
+  - 用户多轮不明确回复（≥2 次） → 默认按"取消"终止任务，提示同上。
 - 仅 1 条 `PUBLISHED` 场景：**不得自动选用**，必须列出并等待用户明确确认，格式：
   ```
   检测到以下可用场景库，请确认是否使用（回复「确认」即可）：

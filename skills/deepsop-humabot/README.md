@@ -8,6 +8,7 @@
 - **邮件销售**（Frank）— 提交邮件销售任务并统计发送/已读/回复
 - **电话销售**（Fran）— 自动查询号码池与场景库后提交电话销售任务
 - **短信销售**（Lisa）— 提交短信任务并统计发送结果
+- **电话场景创建/审核** — 当账号下没有可用场景库时，引导用户即时填写"场景信息 + TTS 音色 + 机器人 prompt"，一键提交阿里云审核并轮询至 `PUBLISHED`
 
 > AI 视频生成与 TikTok 发布（Toby）已抽离到独立技能 [`deepsop-tiktokflow`](../deepsop-tiktokflow/README.md)。
 
@@ -34,6 +35,7 @@
    - "帮我找 50 个美国做服装的客户"
    - "给这批客户发一封产品介绍邮件"
    - "给老客户发一条短信通知"
+   - "创建一个外呼电话场景，用于邀约客户参加 4 月发布会"
 
 ## 📖 完整文档
 
@@ -42,7 +44,8 @@
 ## ⚠️ 重要提醒
 
 - 提交 `agentSubmitTask` **必须**走 `scripts/submit_task.py`（脚本内置 UTF-8 安全提交 + 参数预校验）
-- **禁止**直接写 `curl` 命令（Windows cp936 代码页会导致中文乱码）
+- 创建/审核电话场景 **必须**走 `scripts/submit_script_review.py`（同样 UTF-8 安全 + 预校验 + 自动轮询审核状态）
+- **禁止**直接写 `curl` 命令（Windows cp936 代码页会导致 prompt/openingPrompt 中文乱码）
 
 ---
 
@@ -55,7 +58,7 @@
 | **审计日期** | 2026-05-12 |
 | **审计工具** | skill-vetter (clawhub@latest) |
 | **来源** | ClawdHub / DeepSOP 官方 |
-| **审查文件数** | 8（SKILL.md、api_paths.py、submit_task.py、2 个参数校验器、格式化脚本等） |
+| **审查文件数** | 10（SKILL.md、api_paths.py、submit_task.py、submit_script_review.py、3 个参数校验器、格式化脚本等） |
 | **可疑模式** | ✖ 无 |
 | **网络访问** | `https://ai.deepsop.com/prod-api/...`（合法的 DeepSOP 任务提交接口，单一已知域名） |
 | **API Key 处理** | 仅从环境变量 `DEEPSOP_API_KEY` 读取，未硬编码、无外泄 |

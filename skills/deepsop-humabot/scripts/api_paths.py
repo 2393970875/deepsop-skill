@@ -45,6 +45,12 @@ API_PATHS: Final[dict[str, str]] = {
     "outbound_caller_number_list":     "/ai/outBound/callerNumber/list",
     # 5
     "outbound_list_scripts":           "/ai/outBound/listScripts",
+    # 5.1 创建/修改场景并提交审核（场景+TTS+机器人设定 三合一）
+    "outbound_create_or_modify_script": "/ai/outBound/createOrModifyScriptAndSubmitScriptReview",
+    # 5.2 查询场景库详情（轮询审核状态）
+    "outbound_describe_script":         "/ai/outBound/describeScript",
+    # 5.3 查询机器人设定详情（修改场景时回填）
+    "outbound_get_agent_profile":       "/ai/outBound/getAgentProfile",
     # 6
     "emailconfig_list":                "/ai/emailconfig/list",
     # 7
