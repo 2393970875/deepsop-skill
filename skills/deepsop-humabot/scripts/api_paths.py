@@ -51,6 +51,10 @@ API_PATHS: Final[dict[str, str]] = {
     "outbound_describe_script":         "/ai/outBound/describeScript",
     # 5.3 查询机器人设定详情（修改场景时回填）
     "outbound_get_agent_profile":       "/ai/outBound/getAgentProfile",
+    # 5.4 单独提交既有草稿/已发布场景重新进入审核
+    "outbound_submit_script_review":    "/ai/outBound/submitScriptReview",
+    # 5.5 撤销正在审核中的场景
+    "outbound_withdraw_script_review":  "/ai/outBound/withdrawScriptReview",
     # 6
     "emailconfig_list":                "/ai/emailconfig/list",
     # 7

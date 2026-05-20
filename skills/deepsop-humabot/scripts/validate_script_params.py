@@ -59,6 +59,16 @@ PROMPT_KNOWN_KEYS = {
     "goals", "background", "skills", "workflow", "constraint",
     "openingPrompt", "output", "aiHangupOutput", "aiSilenceTimeoutOutput",
 }
+# 与前端 Vue 表单 maxlength 严格一致（Vue: ContentPhone.vue → <TextareaVariable :maxlength="...">）
+# 这 6 个字段是用户在 UI 上能直接编辑的"可见字段"，必须强约束长度，否则后端会截断或拒绝。
+PROMPT_MAX_LENGTH = {
+    "openingPrompt": 200,
+    "goals":         1000,
+    "background":    2000,
+    "skills":        1000,
+    "workflow":      4000,
+    "constraint":    3000,
+}
 
 # scriptParams.ttsConfig 内部必填项
 TTS_REQUIRED = {"voice", "engine"}
@@ -170,6 +180,28 @@ def validate_prompt_json(prompt_str: Any, errors: list) -> None:
                 f"{base}::age",
                 "WRONG_TYPE",
                 f"age 必须是整数或字符串，当前为 {age!r}",
+            )
+
+    # maxlength 强约束：与 Vue 表单 :maxlength 完全一致，超长会被后端拒绝或截断
+    for key, max_len in PROMPT_MAX_LENGTH.items():
+        if key not in parsed:
+            continue
+        val = parsed[key]
+        if val is None:
+            continue
+        if not isinstance(val, str):
+            # 其他错误（类型）已在前面 / 不在这里重复报，但若不是 str 直接跳过长度检查
+            continue
+        # 使用 Python len()（字符数）与 Vue maxlength 行为对齐
+        # Vue 的 maxlength 按 UTF-16 code unit 计；常见汉字/英文 ASCII 都是 1 unit，emoji
+        # 可能 2 unit。这里用 Python str 长度做近似保守约束，已经够拦住明显超长的输入。
+        if len(val) > max_len:
+            err(
+                errors,
+                f"{base}::{key}",
+                "TOO_LONG",
+                f"{key} 长度 {len(val)} 超过上限 {max_len}（与前端 Vue maxlength 对齐）",
+                f"将 {key} 内容压缩到 {max_len} 字符内再提交（可让用户精简描述或拆段）",
             )
 
 
