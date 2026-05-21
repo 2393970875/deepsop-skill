@@ -96,6 +96,8 @@ DEEPSOP_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxx
 | 18 | Step 5-D-2 Lisa 短信详情 | `POST` | `/ai/sms/getSmsResultList?pageNum=1&pageSize=10` |
 | 21 | Step 1.6 途径B 客户搜索（无 AiWa 销售任务） | `POST` | `/ai/customer/customerList?pageNum={pageNum}&pageSize=10` |
 | 22 | Step 1.6 途径A xlsx 上传到 OSS | `POST` | `/system/fileUpload/upload`（multipart/form-data, 字段名 `file`） |
+| 23 | Step 1.6 途径A 下载「公司导入」模板 | `POST` | `/ai/customer/template`（application/x-www-form-urlencoded, 空 body, 响应 blob） |
+| 24 | Step 1.6 途径A 下载「地址簿导入」模板 | `POST` | `/ai/customer/contactImportTemplate`（application/x-www-form-urlencoded, 空 body, 响应 blob） |
 
 > 🔁 **本清单与下文各 Step 中"接口："标注的路径完全一致**。如发现两处不一致，**以下文 Step 中的标注为准**（本清单仅为快速比对索引），同时立即向用户报告该不一致以便修正。
 
@@ -323,10 +325,8 @@ priceKCoin = actualPrice × (discountRate / 100) × rate
 🧭 检测到本次任务无 AiWa 客户挖掘协同，请选择客户来源（可二选一，也可两种叠加）：
 
 1. 上传 xlsx 文件
-   - 客户管理（公司导入）模板：
-     https://kocgo-ai-sales-test.oss-cn-hangzhou.aliyuncs.com/deepsopSkill/deepsopHumabot/公司导入模板.xlsx
-   - 地址簿（地址簿导入）模板：
-     https://kocgo-ai-sales-test.oss-cn-hangzhou.aliyuncs.com/deepsopSkill/deepsopHumabot/地址簿导入模板.xlsx
+   - 客户管理（公司导入）模板：调用 API 清单 #23 `POST /ai/customer/template` 下载（详见下方「模板下载接口」小节）
+   - 地址簿（地址簿导入）模板：调用 API 清单 #24 `POST /ai/customer/contactImportTemplate` 下载（详见下方「模板下载接口」小节）
    你可以直接上传 xlsx 文件，也可以以文字形式按模板格式提供客户/地址簿信息，由我代为整理成对应 xlsx 后上传。
 
 2. 搜索选择公司
@@ -336,6 +336,45 @@ priceKCoin = actualPrice × (discountRate / 100) × rate
 ```
 
 #### 途径 A：上传 xlsx 文件
+
+##### 模板下载接口（API 清单 #23 / #24）
+
+两个模板**不再**从写死的 OSS 链接获取，必须改为调用后端接口实时下载（与前端 Vue 项目 `handleDownloadTemplate` / 通用 `download(url, params, filename)` 行为一致）。
+
+**接口：**
+```
+POST https://ai.deepsop.com/prod-api/ai/customer/template            # 公司导入模板（uploadType === 'fileList'）
+POST https://ai.deepsop.com/prod-api/ai/customer/contactImportTemplate  # 地址簿导入模板（uploadType !== 'fileList'）
+```
+
+**请求头：**
+- `x-api-key: $DEEPSOP_API_KEY`
+- `Content-Type: application/x-www-form-urlencoded`
+
+**请求体：** 空 form（`params = {}`，序列化后为空字符串），**不要**带 JSON body。
+
+**响应：** `responseType: 'blob'`，二进制 xlsx 流。客户端按 `导入模板_${Date.now()}.xlsx` 命名保存即可。
+
+**Blob 校验规则（与前端 `blobValidate(data)` 一致）：**
+- 若返回的 Blob 是真实 xlsx 二进制（首字节为 `PK..` zip 头）→ 视为成功，直接 `saveAs(blob, filename)`。
+- 若 Blob 实为 JSON 文本（被错误包装成 blob 的错误响应）→ 读取 text 后 `JSON.parse`，把 `msg` 原样回给用户，**不要**当成 xlsx 保存。
+
+等价 curl（用于排查/手工取模板）：
+```bash
+curl --location --request POST 'https://ai.deepsop.com/prod-api/ai/customer/template' \
+     --header 'x-api-key: $DEEPSOP_API_KEY' \
+     --header 'Content-Type: application/x-www-form-urlencoded' \
+     --output '导入模板_company.xlsx'
+
+curl --location --request POST 'https://ai.deepsop.com/prod-api/ai/customer/contactImportTemplate' \
+     --header 'x-api-key: $DEEPSOP_API_KEY' \
+     --header 'Content-Type: application/x-www-form-urlencoded' \
+     --output '导入模板_contact.xlsx'
+```
+
+> **禁止**继续向用户提供 `https://kocgo-ai-sales-test.oss-cn-hangzhou.aliyuncs.com/...公司导入模板.xlsx` / `...地址簿导入模板.xlsx` 这类硬编码 OSS 链接，模板内容以接口实时返回为准。
+
+---
 
 1. **确认文件归属**：用户每上传一个 xlsx 文件，**必须**先反问其归属于哪种模板：
    > 请确认本次上传的 xlsx 属于哪种类型？

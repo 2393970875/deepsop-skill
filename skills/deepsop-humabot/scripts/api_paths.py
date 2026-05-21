@@ -80,6 +80,10 @@ API_PATHS: Final[dict[str, str]] = {
     "customer_search_list":            "/ai/customer/customerList",
     # 22
     "system_file_upload":              "/system/fileUpload/upload",
+    # 23 公司导入模板下载（POST, application/x-www-form-urlencoded, blob 响应）
+    "customer_import_template":        "/ai/customer/template",
+    # 24 地址簿导入模板下载（POST, application/x-www-form-urlencoded, blob 响应）
+    "contact_import_template":         "/ai/customer/contactImportTemplate",
 }
 
 
