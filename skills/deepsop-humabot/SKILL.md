@@ -426,6 +426,39 @@ curl --location --request POST 'https://ai.deepsop.com/prod-api/ai/customer/cont
    - 类型 B（地址簿 / 地址簿导入）→ 该 URL 字符串追加到 `sourceSettings.addressFileList` 数组中。
    - 同一类型可累加多个文件，按上传顺序追加。
 
+   > 🛑 **类型强约束（最常见、最高危错误）**：`fileList` / `addressFileList` 的元素类型**必须**是 `string`（OSS URL 字符串），整体类型是 `string[]`。两字段约束完全对称，**任一**写错（写成对象、`null`、字符串、套层对象等）都会导致后端解析失败或客户来源丢失。
+   >
+   > **`addressFileList`（地址簿 / 地址簿导入）**
+   >
+   > **正确：**
+   > ```json
+   > "addressFileList": ["https://kocgo-ai-sales-test.oss-cn-hangzhou.aliyuncs.com/material/100/xxx.xlsx"]
+   > ```
+   >
+   > **错误（实际事故复盘）：**
+   > - ❌ `"addressFileList": {}`（空对象 — 用户上传过地址簿 xlsx 后，AI 误把整个字段写成空对象，类型完全错）
+   > - ❌ `"addressFileList": [{}]`（包了一层空对象）
+   > - ❌ `"addressFileList": [{ "url": "https://..." }]`（必须只放 URL 字符串，不要套对象）
+   > - ❌ `"addressFileList": "https://..."`（必须是数组，单文件也要包成 `[ "..." ]`）
+   > - ❌ `"addressFileList": null` / 省略字段（无地址簿文件时也要写成空数组 `[]`，**不能**为 `null` 或缺省）
+   >
+   > **`fileList`（客户管理 / 公司导入）**
+   >
+   > **正确：**
+   > ```json
+   > "fileList": ["https://kocgo-ai-sales-test.oss-cn-hangzhou.aliyuncs.com/material/100/yyy.xlsx"]
+   > ```
+   >
+   > **错误：**
+   > - ❌ `"fileList": {}`（空对象 — 同上事故模式，把数组写成对象）
+   > - ❌ `"fileList": [{}]`（包了一层空对象）
+   > - ❌ `"fileList": [{ "url": "https://..." }]` / `"fileList": [{ "fileName": "...", "url": "..." }]`（必须只放 URL 字符串，不要套对象，也不要带 `fileName`）
+   > - ❌ `"fileList": "https://..."`（必须是数组，单文件也要包成 `[ "..." ]`）
+   > - ❌ `"fileList": null` / 省略字段（无公司导入文件时也要写成空数组 `[]`，**不能**为 `null` 或缺省）
+   > - ❌ 把已经成功上传的 xlsx OSS URL "忘了"放进去（最终请求体里 `fileList: []`，导致前端选了文件但后端实际收不到客户来源）
+   >
+   > **统一规则**：用户每上传一个 xlsx 并由其确认归属后，对应的 OSS URL（来自上传接口 `/system/fileUpload/upload` 的顶层 `url`）必须作为字符串元素 push 进对应数组（A 类→`fileList`，B 类→`addressFileList`），并在最终提交前肉眼核对 `sourceSettings` 中两字段的元素数量与已确认归属的文件数一致。**禁止**在最终请求体里把已成功上传的文件丢失为 `[]`，更**禁止**把字段写成 `{}` / `null` / 字符串 / 含对象的数组。
+
 5. **`updateSupport`（仅 `fileList` 非空时生效）**：
    - 含义：xlsx 中存在与系统内已有客户**公司名完全相同**时，是否覆盖更新已有客户信息。
    - 取值：`1` = 更新（默认）；`0` = 不更新。
