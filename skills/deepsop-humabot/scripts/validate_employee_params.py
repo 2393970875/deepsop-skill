@@ -224,7 +224,7 @@ def validate_source_settings(cstp: dict, ep: dict, errors: list) -> None:
             )
             return
         # 简检几个核心字段类型
-        for arr_key in ("groupId", "stageId", "labelId", "level", "seasGroupIds", "addressId", "fileList"):
+        for arr_key in ("groupId", "stageId", "labelId", "level", "seasGroupIds", "addressId", "fileList", "addressFileList"):
             if arr_key in ss and not isinstance(ss[arr_key], list):
                 err(
                     errors,
@@ -232,6 +232,30 @@ def validate_source_settings(cstp: dict, ep: dict, errors: list) -> None:
                     "WRONG_TYPE",
                     f"{arr_key} 必须是数组",
                 )
+
+        # fileList / addressFileList 元素必须是 {name, url} 对象（ExcelFile）
+        for arr_key in ("fileList", "addressFileList"):
+            items = ss.get(arr_key)
+            if not isinstance(items, list):
+                continue
+            for i, item in enumerate(items):
+                ip = f"...sourceSettings.{arr_key}[{i}]"
+                if not isinstance(item, dict):
+                    err(errors, ip, "WRONG_TYPE",
+                        f"{arr_key} 元素必须是对象 {{\"name\":\"...\",\"url\":\"...\"}}，当前为 {type(item).__name__}（值 {item!r}）",
+                        "不得传裸 URL 字符串，必须是 {\"name\": \"文件名.xlsx\", \"url\": \"https://...aliyuncs.com/...\"}")
+                    continue
+                for k in ("name", "url"):
+                    if k not in item:
+                        err(errors, f"{ip}.{k}", "MISSING_KEY",
+                            f"{arr_key} 元素缺少 {k!r}（注意：上传接口返回的是 fileName，装配时须改名为 name）")
+                    elif not isinstance(item[k], str) or not item[k]:
+                        err(errors, f"{ip}.{k}", "WRONG_VALUE",
+                            f"{arr_key}[{i}].{k} 必须是非空字符串，当前为 {item[k]!r}")
+                # 禁止多余的 fileName 键（常见错误：把 fileName 和 name 都带上）
+                if "fileName" in item:
+                    err(errors, f"{ip}.fileName", "EXTRA_KEY",
+                        f"{arr_key} 元素不得包含 fileName 键，上传响应的 fileName 应重命名为 name 后装配")
 
 
 # ── AiWa ────────────────────────────────────────────────────────────────────
