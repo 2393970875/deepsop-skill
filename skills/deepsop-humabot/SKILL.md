@@ -1100,6 +1100,17 @@ x-api-key: $DEEPSOP_API_KEY
 
 **2. 查询场景库**
 
+> 🛑 **强制实时拉取规则（反幻觉硬约束，违反即视为 bug）：**
+>
+> 当 Fran 流程进入"号码池已选定 + 客户来源已确认（含 AiWa 协同 / xlsx / 公司搜索任一通道）"这一步，**必须**真实调用 `POST /ai/outBound/listScripts` 接口拿到当前账号下的场景库列表后，**用接口返回的真实 `scriptName / industry / scene / status` 渲染**给用户挑选。
+>
+> **绝对禁止**：
+> - ❌ 不调接口、直接凭"上次记忆 / 训练语料 / 用户聊天里提过的关键词"编造一份候选场景列表（典型幻觉如：脑补出"家纺外贸开发场景 / 服装清仓促销场景"等并标记为 `PUBLISHED`）。
+> - ❌ 在接口返回**全部非 PUBLISHED** 的情况下，自行把某条 `TO_BE_REVIEWED` / `REJECTED` / 草稿场景"美化"成 `PUBLISHED` 让用户选用 —— 即使 status 是 `TO_BE_REVIEWED`、`REVIEWING` 也**不得**当作可用项；用户若不想等审核中的场景，必须按"无可用场景"分支引导他走 [Step 1.7](#step-17电话场景创建审核子流程独立入口) **创建 + 审核 + 发布**完整流程，审核通过（变 `PUBLISHED`）后再继续下任务。
+> - ❌ 把 Step 1.7 中刚拿到的 `scriptId` 用作"列表里的一项"伪装成接口返回。Step 1.7 出口走的是上文的"已选定场景"分支（直接复用 `scriptId / agentProfileId`，**跳过本步骤**），不要二次列表。
+>
+> 只有接口真的返回了 `status === "PUBLISHED"` 的条目，才允许进入下方"列出供用户选择"分支；否则一律走"无可用场景 → 引导创建/取消"分支。
+
 接口：`POST https://ai.deepsop.com/prod-api/ai/outBound/listScripts`
 
 请求头：
