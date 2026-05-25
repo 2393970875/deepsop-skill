@@ -48,8 +48,10 @@ import validate_script_params as vsp  # noqa: E402
 
 CREATE_URL = api_paths.build_url("outbound_create_or_modify_script")
 DESCRIBE_URL = api_paths.build_url("outbound_describe_script")
+GET_AGENT_PROFILE_URL = api_paths.build_url("outbound_get_agent_profile")
 api_paths.assert_url_matches(CREATE_URL, "outbound_create_or_modify_script")
 api_paths.assert_url_matches(DESCRIBE_URL, "outbound_describe_script")
+api_paths.assert_url_matches(GET_AGENT_PROFILE_URL, "outbound_get_agent_profile")
 
 HTTP_TIMEOUT_SEC = 30
 DEFAULT_MAX_WAIT_SEC = 600
@@ -168,6 +170,114 @@ def extract_describe_status(resp_json: Any) -> str | None:
     if isinstance(status, str):
         return status
     return None
+
+
+def find_agent_profile_node(value: Any) -> dict | None:
+    if not isinstance(value, dict):
+        return None
+    for key in ("agentProfile", "agentProfileInfo", "profile"):
+        node = value.get(key)
+        if isinstance(node, dict) and "promptJson" in node:
+            return node
+    if "promptJson" in value:
+        return value
+    data = value.get("data")
+    if isinstance(data, dict):
+        found = find_agent_profile_node(data)
+        if found is not None:
+            return found
+    body = value.get("body")
+    if isinstance(body, dict):
+        found = find_agent_profile_node(body)
+        if found is not None:
+            return found
+    return None
+
+
+def validate_agent_profile_prompt_response(resp_json: Any) -> dict:
+    profile = find_agent_profile_node(resp_json)
+    if profile is None:
+        return {
+            "ok": False,
+            "stage": "agent_profile",
+            "summary": "getAgentProfile 响应中未找到 agentProfile.promptJson，无法确认机器人 prompt 是否已落库",
+            "response": resp_json,
+        }
+
+    prompt_raw = profile.get("promptJson")
+    if isinstance(prompt_raw, str):
+        text = prompt_raw.strip()
+        if not text:
+            prompt = {}
+        else:
+            try:
+                prompt = json.loads(text)
+            except json.JSONDecodeError as exc:
+                return {
+                    "ok": False,
+                    "stage": "agent_profile",
+                    "summary": f"getAgentProfile 返回的 promptJson 不是合法 JSON 字符串：{exc}",
+                    "response": resp_json,
+                }
+    elif isinstance(prompt_raw, dict):
+        prompt = prompt_raw
+    else:
+        prompt = {}
+
+    missing = []
+    for key in ("openingPrompt", "goals"):
+        value = prompt.get(key) if isinstance(prompt, dict) else None
+        if not isinstance(value, str) or not value.strip():
+            missing.append(key)
+
+    if missing:
+        return {
+            "ok": False,
+            "stage": "agent_profile",
+            "summary": f"场景已 PUBLISHED，但 getAgentProfile 返回的 promptJson 为空或缺少必填内容：{', '.join(missing)}",
+            "response": resp_json,
+        }
+
+    return {
+        "ok": True,
+        "stage": "agent_profile",
+        "summary": "getAgentProfile 已确认 promptJson 包含 openingPrompt/goals",
+    }
+
+
+def verify_agent_profile_prompt(agent_profile_id: str, api_key: str) -> dict:
+    try:
+        status, resp_text = http_post_json(
+            GET_AGENT_PROFILE_URL,
+            {"agentProfileId": agent_profile_id},
+            api_key,
+        )
+    except (urllib.error.URLError, OSError) as exc:
+        return {
+            "ok": False,
+            "stage": "agent_profile",
+            "summary": f"查询 getAgentProfile 时网络失败：{exc}",
+            "agentProfileId": agent_profile_id,
+        }
+
+    try:
+        resp_json = json.loads(resp_text) if resp_text else None
+    except json.JSONDecodeError:
+        resp_json = None
+
+    if not (200 <= status < 300):
+        return {
+            "ok": False,
+            "stage": "agent_profile",
+            "status_code": status,
+            "summary": f"查询 getAgentProfile 时服务端返回 HTTP {status}",
+            "agentProfileId": agent_profile_id,
+            "response": resp_json if resp_json is not None else resp_text,
+        }
+
+    result = validate_agent_profile_prompt_response(resp_json)
+    result.setdefault("agentProfileId", agent_profile_id)
+    return result
 
 
 def poll_describe_until_published(
@@ -392,6 +502,26 @@ def main() -> int:
     poll_result.setdefault("submit_response", resp_json)
     if "elapsed_seconds" not in poll_result:
         poll_result["elapsed_seconds"] = int(time.time() - submit_started_at)
+
+    if poll_result.get("ok"):
+        if not agent_profile_id:
+            poll_result = {
+                "ok": False,
+                "stage": "agent_profile",
+                "scriptId": script_id,
+                "status": poll_result.get("status"),
+                "summary": "场景已 PUBLISHED，但提交响应中没有 agentProfileId，无法校验机器人 promptJson 是否已落库",
+                "submit_response": resp_json,
+            }
+        else:
+            profile_result = verify_agent_profile_prompt(agent_profile_id, api_key)
+            if not profile_result.get("ok"):
+                profile_result.setdefault("scriptId", script_id)
+                profile_result.setdefault("status", poll_result.get("status"))
+                profile_result.setdefault("submit_response", resp_json)
+                poll_result = profile_result
+            else:
+                poll_result["agent_profile_check"] = profile_result["summary"]
 
     emit(poll_result)
 

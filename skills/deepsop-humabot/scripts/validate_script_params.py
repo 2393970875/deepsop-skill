@@ -52,8 +52,8 @@ from typing import Any
 
 
 # 机器人设定 promptJson 内部必填项（其他字段允许空字符串）
-PROMPT_REQUIRED = {"openingPrompt"}
-# promptJson 允许出现的全部键（多余键放过，不报错；缺这些核心键时只检 openingPrompt）
+PROMPT_REQUIRED = {"openingPrompt", "goals"}
+# promptJson 允许出现的全部键（多余键放过，不报错；必填键按 PROMPT_REQUIRED 检查）
 PROMPT_KNOWN_KEYS = {
     "name", "gender", "age", "role", "communicationStyle",
     "goals", "background", "skills", "workflow", "constraint",
@@ -148,18 +148,24 @@ def validate_prompt_json(prompt_str: Any, errors: list) -> None:
     if parsed is None:
         return
 
-    # openingPrompt 必填且非空字符串（与前端 Vue 的 rules 对齐）
-    op = parsed.get("openingPrompt")
-    if op is None:
-        err(errors, f"{base}::openingPrompt", "MISSING_KEY", "promptJson 缺少 openingPrompt 字段")
-    elif not isinstance(op, str) or not op.strip():
-        err(
-            errors,
-            f"{base}::openingPrompt",
-            "EMPTY_VALUE",
-            f"openingPrompt 必须是非空字符串，当前为 {op!r}",
-            "至少填写一句开场白，例如「您好，我是XX公司的客服助理...」",
-        )
+    # openingPrompt / goals 必填且非空字符串（与 SKILL.md Step 1.7.1 对齐）
+    for key in sorted(PROMPT_REQUIRED):
+        value = parsed.get(key)
+        if value is None:
+            err(errors, f"{base}::{key}", "MISSING_KEY", f"promptJson 缺少 {key} 字段")
+        elif not isinstance(value, str) or not value.strip():
+            suggestion = (
+                "至少填写一句开场白，例如「您好，我是XX公司的客服助理...」"
+                if key == "openingPrompt"
+                else "必须填写此次呼叫目的，例如「确认客户是否有采购意向」"
+            )
+            err(
+                errors,
+                f"{base}::{key}",
+                "EMPTY_VALUE",
+                f"{key} 必须是非空字符串，当前为 {value!r}",
+                suggestion,
+            )
 
     # role：阿里云后端期望字符串；Vue 在拉取后会做 role = role?.[0] || '' 兼容数组返回
     if "role" in parsed and not isinstance(parsed["role"], str):
@@ -368,6 +374,30 @@ def validate_script_params(script: Any, errors: list) -> None:
     if not isinstance(script, dict):
         err(errors, base, "NOT_OBJECT", "scriptParams 必须是对象")
         return
+
+    script_name = script.get("scriptName")
+    if script_name is None:
+        err(
+            errors,
+            f"{base}.scriptName",
+            "MISSING_KEY",
+            "scriptParams 缺少 'scriptName'（场景库名称）",
+        )
+    elif not isinstance(script_name, str) or not script_name.strip():
+        err(
+            errors,
+            f"{base}.scriptName",
+            "EMPTY_VALUE",
+            f"scriptName 必须是非空字符串，当前为 {script_name!r}",
+        )
+    elif len(script_name) > 30:
+        err(
+            errors,
+            f"{base}.scriptName",
+            "TOO_LONG",
+            f"scriptName 长度 {len(script_name)} 超过上限 30（与前端 Vue maxlength 对齐）",
+            "将场景库名称压缩到 30 字符内再提交",
+        )
 
     for k in ("industry", "scene"):
         if k not in script:
