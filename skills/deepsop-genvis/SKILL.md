@@ -7,13 +7,13 @@ description: |
   需要 API Key 授权：已有账号请前往 https://ai.deepsop.com/login?source=2 登录获取；没有账号请前往 https://ai.deepsop.com/register?source=2 注册后获取。
 
   支持图片模型：**3.1Nano2-Evo（默认）**、S5.0L、N2、W2.7、W2.7Pro、Nano2-Beta-Evo、**Image2（GPTimage-2）**。
-  支持视频模型：**V3.1FB（默认）**、S1.5Pro、V3.1PB、V3.1Fast、W2.6t / W2.6i / W2.6r、klingV3Omni、W2.7t / W2.7i / W2.7r、**S2.0 / S2.0Fast**（Seedance2.0 系列，支持多音频参考与联网搜索）。
+  支持视频模型：**V3.1FB（默认）**、S1.5Pro、V3.1PB、V3.1Fast、W2.6t / W2.6i / W2.6r、klingV3Omni、W2.7t / W2.7i / W2.7r、**S2.0 / S2.0Fast**（Seedance2.0 系列，支持多音频参考与联网搜索）、**HappyHorse**（高效短视频，支持文生/首帧/参考图/视频编辑模式）。
   查看当前服务端激活的模型请运行：`python3 scripts/generate_image.py --list-models`。
 
   触发场景：
   - 用户要求生成图片，如"生成一匹狼"、"画一只猫"、"风景画"、"帮我画"等。
   - 用户要求生成视频，如"生成视频"、"文生视频"、"图生视频"、"生成一段...的视频"等。
-  - 用户指定模型：N2、S5.0L、W2.7、W2.7Pro、3.1Nano2-Evo、Nano2-Beta-Evo、Image2、GPTimage-2、gpt-image-2、S1.5Pro、V3.1FB、V3.1PB、V3.1Fast、W2.6t、W2.6i、W2.6r、klingV3Omni、W2.7t、W2.7i、W2.7r、S2.0、S2.0Fast、Seedance2.0。
+  - 用户指定模型：N2、S5.0L、W2.7、W2.7Pro、3.1Nano2-Evo、Nano2-Beta-Evo、Image2、GPTimage-2、gpt-image-2、S1.5Pro、V3.1FB、V3.1PB、V3.1Fast、W2.6t、W2.6i、W2.6r、klingV3Omni、W2.7t、W2.7i、W2.7r、S2.0、S2.0Fast、Seedance2.0、HappyHorse。
   - 用户上传参考图/参考视频时，自动先调用文件上传 API 转换为可访问 URL。
 ---
 
@@ -224,7 +224,7 @@ if result and result["status"] == "SUCCESS":
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
 | `prompt` | 必填 | 生成提示词（图片或视频描述）|
-| `--model` | 自动推断 | 生成模型。**未指定时根据 prompt 关键词自动推断**：包含 `视频/动画/短片/动起来/镜头/clip/motion/video` 等 → `V3.1FB`；其余 → `3.1Nano2-Evo`。图片：`3.1Nano2-Evo`、`S5.0L`、`N2`、`W2.7`、`W2.7Pro`、`Nano2-Beta-Evo`；视频：`V3.1FB`、`S1.5Pro`、`V3.1PB`、`V3.1Fast`、`W2.6t`、`W2.6i`、`W2.6r`、`klingV3Omni`、`W2.7t`、`W2.7i`、`W2.7r` |
+| `--model` | 自动推断 | 生成模型。**支持双入口**：友好别名（如 `HappyHorse`）或 `methodType` 字符串（如 `19`）。未指定时根据 prompt 关键词自动推断：包含 `视频/动画/短片/动起来/镜头/clip/motion/video` 等 → `V3.1FB`；其余 → `3.1Nano2-Evo`。图片：`3.1Nano2-Evo`、`S5.0L`、`N2`、`W2.7`、`W2.7Pro`、`Nano2-Beta-Evo`、`Image2`；视频：`V3.1FB`、`S1.5Pro`、`V3.1PB`、`V3.1Fast`、`W2.6t/i/r`、`klingV3Omni`、`W2.7t/i/r`、`S2.0`、`S2.0Fast`、`HappyHorse` |
 | `--list-models` | - | 列出当前服务端激活的模型（hiddenState=0）后退出，不需 prompt |
 | `--dry-run` | - | 仅构建并打印最终 payload，不提交任务（调试用）|
 | `--json-output` | - | 以单行 JSON 向 **stdout** 输出最终结果 `{status,url,message,local_path?}`，便于 openclaw 等编排器解析 |
@@ -272,6 +272,14 @@ if result and result["status"] == "SUCCESS":
 | `--generate-audio` | - | 开启音频生成（按模型能力生效） |
 | `--no-audio` | - | 关闭音频生成（按模型能力生效） |
 
+## 模型来源与单一真相源
+
+脚本以 **服务端 `consumeSource/list` 接口** 为模型存在性 / `hiddenState` / 命名的唯一真相源，本地仅维护与前端一致的硬编码约束（比例 / 分辨率 / 时长 / 生成类型 / 字段可见性等），无法从接口推导。
+
+- **运行时校验**：每次提交任务前自动调用 `consumeSource/list`，若该模型 `hiddenState=1` 或不存在则直接拒绝
+- **`--list-models`**：从接口拉取激活模型并附带「漂移检测」（drift），若服务端激活了脚本未注册的模型 / 本地模型已下线，会以 `[drift] ...` 形式打印到 stderr
+- **CLI 双入口**：`--model HappyHorse` 与 `--model 19` 等价，前者是友好别名，后者是 `sourceValue`/`methodType`；脚本通过 `_resolve_model_key` 自动归一化
+
 ## 支持的模型
 
 ### 图片模型
@@ -303,6 +311,7 @@ if result and result["status"] == "SUCCESS":
 | `W2.7r` | DeepSop.W2.7r | `16` | `16:9` | `720p` | 10s | 参考视频生成，保留角色音色，多模态融合编辑 |
 | `S2.0` | DeepSop·S2.0 | `17` | `16:9` | `720p` | 10s | Seedance2.0，4-15s，支持多音频参考（`audioUrlList`）+ 联网搜索（`webSearch`），分辨率 480p/720p/1080p |
 | `S2.0Fast` | DeepSop·S2.0Fast | `18` | `16:9` | `720p` | 10s | Seedance2.0 Fast 快速版，4-15s，多音频参考 + 联网搜索，最高 720p |
+| `HappyHorse` | DeepSop.HappyHorse | `19` | `16:9` | `720p` | 10s | 高效短视频，3-15s，支持 TEXT/FIRST&LAST/REFERENCE/EDIT，独有 `audioSetting`（auto/origin），EDIT 模式需 `firstClipUrl` |
 
 **V3.1 系列时长（来自前端 `matchVideoDurationInfo`）：**
 - `V3.1FB` / `V3.1PB`：**时长固定为 8 秒**
@@ -329,6 +338,18 @@ if result and result["status"] == "SUCCESS":
   - `webSearch`：是否启用联网搜索
   - `generateAudio`：是否生成音频（默认开启）
 - 校验：当传入 `audioUrlList` 时，必须至少提供一张参考图或一个参考视频
+
+**HappyHorse（`HappyHorse`，methodType=19）：**
+- 生成类型：`TEXT` / `FIRST&LAST` / `REFERENCE` / `EDIT`
+- 时长：**3-15 秒**，默认 10s（EDIT 模式时长由编辑视频决定，前端隐藏滑块）
+- 比例：`1:1` / `3:4` / `4:3` / `5:4` / `4:5` / `16:9` / `9:16` / `21:9` / `9:21`（EDIT 模式无 ratio）
+- 分辨率：`720p` / `1080p`
+- **不支持** 尾帧图片（`lastImageUrl`）、`negativePrompt`、`generateAudio`、`enhancePrompt`、`promptExtend`、`shotType`、`webSearch`
+- 独有参数：
+  - `firstClipUrl`：编辑视频 URL（EDIT 模式**必填**）
+  - `audioSetting`：声音控制，`auto`（由模型控制，默认）/ `origin`（保留视频原声），仅 EDIT 模式可见
+- EDIT 模式下 `imageUrlList` 至多 5 张参考图
+- 校验：EDIT 模式必须上传 `firstClipUrl`
 
 ## 使用示例
 
@@ -405,6 +426,13 @@ python3 scripts/generate_image.py "海浪拍打礁石" --model S2.0 --ratio "16:
 python3 scripts/generate_image.py "城市夜景延时" --model S2.0Fast --ratio "9:16" --resolution "720p" --duration 6 --web-search
 # S2.0 多音频参考（自动上传本地音频）
 python3 scripts/generate_image.py "猫咪互动" --model S2.0 --first-image "./cat.jpg" --audio-path-list "./bg.mp3,./voice.wav"
+
+# HappyHorse - 文生短视频（社交/广告场景）
+python3 scripts/generate_image.py "咖啡店开业宣传短片" --model HappyHorse --ratio "9:16" --resolution "1080p" --duration 8
+# HappyHorse - 首帧图生视频
+python3 scripts/generate_image.py "产品旋转展示" --model HappyHorse --first-image "./product.jpg" --generation-type "FIRST&LAST"
+# HappyHorse - 视频编辑模式（保留原声）
+python3 scripts/generate_image.py "把背景换成海边" --model HappyHorse --generation-type EDIT --first-clip-url "https://.../source.mp4" --audio-setting origin
 
 # W2.6r / W2.7r - 参考视频生成（CLI 需传已上传 URL，或使用程序化调用）
 python3 scripts/generate_image.py "参考素材风格生成" --model W2.6r --ratio "16:9" --resolution "720p" --duration 10

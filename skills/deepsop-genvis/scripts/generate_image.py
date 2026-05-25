@@ -310,6 +310,112 @@ def _infer_media_type(prompt):
     return "image"
 
 
+def _get_default_model(media_type, fallback):
+    """Pick the first active model of the given media_type from the API list,
+    matching the frontend behavior:
+
+        this.form.methodType = this.videoModelOptions && this.videoModelOptions[0]?.sourceValue
+
+    Falls back to `fallback` if the API is unreachable or returns no usable rows.
+    Returns a local friendly key (resolved from sourceValue / methodType).
+    """
+    try:
+        active = list_active_models().get(media_type, [])
+    except Exception as e:
+        print(f"[warn] 获取默认模型失败，使用兜底 {fallback}：{e}", file=sys.stderr)
+        return fallback
+
+    for entry in active:
+        # Same filter as frontend: !['auto'].includes(sourceValue) && hiddenState === '0'
+        sval = str(entry.get("sourceValue") or "")
+        if sval.lower() == "auto":
+            continue
+        # Prefer entries the script knows how to dispatch
+        if entry.get("key"):
+            return entry["key"]
+        # Otherwise translate sourceValue → friendly key (in case caller passes raw mt)
+        resolved = _resolve_model_key(sval)
+        if resolved:
+            return resolved
+
+    print(f"[warn] 服务端未返回可用的{media_type}模型，使用兜底 {fallback}", file=sys.stderr)
+    return fallback
+
+
+def _resolve_model_key(value):
+    """Accept either a friendly key (e.g. 'HappyHorse') or a methodType
+    string/int (e.g. '19', 19) and return the friendly key used internally.
+
+    The friendly-name registry remains MODEL_CONFIGS (single source of truth).
+    Existence and hiddenState are validated separately via the API.
+    Returns None if the value cannot be resolved.
+    """
+    if value is None:
+        return None
+    s = str(value).strip()
+    if not s:
+        return None
+    # Direct friendly-key hit (case-insensitive)
+    for key in MODEL_CONFIGS:
+        if key.lower() == s.lower():
+            return key
+    # methodType lookup (numeric or numeric-string)
+    if s.isdigit():
+        for key, cfg in MODEL_CONFIGS.items():
+            if str(cfg["methodType"]) == s:
+                return key
+    return None
+
+
+def _validate_local_against_api():
+    """Compare local MODEL_CONFIGS with the live consumeSource/list result and
+    log drift warnings to stderr. Non-fatal: only informational.
+
+    Detects:
+      - server-side models the script does not know how to dispatch
+      - locally registered models the server no longer exposes
+      - sourceName / hiddenState changes worth noting
+    """
+    rows = fetch_model_list()
+    if not rows:
+        return  # network failure already logged by fetch_model_list
+
+    seen_remote = set()  # set of (sourceType, sourceValue)
+    for row in rows:
+        stype = row.get("sourceType")
+        if stype not in ("IMAGE_MODEL", "VIDEO_MODEL"):
+            continue
+        sval = str(row.get("sourceValue"))
+        seen_remote.add((stype, sval))
+        if str(row.get("hiddenState")) != "0":
+            continue
+        # Find local key
+        media = "image" if stype == "IMAGE_MODEL" else "video"
+        match = next(
+            (k for k, cfg in MODEL_CONFIGS.items()
+             if cfg["media_type"] == media and str(cfg["methodType"]) == sval),
+            None,
+        )
+        if match is None:
+            print(
+                f"[drift] 服务端激活模型 {row.get('sourceName')} "
+                f"(sourceType={stype}, sourceValue={sval}) 在脚本中未注册，"
+                f"无法通过 --model 调用。请补充到 MODEL_CONFIGS。",
+                file=sys.stderr,
+            )
+
+    # Reverse drift: local models the server no longer exposes
+    for key, cfg in MODEL_CONFIGS.items():
+        stype = "IMAGE_MODEL" if cfg["media_type"] == "image" else "VIDEO_MODEL"
+        if (stype, str(cfg["methodType"])) not in seen_remote:
+            print(
+                f"[drift] 本地模型 {key} (sourceType={stype}, "
+                f"methodType={cfg['methodType']}) 在服务端模型列表中不存在，"
+                f"可能已下线。",
+                file=sys.stderr,
+            )
+
+
 def list_active_models():
     """Return active (hiddenState == '0') models grouped by image/video.
 
@@ -606,8 +712,10 @@ VIDEO_FIELD_SUPPORT = {
     "keepOriginalSound": {"klingV3Omni"},
     "elementList": {"klingV3Omni"},
     "videoList": {"klingV3Omni"},
-    # Continuation / reference clip: klingV3Omni + W2.7i  (mt 10,14)
-    "firstClipUrl": {"klingV3Omni", "W2.7i"},
+    # Continuation / reference clip: klingV3Omni + W2.7i + HappyHorse  (mt 10,14,19)
+    "firstClipUrl": {"klingV3Omni", "W2.7i", "HappyHorse"},
+    # Audio control mode (auto / origin): HappyHorse only, EDIT generationType  (mt 19)
+    "audioSetting": {"HappyHorse"},
     # Reference-video list: W2.6r / W2.7r / S2.0 / S2.0Fast  (mt 9,16,17,18)
     "videoUrlList": {"W2.6r", "W2.7r", "S2.0", "S2.0Fast"},
     # Audio URL (single): Wan text/image/W2.7 series  (mt 7,8,14,15,16).
@@ -617,6 +725,7 @@ VIDEO_FIELD_SUPPORT = {
     "audioUrlList": {"S2.0", "S2.0Fast"},
     # lastImageUrl: NOT supported by W2.6i (mt=8) or Sora2 variants. All other
     # active video models support it.
+    # NOTE: HappyHorse (mt=19) does NOT support lastImageUrl.
     "lastImageUrl": {"S1.5Pro", "V3.1FB", "V3.1PB", "V3.1Fast",
                      "W2.6t", "W2.6r", "klingV3Omni",
                      "W2.7t", "W2.7i", "W2.7r",
@@ -625,12 +734,12 @@ VIDEO_FIELD_SUPPORT = {
     "ratio": {"S1.5Pro", "V3.1FB", "V3.1PB", "V3.1Fast",
               "W2.6t", "W2.6r", "klingV3Omni",
               "W2.7t", "W2.7r",
-              "S2.0", "S2.0Fast"},
+              "S2.0", "S2.0Fast", "HappyHorse"},
     # resolution: klingV3Omni (mt=10) does not expose a resolution selector.
     "resolution": {"S1.5Pro", "V3.1FB", "V3.1PB", "V3.1Fast",
                    "W2.6t", "W2.6i", "W2.6r",
                    "W2.7t", "W2.7i", "W2.7r",
-                   "S2.0", "S2.0Fast"},
+                   "S2.0", "S2.0Fast", "HappyHorse"},
 }
 
 
@@ -662,6 +771,7 @@ VIDEO_GENERATION_TYPES = {
     "W2.7r":       ["REFERENCE"],
     "S2.0":        ["TEXT", "FIRST&LAST", "REFERENCE"],
     "S2.0Fast":    ["TEXT", "FIRST&LAST", "REFERENCE"],
+    "HappyHorse":  ["TEXT", "FIRST&LAST", "REFERENCE", "EDIT"],
 }
 
 # ratio whitelist per model (matchVideoRatioOptions). W2.6i / W2.7i derive from
@@ -678,6 +788,7 @@ VIDEO_RATIOS = {
     "W2.7r":       ["1:1", "3:4", "4:3", "16:9", "9:16"],
     "S2.0":        ["adaptive", "1:1", "3:4", "4:3", "16:9", "9:16", "21:9"],
     "S2.0Fast":    ["adaptive", "1:1", "3:4", "4:3", "16:9", "9:16", "21:9"],
+    "HappyHorse":  ["1:1", "3:4", "4:3", "5:4", "4:5", "16:9", "9:16", "21:9", "9:21"],
 }
 
 # resolution whitelist per model (matchVideoQualityOptions). klingV3Omni does
@@ -695,6 +806,7 @@ VIDEO_RESOLUTIONS = {
     "W2.7r":       ["720p", "1080p"],
     "S2.0":        ["480p", "720p", "1080p"],
     "S2.0Fast":    ["480p", "720p"],
+    "HappyHorse":  ["720p", "1080p"],
 }
 
 # Image quality whitelist (matchImageQualityOptions, active models only).
@@ -759,6 +871,7 @@ VIDEO_RESTRICTIONS = {
     "W2.7r":       {"textLength": 2500, "negativeTextLength": 250, "targetMaxSize": 10, "targetMinLength": 240, "targetMaxLength": 5000},
     "S2.0":        {"textLength": 1000, "targetMaxSize": 30, "targetMinLength": 300, "targetMaxLength": 6000},
     "S2.0Fast":    {"textLength": 1000, "targetMaxSize": 30, "targetMinLength": 300, "targetMaxLength": 6000},
+    "HappyHorse":  {"textLength": 2000, "targetMaxSize": 20, "targetMinLength": 240, "targetMaxLength": 8000},
 }
 
 IMAGE_RESTRICTIONS = {
@@ -1173,6 +1286,23 @@ MODEL_CONFIGS = {
             "durationSwitch": "1",
         }
     },
+    "HappyHorse": {
+        "media_type": "video",
+        "type": "9",
+        "methodType": "19",
+        "source_name": "DeepSop.HappyHorse",
+        "description": "HappyHorse 高效生成高质量短视频，适用于社交、广告等场景",
+        "default_ratio": "16:9",
+        "default_resolution": "720p",
+        "default_duration": 10,
+        "extra_params": {
+            "generationType": "TEXT",
+            "imageUrlList": None,
+            "firstImageUrl": None,
+            "firstClipUrl": None,
+            "audioSetting": "auto",
+        }
+    },
     # ----- Video models currently hiddenState=1 (kept for future reactivation) -----
     "Sora2-BetaMax": {
         "media_type": "video",
@@ -1250,7 +1380,8 @@ def create_video_task(prompt, model="V3.1FB", ratio=None, resolution=None,
                       element_list=None, first_clip_url=None, multi_shot=None,
                       n=None, person_generation=None, resize_mode=None,
                       negative_prompt=None, duration_switch=None,
-                      multi_prompt=None, audio_url_list=None, web_search=None):
+                      multi_prompt=None, audio_url_list=None, web_search=None,
+                      audio_setting=None):
     """Create a video generation task.
 
     Args:
@@ -1273,9 +1404,12 @@ def create_video_task(prompt, model="V3.1FB", ratio=None, resolution=None,
     """
     url = f"{BASE_URL}/AiArtistRecord"
 
-    if model not in MODEL_CONFIGS or MODEL_CONFIGS[model]["media_type"] != "video":
+    # Accept friendly key or methodType (e.g. 'HappyHorse' or '19')
+    resolved = _resolve_model_key(model)
+    if resolved is None or MODEL_CONFIGS.get(resolved, {}).get("media_type") != "video":
         print(f"不支持的视频模型：{model}", file=sys.stderr)
         return None
+    model = resolved
 
     # Prompt requirement (mirrors frontend handleVerifyParams):
     # - W2.6i / W2.7i (image-to-video) can omit prompt
@@ -1377,6 +1511,25 @@ def create_video_task(prompt, model="V3.1FB", ratio=None, resolution=None,
 
     seedance2_models = {"S2.0", "S2.0Fast"}
 
+    # S1.5Pro (mt=2): duration 4-12s (frontend matchVideoDurationInfo)
+    if model == "S1.5Pro":
+        if effective_duration < 4 or effective_duration > 12:
+            print(f"{model} 时长必须是 4-12 秒，当前 {effective_duration} 秒，自动调整为 10 秒",
+                  file=sys.stderr)
+            effective_duration = 10
+            parameter["duration"] = effective_duration
+
+    if model == "HappyHorse":
+        # HappyHorse: duration 3-15s; EDIT mode derives duration from edit clip,
+        # but we still keep a sane default in payload.
+        if effective_duration < 3 or effective_duration > 15:
+            print(f"{model} 时长必须是 3-15 秒，当前 {effective_duration} 秒，自动调整为 10 秒",
+                  file=sys.stderr)
+            effective_duration = 10
+            parameter["duration"] = effective_duration
+        # Submit ratio string as size (no pixel form)
+        parameter["size"] = effective_ratio
+
     if model in seedance2_models:
         # Seedance2.0 / Seedance2.0 Fast: duration 4-15s (frontend matchVideoDurationInfo)
         if effective_duration < 4 or effective_duration > 15:
@@ -1468,6 +1621,8 @@ def create_video_task(prompt, model="V3.1FB", ratio=None, resolution=None,
         parameter["audioUrlList"] = audio_url_list
     if web_search is not None:
         parameter["webSearch"] = bool(web_search)
+    if audio_setting is not None:
+        parameter["audioSetting"] = audio_setting
 
     # klingV3Omni customize shotType requires multiPrompt
     if model == "klingV3Omni" and parameter.get("shotType") == "customize" \
@@ -1509,6 +1664,22 @@ def create_video_task(prompt, model="V3.1FB", ratio=None, resolution=None,
 
     # Strip fields this model does not accept (mirrors frontend visibility rules)
     _filter_by_whitelist(parameter, model, VIDEO_FIELD_SUPPORT)
+
+    # HappyHorse generationType-conditional visibility (frontend handleMatchVisibility):
+    #   - audioSetting: only visible when generationType === 'EDIT'
+    #   - firstClipUrl: only visible when generationType in ('CONTINUATION','EDIT','FEATURE')
+    #     (HappyHorse only supports EDIT among these)
+    #   - ratio / duration: hidden in EDIT mode (derived from edit clip)
+    if model == "HappyHorse":
+        gen_type = parameter.get("generationType")
+        if gen_type != "EDIT":
+            parameter.pop("audioSetting", None)
+            parameter.pop("firstClipUrl", None)
+        else:
+            # EDIT mode: ratio + duration come from the edit clip; do not submit them
+            parameter.pop("ratio", None)
+            parameter.pop("duration", None)
+            parameter.pop("size", None)
 
     payload = {
         "type": config["type"],
@@ -1554,7 +1725,7 @@ def generate_video(prompt, model="V3.1FB", ratio=None, resolution=None,
                    n=None, person_generation=None, resize_mode=None,
                    negative_prompt=None, duration_switch=None,
                    multi_prompt=None, audio_url_list=None, audio_path_list=None,
-                   web_search=None, max_wait=1200):
+                   web_search=None, audio_setting=None, max_wait=1200):
     """Generate a video from a text prompt.
 
     Args:
@@ -1634,6 +1805,7 @@ def generate_video(prompt, model="V3.1FB", ratio=None, resolution=None,
         shot_type=shot_type,
         element_list=element_list,
         first_clip_url=first_clip_url,
+        audio_setting=audio_setting,
         multi_shot=multi_shot,
         n=n,
         person_generation=person_generation,
@@ -1680,10 +1852,13 @@ def create_generation_task(prompt, quality="2K", size=None, model="3.1Nano2-Evo"
         n: Image count for Image2 (1-10)
     """
     url = f"{BASE_URL}/AiArtistRecord"
-    
-    if model not in MODEL_CONFIGS:
+
+    # Accept friendly key or methodType (e.g. '3.1Nano2-Evo' or '8')
+    resolved = _resolve_model_key(model)
+    if resolved is None:
         print(f"不支持的模型：{model}，可用模型：{list(MODEL_CONFIGS.keys())}", file=sys.stderr)
         return None
+    model = resolved
 
     # Image generation always requires a non-empty prompt (frontend: required rule)
     if not prompt or not str(prompt).strip():
@@ -1948,6 +2123,9 @@ if __name__ == "__main__":
     image_models = [k for k, v in MODEL_CONFIGS.items() if v["media_type"] == "image"]
     video_models = [k for k, v in MODEL_CONFIGS.items() if v["media_type"] == "video"]
     all_models = list(MODEL_CONFIGS.keys())
+    # methodType strings are also accepted (e.g. --model 19 = HappyHorse)
+    all_method_types = sorted({str(v["methodType"]) for v in MODEL_CONFIGS.values()})
+    all_model_inputs = all_models + all_method_types
 
     parser = argparse.ArgumentParser(
         description="AI 图片/视频生成器",
@@ -1959,8 +2137,11 @@ if __name__ == "__main__":
     parser.add_argument("--list-models", action="store_true",
                         help="列出当前服务端激活的可用模型 (hiddenState=0) 后退出")
     parser.add_argument("--model", default=None,
-                        choices=all_models,
-                        help="生成模型。未指定时根据 prompt 自动推断：视频关键词 → V3.1FB，其余 → 3.1Nano2-Evo")
+                        choices=all_model_inputs,
+                        metavar="MODEL",
+                        help="生成模型。可传友好别名（如 HappyHorse）或 methodType（如 19）。"
+                             "未指定时根据 prompt 自动推断：视频关键词 → V3.1FB，其余 → 3.1Nano2-Evo。"
+                             "查看可用模型：--list-models")
     # 图片专属参数
     parser.add_argument("--quality", default="2K", help="[图片] 图片质量 (默认：2K)")
     parser.add_argument("--size", default=None, help="[图片] 图片尺寸，不传则使用模型默认值")
@@ -2009,6 +2190,10 @@ if __name__ == "__main__":
                         help="[视频] 多音频参考 URL，逗号分隔 (仅 S2.0 / S2.0Fast)")
     parser.add_argument("--audio-path-list", default=None,
                         help="[视频] 多音频本地路径，逗号分隔，自动上传 (仅 S2.0 / S2.0Fast)")
+    parser.add_argument("--first-clip-url", default=None,
+                        help="[视频] 续写/编辑/参考视频 URL (klingV3Omni / W2.7i / HappyHorse)")
+    parser.add_argument("--audio-setting", default=None, choices=["auto", "origin"],
+                        help="[视频] 声音控制：auto=由模型控制 / origin=保留原声 (仅 HappyHorse EDIT)")
     # 通用参数
     parser.add_argument("--interval", type=int, default=5, help="轮询间隔秒数")
     parser.add_argument("--max-wait", type=int, default=1200, help="任务轮询最长等待秒数 (默认 1200)")
@@ -2019,8 +2204,9 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    # --list-models short-circuit
+    # --list-models short-circuit (also runs drift detection)
     if args.list_models:
+        _validate_local_against_api()
         print_active_models()
         sys.exit(0)
 
@@ -2031,12 +2217,25 @@ if __name__ == "__main__":
     if args.dry_run:
         DRY_RUN = True
 
-    # Auto-select default model when the user did NOT pass --model explicitly
+    # Auto-select default model when the user did NOT pass --model explicitly.
+    # Mirrors frontend: pick the first active (hiddenState=0, sourceValue!='auto')
+    # model returned by consumeSource/list for the inferred media_type.
     if args.model is None:
         inferred = _infer_media_type(args.prompt)
-        args.model = "V3.1FB" if inferred == "video" else "3.1Nano2-Evo"
-        print(f"[auto] 根据提示词推断媒介 → {inferred}，使用默认模型 {args.model}",
+        fallback = "V3.1FB" if inferred == "video" else "3.1Nano2-Evo"
+        args.model = _get_default_model(inferred, fallback)
+        print(f"[auto] 根据提示词推断媒介 → {inferred}，使用接口返回的第一个可用模型 {args.model}",
               file=sys.stderr)
+    else:
+        # Resolve friendly-name | methodType to the canonical friendly key
+        resolved = _resolve_model_key(args.model)
+        if resolved is None:
+            parser.error(f"未知模型：{args.model}（可运行 --list-models 查看可用模型）")
+        if resolved != args.model:
+            print(f"[resolve] --model {args.model} → {resolved} "
+                  f"(methodType={MODEL_CONFIGS[resolved]['methodType']})",
+                  file=sys.stderr)
+        args.model = resolved
 
     media_type = MODEL_CONFIGS[args.model]["media_type"]
 
@@ -2076,6 +2275,8 @@ if __name__ == "__main__":
             audio_url_list=[u.strip() for u in args.audio_url_list.split(",") if u.strip()] if args.audio_url_list else None,
             audio_path_list=[p.strip() for p in args.audio_path_list.split(",") if p.strip()] if args.audio_path_list else None,
             web_search=args.web_search,
+            first_clip_url=args.first_clip_url,
+            audio_setting=args.audio_setting,
             max_wait=args.max_wait,
         )
         # Send result to Feishu if webhook is configured
