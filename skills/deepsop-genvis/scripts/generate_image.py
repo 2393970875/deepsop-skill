@@ -1117,7 +1117,7 @@ MODEL_CONFIGS = {
         "source_name": "DeepSop·Image2",
         "description": "Image2 支持多模态图像生成 精准控图 细节丰富 角色一致性更优（GPTimage-2）",
         # ratiocination/imageSearch/n 均为 Image2 专属；默认不开启 imageSearch
-        "extra_params": {"ratiocination": "medium", "imageSearch": True, "n": 1},
+        "extra_params": {"n": 1},
     },
     "Image2-Beta-Evo": {
         "media_type": "image",
@@ -1551,7 +1551,9 @@ def create_video_task(prompt, model=None, ratio=None, resolution=None,
     # extra_params (kept only for fields that are NOT covered by BASE_DEFAULTS,
     # e.g. legacy targetMax* hints that are normalized later).
     parameter = base_params
-    parameter.update(config.get("extra_params", {}))
+    for key, value in config.get("extra_params", {}).items():
+        if key not in VIDEO_BASE_DEFAULTS:
+            parameter[key] = value
 
     # Resolve pixel size from ratio + resolution
     resolution_size_map = {
@@ -1864,13 +1866,26 @@ def generate_video(prompt, model=None, ratio=None, resolution=None,
         if uploaded:
             audio_url_list = (audio_url_list or []) + uploaded
     
-    config = MODEL_CONFIGS.get(model, {})
-    effective_ratio = ratio or config.get("default_ratio", "16:9")
-    effective_resolution = resolution or config.get("default_resolution", "720p")
-    effective_duration = duration or config.get("default_duration", 10)
+    display_model = model
+    if display_model is None:
+        display_model = _get_default_model("video")
+        if display_model is None:
+            print(
+                "无法从接口获取可用的视频模型，请显式通过 model 参数指定，或检查服务端状态。",
+                file=sys.stderr,
+            )
+            return None
+        print(f"[auto] 使用接口返回的第一个可用视频模型 {display_model}", file=sys.stderr)
+
+    resolved_model = _resolve_model_key(display_model)
+    config = MODEL_CONFIGS.get(resolved_model, {})
+    defaults = _build_video_defaults(config["methodType"]) if config else VIDEO_BASE_DEFAULTS
+    effective_ratio = ratio or defaults["ratio"]
+    effective_resolution = resolution or defaults["resolution"]
+    effective_duration = duration or defaults["duration"]
 
     _progress(f"正在生成视频：{prompt}")
-    _progress(f"   模型：{model} | 分辨率：{effective_resolution} | 比例：{effective_ratio} | 时长：{effective_duration}s")
+    _progress(f"   模型：{resolved_model or display_model} | 分辨率：{effective_resolution} | 比例：{effective_ratio} | 时长：{effective_duration}s")
     if first_image_url:
         _progress(f"   首帧图片：{first_image_url}")
     if last_image_url:
@@ -1883,7 +1898,7 @@ def generate_video(prompt, model=None, ratio=None, resolution=None,
         _progress(f"   参考视频：{video_url_list}")
 
     task_id = create_video_task(
-        prompt, model, ratio, resolution, duration,
+        prompt, resolved_model or display_model, ratio, resolution, duration,
         first_image_url=first_image_url,
         last_image_url=last_image_url,
         generate_audio=generate_audio,
@@ -2036,8 +2051,9 @@ def create_generation_task(prompt, quality=None, size=None, model=None,
     })
     if web_search is not None:
         parameter["webSearch"] = bool(web_search)
-    # Layer any model-level extra_params (kept only for fields NOT in BASE_DEFAULTS)
-    parameter.update(config.get("extra_params", {}))
+    for key, value in config.get("extra_params", {}).items():
+        if key not in IMAGE_BASE_DEFAULTS:
+            parameter[key] = value
 
     # ----- Image2 / Nano2 explicit overrides from caller -----
     if image_search is not None:
@@ -2183,21 +2199,41 @@ def generate_image(prompt, quality=None, size=None, poll_interval=5,
     Returns:
         dict with generation result including 'url', 'local_path', 'data_uri' if successful
     """
-    config = MODEL_CONFIGS.get(model, {})
-    effective_size = size or config.get("default_size", "2048x2048")
+    display_model = model
+    if display_model is None:
+        display_model = _get_default_model("image")
+        if display_model is None:
+            print(
+                "无法从接口获取可用的图片模型，请显式通过 model 参数指定，或检查服务端状态。",
+                file=sys.stderr,
+            )
+            return None
+        print(f"[auto] 使用接口返回的第一个可用图片模型 {display_model}", file=sys.stderr)
+
+    resolved_model = _resolve_model_key(display_model)
+    config = MODEL_CONFIGS.get(resolved_model, {})
+    defaults = _build_image_defaults(config["methodType"]) if config else IMAGE_BASE_DEFAULTS
+    effective_quality = quality or defaults["quality"]
+    effective_size = size or defaults["size"]
+    if config:
+        is_pixel_size = ("x" in str(effective_size) and any(c.isdigit() for c in str(effective_size).split("x")[0])) \
+                        or ("*" in str(effective_size) and any(c.isdigit() for c in str(effective_size).split("*")[0]))
+        pixel_sep = _IMAGE_PIXEL_SEP_BY_MT.get(str(config["methodType"]))
+        if pixel_sep and not is_pixel_size:
+            effective_size = _image_size_to_pixels(effective_quality, effective_size, pixel_sep)
 
     # Upload reference image if local path provided
     if reference_image_path and not reference_image_url:
         reference_image_url = upload_file(reference_image_path)
 
     _progress(f"正在生成：{prompt}")
-    _progress(f"   模型：{model} | 质量：{quality} | 尺寸：{effective_size}")
+    _progress(f"   模型：{resolved_model or display_model} | 质量：{effective_quality} | 尺寸：{effective_size}")
     if reference_image_url:
         _progress(f"   参考图：{reference_image_url}")
 
     # Step 1: Create task
     task_id = create_generation_task(
-        prompt, quality, size, model, reference_image_url,
+        prompt, quality, size, resolved_model or display_model, reference_image_url,
         web_search=web_search,
         image_search=image_search,
         ratiocination=ratiocination,
@@ -2262,10 +2298,10 @@ if __name__ == "__main__":
                         choices=all_model_inputs,
                         metavar="MODEL",
                         help="生成模型。可传友好别名（如 HappyHorse）或 methodType（如 19）。"
-                             "未指定时根据 prompt 自动推断：视频关键词 → V3.1FB，其余 → 3.1Nano2-Evo。"
+                             "未指定时根据 prompt 自动推断媒介，并使用接口返回的第一个可用模型。"
                              "查看可用模型：--list-models")
     # 图片专属参数
-    parser.add_argument("--quality", default="2K", help="[图片] 图片质量 (默认：2K)")
+    parser.add_argument("--quality", default=None, help="[图片] 图片质量，不传则按 methodType 默认值")
     parser.add_argument("--size", default=None, help="[图片] 图片尺寸，不传则使用模型默认值")
     parser.add_argument("--download", action="store_true", help="[图片] 下载图片到本地")
     parser.add_argument("--output-dir", help="[图片] 图片保存目录")
@@ -2284,9 +2320,9 @@ if __name__ == "__main__":
                         choices=["low", "medium", "high"],
                         help="[图片] 渲染质量预设 (仅 Image2)：low=最快 / medium=平衡 / high=质量")
     # 视频专属参数
-    parser.add_argument("--ratio", default=None, help="[视频] 画面比例，如 16:9、9:16、1:1 (默认：16:9)")
-    parser.add_argument("--resolution", default=None, help="[视频] 分辨率，如 720p、1080p (默认：720p)")
-    parser.add_argument("--duration", type=int, default=None, help="[视频] 视频时长 (秒) (默认：10)")
+    parser.add_argument("--ratio", default=None, help="[视频] 画面比例，如 16:9、9:16、1:1，不传则按 methodType 默认值")
+    parser.add_argument("--resolution", default=None, help="[视频] 分辨率，如 720p、1080p，不传则按 methodType 默认值")
+    parser.add_argument("--duration", type=int, default=None, help="[视频] 视频时长 (秒)，不传则按 methodType 默认值")
     # 视频通用参数（首尾帧 / 音频 / 生成模式）
     parser.add_argument("--first-image-url", default=None, help="[视频] 首帧图片 URL（FIRST&LAST 模式）")
     parser.add_argument("--last-image-url", default=None, help="[视频] 尾帧图片 URL（FIRST&LAST 模式）")

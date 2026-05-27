@@ -129,7 +129,7 @@ python3 scripts/generate_image.py "提示词"
 - 质量档位（1K/2K/4K，详见每个模型表）
 
 **`Image2`（GPTimage-2，OpenAI gpt-image-2 接入）**：
-- 渲染质量预设？`low`（最快）/ `medium`（平衡，默认）/ `high`（质量）——用 `--ratiocination`
+- 渲染质量预设？`low`（最快，默认）/ `medium`（平衡）/ `high`（质量）——用 `--ratiocination`
 - 一次出几张？1–10，用 `--n`
 - 是否需要参考图？支持最多 16 张参考图、单张 ≤50MB；提示词上限 16000 字
 - 默认尺寸 `auto`（智能比例），可改为 `1:1 / 3:4 / 4:3 / 16:9 / 9:16` 等（**禁用** `1:4 / 4:1 / 1:8 / 8:1`）
@@ -246,7 +246,7 @@ if result and result["status"] == "SUCCESS":
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
-| `--quality` | `2K` | 图片质量 (2K/4K) |
+| `--quality` | methodType 决定 | 图片质量。不传时按前端 `handleMethodTypeChange` 派生：`Image2 (mt=10)` 为 `1K` |
 | `--size` | 接口/methodType 决定 | 图片尺寸。脚本按前端 `handleMethodTypeChange` 派生默认值（mt ∈ {2,8,9,10,11} → `auto`；其他 → `1:1`），并对 `S5.0L (mt=4)` / `W2.7 (mt=6)` / `W2.7Pro (mt=7)` 自动转换为像素串（如 `2048x2048` / `2048*2048`）|
 | `--download` | - | 下载图片到本地 |
 | `--output-dir` | `workspace/images` | 图片保存目录 |
@@ -255,16 +255,16 @@ if result and result["status"] == "SUCCESS":
 | `--reference-image-url` | - | 已上传的参考图 URL（跳过上传流程）|
 | `--web-search` / `--no-web-search` | - | 启用/关闭联网搜索（仅 `S5.0L`、`3.1Nano2-Evo`）|
 | `--image-search` / `--no-image-search` | - | 启用/关闭图像搜索（仅 `3.1Nano2-Evo`）|
-| `--ratiocination` | `medium` | 渲染质量预设（仅 `Image2`）：`low` / `medium` / `high` |
+| `--ratiocination` | `low` | 渲染质量预设（仅 `Image2`）：`low` / `medium` / `high` |
 | `--n` | `1` | 生成数量（图片 `Image2` 1–10；视频 `V3.1Fast` 1–4）|
 
 ### 视频专属参数
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
-| `--ratio` | `16:9` | 画面比例，如 `16:9`、`9:16`、`1:1` |
-| `--resolution` | `720p` | 视频分辨率，如 `720p`、`1080p` |
-| `--duration` | `10` | 视频时长（秒）|
+| `--ratio` | methodType 决定 | 画面比例，如 `16:9`、`9:16`、`1:1`；不传时按前端默认值派生 |
+| `--resolution` | methodType 决定 | 视频分辨率，如 `720p`、`1080p`；不传时按前端默认值派生 |
+| `--duration` | methodType 决定 | 视频时长（秒）；部分模型默认为 `8`，其余通常为 `10` |
 | `--first-image-url` | - | 首帧参考图 URL |
 | `--last-image-url` | - | 尾帧参考图 URL |
 | `--first-image` | - | 首帧参考图本地路径，自动上传后转换为 URL |
