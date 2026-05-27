@@ -224,7 +224,7 @@ if result and result["status"] == "SUCCESS":
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
 | `prompt` | 必填 | 生成提示词（图片或视频描述）|
-| `--model` | 自动推断 | 生成模型。**支持双入口**：友好别名（如 `HappyHorse`）或 `methodType` 字符串（如 `19`）。未指定时根据 prompt 关键词自动推断：包含 `视频/动画/短片/动起来/镜头/clip/motion/video` 等 → `V3.1FB`；其余 → `3.1Nano2-Evo`。图片：`3.1Nano2-Evo`、`S5.0L`、`N2`、`W2.7`、`W2.7Pro`、`Nano2-Beta-Evo`、`Image2`；视频：`V3.1FB`、`S1.5Pro`、`V3.1PB`、`V3.1Fast`、`W2.6t/i/r`、`klingV3Omni`、`W2.7t/i/r`、`S2.0`、`S2.0Fast`、`HappyHorse` |
+| `--model` | 自动推断 | 生成模型。**支持双入口**：友好别名（如 `HappyHorse`）或 `methodType` 字符串（如 `19`）。未指定时先按 prompt 关键词判定媒体类型（包含 `视频/动画/短片/动起来/镜头/clip/motion/video` 等 → 视频，其余 → 图片），再实时调用模型列表接口取该类型下**第一个非 `auto` 且 `hiddenState=0` 的可用模型**作为默认（无本地硬编码兜底，因此具体默认值随服务端配置变化）。图片可选：`3.1Nano2-Evo`、`S5.0L`、`N2`、`W2.7`、`W2.7Pro`、`Nano2-Beta-Evo`、`Image2`；视频可选：`V3.1FB`、`S1.5Pro`、`V3.1PB`、`V3.1Fast`、`W2.6t/i/r`、`klingV3Omni`、`W2.7t/i/r`、`S2.0`、`S2.0Fast`、`HappyHorse`。可通过 `--list-models` 查看当前实际激活的模型集 |
 | `--list-models` | - | 列出当前服务端激活的模型（hiddenState=0）后退出，不需 prompt |
 | `--dry-run` | - | 仅构建并打印最终 payload，不提交任务（调试用）|
 | `--json-output` | - | 以单行 JSON 向 **stdout** 输出最终结果 `{status,url,message,local_path?}`，便于 openclaw 等编排器解析 |
