@@ -310,20 +310,21 @@ def _infer_media_type(prompt):
     return "image"
 
 
-def _get_default_model(media_type, fallback):
-    """Pick the first active model of the given media_type from the API list,
-    matching the frontend behavior:
+def _get_default_model(media_type):
+    """Pick the first active non-'auto' model of the given media_type from the
+    API, mirroring the frontend behavior:
 
         this.form.methodType = this.videoModelOptions && this.videoModelOptions[0]?.sourceValue
 
-    Falls back to `fallback` if the API is unreachable or returns no usable rows.
-    Returns a local friendly key (resolved from sourceValue / methodType).
+    No hardcoded fallback: if the API is unreachable or returns no usable rows,
+    returns None and lets the caller surface a clear error. This guarantees the
+    default is always sourced from the live `consumeSource/list` response.
     """
     try:
         active = list_active_models().get(media_type, [])
     except Exception as e:
-        print(f"[warn] 获取默认模型失败，使用兜底 {fallback}：{e}", file=sys.stderr)
-        return fallback
+        print(f"[warn] 获取默认模型失败：{e}", file=sys.stderr)
+        return None
 
     for entry in active:
         # Same filter as frontend: !['auto'].includes(sourceValue) && hiddenState === '0'
@@ -338,8 +339,8 @@ def _get_default_model(media_type, fallback):
         if resolved:
             return resolved
 
-    print(f"[warn] 服务端未返回可用的{media_type}模型，使用兜底 {fallback}", file=sys.stderr)
-    return fallback
+    print(f"[warn] 服务端未返回可用的{media_type}模型（请查看 --list-models）", file=sys.stderr)
+    return None
 
 
 def _resolve_model_key(value):
@@ -466,7 +467,7 @@ def print_active_models():
         print(f"- {m['sourceName']} [sourceValue={m['sourceValue']}]{key_hint}")
         if m["description"]:
             print(f"    {m['description']}")
-    print("\n默认模型：图片 → 3.1Nano2-Evo；视频 → V3.1FB")
+    print("\n默认模型来自接口的第一个非 auto 可用模型（无本地硬编码兜底）。")
 
 
 _UPLOAD_SOFT_LIMIT_MB = 100  # generous cap; specific per-model caps are checked separately
@@ -910,6 +911,155 @@ def _check_text_length(text, limit, label, model):
     return text
 
 
+# ---------------------------------------------------------------------------
+# Base defaults (mirror frontend `defaultParameter` for moduleKey '9' video and
+# '10' image). All per-model defaults are now derived from BASE_DEFAULTS plus
+# methodType-driven overrides (mirroring frontend `handleMethodTypeChange` and
+# the `case 'methodType'` reset block). Per-model overrides are kept ONLY for
+# fields that cannot be inferred from methodType (e.g. S1.5Pro restrictions).
+# ---------------------------------------------------------------------------
+VIDEO_BASE_DEFAULTS = {
+    "multiShot": False,
+    "generationType": "",
+    "text": "",
+    "multiPrompt": [],
+    "negativePrompt": "",
+    "imageUrlList": [],
+    "firstImageUrl": None,
+    "lastImageUrl": None,
+    "firstClipUrl": None,
+    "elementList": [],
+    "videoUrlList": [],
+    "audioUrl": None,
+    "audioUrlList": [],
+    "keepOriginalSound": "yes",
+    "durationList": [],
+    "mode": "pro",
+    "resolution": "720p",
+    "ratio": "16:9",
+    "generateAudio": True,
+    "audioSetting": "auto",
+    "enhancePrompt": False,
+    "n": 1,
+    "personGeneration": "allow_adult",
+    "resizeMode": "pad",
+    "promptExtend": False,
+    "shotType": "single",
+    "webSearch": False,
+    "durationSwitch": "1",
+    "duration": 10,
+}
+
+IMAGE_BASE_DEFAULTS = {
+    "prompt": "",
+    "image": [],
+    "quality": "2K",
+    "size": "1:1",
+    "webSearch": False,
+    "imageSearch": True,
+    "ratiocination": "low",
+    "n": 1,
+}
+
+# Frontend `case 'methodType'` (moduleKey '9') sets generationType based on the
+# new model's methodType:
+#   ['7', '15']                      → 'TEXT'
+#   ['1', '4', '5', '6', '8', '14']  → 'FIRST&LAST'
+#   else                             → 'REFERENCE'
+_VIDEO_GEN_TYPE_TEXT = {"7", "15"}
+_VIDEO_GEN_TYPE_FIRST_LAST = {"1", "4", "5", "6", "8", "14"}
+
+
+def _generation_type_for_method(method_type):
+    """Mirror frontend default generationType selection on model switch."""
+    mt = str(method_type)
+    if mt in _VIDEO_GEN_TYPE_TEXT:
+        return "TEXT"
+    if mt in _VIDEO_GEN_TYPE_FIRST_LAST:
+        return "FIRST&LAST"
+    return "REFERENCE"
+
+
+# Frontend `handleMethodTypeChange` for moduleKey '9' (video):
+#   shotType: methodType === '10' ? 'multi' : 'single'
+#   duration: ['auto', '3', '4', '5', '6', '11', '12'].includes(mt) ? 8 : 10
+_VIDEO_SHORT_DURATION_MTS = {"auto", "3", "4", "5", "6", "11", "12"}
+
+
+def _video_method_type_overrides(method_type):
+    """Return field overrides derived from methodType (frontend handleMethodTypeChange)."""
+    mt = str(method_type)
+    return {
+        "shotType": "multi" if mt == "10" else "single",
+        "duration": 8 if mt in _VIDEO_SHORT_DURATION_MTS else 10,
+    }
+
+
+# Frontend `handleMethodTypeChange` for moduleKey '10' (image):
+#   quality:   ['1', '10', '11'].includes(mt) ? '1K' : '2K'
+#   size:      ['2', '8', '9', '10', '11'].includes(mt) ? 'auto' : '1:1'
+#   webSearch: ['4', '8'].includes(mt)
+_IMAGE_QUALITY_1K_MTS = {"1", "10", "11"}
+_IMAGE_SIZE_AUTO_MTS = {"2", "8", "9", "10", "11"}
+_IMAGE_WEB_SEARCH_MTS = {"4", "8"}
+
+
+def _image_method_type_overrides(method_type):
+    """Return field overrides derived from methodType (frontend handleMethodTypeChange)."""
+    mt = str(method_type)
+    return {
+        "quality": "1K" if mt in _IMAGE_QUALITY_1K_MTS else "2K",
+        "size": "auto" if mt in _IMAGE_SIZE_AUTO_MTS else "1:1",
+        "webSearch": mt in _IMAGE_WEB_SEARCH_MTS,
+    }
+
+
+def _build_video_defaults(method_type):
+    """Compose VIDEO_BASE_DEFAULTS + methodType-driven overrides + generationType rule."""
+    params = dict(VIDEO_BASE_DEFAULTS)
+    params.update(_video_method_type_overrides(method_type))
+    params["generationType"] = _generation_type_for_method(method_type)
+    return params
+
+
+def _build_image_defaults(method_type):
+    """Compose IMAGE_BASE_DEFAULTS + methodType-driven overrides."""
+    params = dict(IMAGE_BASE_DEFAULTS)
+    params.update(_image_method_type_overrides(method_type))
+    return params
+
+
+# Mapping quality → long-side pixel count (matches frontend getImageResolution).
+_IMAGE_QUALITY_LONG_SIDE = {"1K": 1024, "2K": 2048, "3K": 3072, "4K": 4096}
+
+
+def _image_size_to_pixels(quality, ratio, sep):
+    """Convert a ratio (e.g. '1:1', '16:9') + quality preset to a pixel string.
+
+    Mirrors frontend `buildImageParams` which submits e.g. '2048x2048' for
+    methodType ∈ {'0','4'} (sep='x') and '2048*2048' for {'6','7'} (sep='*').
+    Falls back to `ratio` unchanged if it cannot be parsed.
+    """
+    long_side = _IMAGE_QUALITY_LONG_SIDE.get(quality, 2048)
+    if not ratio or ":" not in str(ratio):
+        return ratio
+    try:
+        a, b = [int(x) for x in str(ratio).split(":", 1)]
+    except (ValueError, TypeError):
+        return ratio
+    if a <= 0 or b <= 0:
+        return ratio
+    if a >= b:
+        w, h = long_side, round(long_side * b / a)
+    else:
+        w, h = round(long_side * a / b), long_side
+    return f"{w}{sep}{h}"
+
+
+# methodType → pixel-size separator for image models that submit pixel form.
+_IMAGE_PIXEL_SEP_BY_MT = {"0": "x", "4": "x", "6": "*", "7": "*"}
+
+
 MODEL_CONFIGS = {
     # ===== Image models (type=10) =====
     "N2": {
@@ -918,8 +1068,6 @@ MODEL_CONFIGS = {
         "methodType": "2",
         "source_name": "DeepSop·N2",
         "description": "N2 支持多模态输入 精细参数调节 卓越的文字渲染和角色一致性",
-        "default_size": "1:1",
-        "default_quality": "2K",
         "extra_params": {}
     },
     "S5.0L": {
@@ -928,8 +1076,6 @@ MODEL_CONFIGS = {
         "methodType": "4",
         "source_name": "DeepSop·S5.0L",
         "description": "生成快、风格全、易用，支持联网，适合快速出图",
-        "default_size": "2048x2048",
-        "default_quality": "2K",
         "extra_params": {"duration": 10}
     },
     "W2.7": {
@@ -938,8 +1084,6 @@ MODEL_CONFIGS = {
         "methodType": "6",
         "source_name": "DeepSop.W2.7",
         "description": "W2.7 支持文生图、图生图多模态输入，画质清晰，细节丰富",
-        "default_size": "2048*2048",
-        "default_quality": "2K",
         "extra_params": {}
     },
     "W2.7Pro": {
@@ -948,8 +1092,6 @@ MODEL_CONFIGS = {
         "methodType": "7",
         "source_name": "DeepSop.W2.7Pro",
         "description": "W2.7Pro 精准控图与风格迁移，角色一致性更优，画质细节更优",
-        "default_size": "2048*2048",
-        "default_quality": "2K",
         "extra_params": {}
     },
     "3.1Nano2-Evo": {
@@ -958,8 +1100,6 @@ MODEL_CONFIGS = {
         "methodType": "8",
         "source_name": "DeepSop·3.1Nano2-Evo",
         "description": "N2 支持多模态输入 精细参数调节 卓越的文字渲染和角色一致性",
-        "default_size": "1:1",
-        "default_quality": "2K",
         "extra_params": {}
     },
     "Nano2-Beta-Evo": {
@@ -968,8 +1108,6 @@ MODEL_CONFIGS = {
         "methodType": "9",
         "source_name": "DeepSop·Nano2 Beta-Evo",
         "description": "N2 支持多模态输入 精细参数调节 卓越的文字渲染和角色一致性",
-        "default_size": "1:1",
-        "default_quality": "2K",
         "extra_params": {}
     },
     "Image2": {
@@ -978,8 +1116,6 @@ MODEL_CONFIGS = {
         "methodType": "10",
         "source_name": "DeepSop·Image2",
         "description": "Image2 支持多模态图像生成 精准控图 细节丰富 角色一致性更优（GPTimage-2）",
-        "default_size": "auto",
-        "default_quality": "2K",
         # ratiocination/imageSearch/n 均为 Image2 专属；默认不开启 imageSearch
         "extra_params": {"ratiocination": "medium", "imageSearch": True, "n": 1},
     },
@@ -989,9 +1125,7 @@ MODEL_CONFIGS = {
         "methodType": "11",
         "source_name": "DeepSop·Image2 Beta-Evo",
         "description": "Image2 Beta（服务端当前 hiddenState=1，待启用）",
-        "default_size": "auto",
         # mt=11 不提交 quality 字段，但保留 default 以防调用者误传
-        "default_quality": "2K",
         "extra_params": {},
     },
     # ----- Image models currently hiddenState=1 (kept for future reactivation) -----
@@ -1001,8 +1135,6 @@ MODEL_CONFIGS = {
         "methodType": "0",
         "source_name": "DeepSop·S4.5",
         "description": "S4.5 支持电影级画质4K 角色一致性",
-        "default_size": "2048x2048",
-        "default_quality": "2K",
         "extra_params": {}
     },
     "N1": {
@@ -1011,8 +1143,6 @@ MODEL_CONFIGS = {
         "methodType": "1",
         "source_name": "DeepSop·N1",
         "description": "N1 支持多模态输入 精细参数调节 卓越的文字渲染和角色一致性",
-        "default_size": "1:1",
-        "default_quality": "1K",
         "extra_params": {}
     },
     "N2-147": {
@@ -1021,8 +1151,6 @@ MODEL_CONFIGS = {
         "methodType": "3",
         "source_name": "DeepSop·3-Nano2-147",
         "description": "N2 支持多模态输入 精细参数调节 卓越的文字渲染和角色一致性",
-        "default_size": "1:1",
-        "default_quality": "2K",
         "extra_params": {}
     },
     "N2Pro-147": {
@@ -1031,8 +1159,6 @@ MODEL_CONFIGS = {
         "methodType": "5",
         "source_name": "DeepSop·3.1Nano2-147",
         "description": "N2 支持多模态输入 精细参数调节 卓越的文字渲染和角色一致性",
-        "default_size": "1:1",
-        "default_quality": "2K",
         "extra_params": {}
     },
 
@@ -1043,9 +1169,6 @@ MODEL_CONFIGS = {
         "methodType": "2",
         "source_name": "DeepSop·S1.5Pro",
         "description": "S1.5Pro 影视级连贯叙事视频 音画同步与精准口型对齐",
-        "default_ratio": "16:9",
-        "default_resolution": "720p",
-        "default_duration": 10,
         "extra_params": {
             "generationType": "FIRST&LAST",
             "negativePrompt": "",
@@ -1071,9 +1194,6 @@ MODEL_CONFIGS = {
         "methodType": "3",
         "source_name": "DeepSop·V3.1FB",
         "description": "V3.1FB 快速生成 基础流畅",
-        "default_ratio": "16:9",
-        "default_resolution": "1080p",
-        "default_duration": 8,
         "extra_params": {
             "generationType": "FIRST&LAST",
             "enhancePrompt": False,
@@ -1086,9 +1206,6 @@ MODEL_CONFIGS = {
         "methodType": "4",
         "source_name": "DeepSop·V3.1PB",
         "description": "V3.1Pro 多图参考 角色一致性",
-        "default_ratio": "adaptive",
-        "default_resolution": "720p",
-        "default_duration": 8,
         "extra_params": {
             "generationType": "FIRST&LAST",
             "enhancePrompt": False,
@@ -1101,9 +1218,6 @@ MODEL_CONFIGS = {
         "methodType": "5",
         "source_name": "DeepSop·V3.1Fast",
         "description": "V3.1Fast 快速生成 音画同步 竖屏适配",
-        "default_ratio": "16:9",
-        "default_resolution": "720p",
-        "default_duration": 8,
         "extra_params": {
             "generationType": "FIRST&LAST",
             "negativePrompt": "",
@@ -1121,9 +1235,6 @@ MODEL_CONFIGS = {
         "methodType": "7",
         "source_name": "DeepSop·W2.6t",
         "description": "W2.6t 文生视频 智能多镜头叙事 15秒 1080P高清",
-        "default_ratio": "16:9",
-        "default_resolution": "720p",
-        "default_duration": 10,
         "extra_params": {
             "generationType": "TEXT",
             "negativePrompt": "",
@@ -1138,9 +1249,6 @@ MODEL_CONFIGS = {
         "methodType": "8",
         "source_name": "DeepSop·W2.6i",
         "description": "W2.6i 适合让插画或照片\"活起来\" 动作延展与场景叙事",
-        "default_ratio": "16:9",
-        "default_resolution": "720p",
-        "default_duration": 10,
         "extra_params": {
             "generationType": "FIRST&LAST",
             "negativePrompt": "",
@@ -1155,9 +1263,6 @@ MODEL_CONFIGS = {
         "methodType": "9",
         "source_name": "DeepSop·W2.6r",
         "description": "W2.6r 参考视频生成视频 保留角色和音色 可跨场景迁移与互动",
-        "default_ratio": "16:9",
-        "default_resolution": "720p",
-        "default_duration": 10,
         "extra_params": {
             "generationType": "REFERENCE",
             "negativePrompt": "",
@@ -1172,9 +1277,6 @@ MODEL_CONFIGS = {
         "methodType": "10",
         "source_name": "DeepSop.klingV3Omni",
         "description": "支持多模态融合输入，画面细节丰富，角色与场景一致性更优（按张计费）",
-        "default_ratio": "16:9",
-        "default_resolution": "720p",
-        "default_duration": 10,
         "extra_params": {
             "generationType": "FIRST&LAST",
             "negativePrompt": "",
@@ -1200,9 +1302,6 @@ MODEL_CONFIGS = {
         "methodType": "14",
         "source_name": "DeepSop·W2.7i",
         "description": "W2.7i 图生视频 首尾帧平滑过渡 动作延展与视频续写 更流畅自然",
-        "default_ratio": "16:9",
-        "default_resolution": "720p",
-        "default_duration": 10,
         "extra_params": {
             "generationType": "FIRST&LAST",
             "negativePrompt": "",
@@ -1216,9 +1315,6 @@ MODEL_CONFIGS = {
         "methodType": "15",
         "source_name": "DeepSop.W2.7t",
         "description": "W2.7t 文生视频 智能多镜头剪辑 自动配音 2K高清 成片更高效",
-        "default_ratio": "16:9",
-        "default_resolution": "720p",
-        "default_duration": 10,
         "extra_params": {
             "generationType": "TEXT",
             "negativePrompt": "",
@@ -1232,9 +1328,6 @@ MODEL_CONFIGS = {
         "methodType": "16",
         "source_name": "DeepSop.W2.7r",
         "description": "W2.7r 参考视频生成 保留角色音色 多模态融合编辑 跨场景迁移",
-        "default_ratio": "16:9",
-        "default_resolution": "720p",
-        "default_duration": 10,
         "extra_params": {
             "generationType": "REFERENCE",
             "negativePrompt": "",
@@ -1248,9 +1341,6 @@ MODEL_CONFIGS = {
         "methodType": "17",
         "source_name": "DeepSop·S2.0",
         "description": "Seedance2.0 物理一致性更优 多模态融合（图像/视频/音频参考）支持联网搜索",
-        "default_ratio": "16:9",
-        "default_resolution": "720p",
-        "default_duration": 10,
         "extra_params": {
             "generationType": "TEXT",
             "imageUrlList": None,
@@ -1270,9 +1360,6 @@ MODEL_CONFIGS = {
         "methodType": "18",
         "source_name": "DeepSop·S2.0Fast",
         "description": "Seedance2.0 Fast 快速版 多模态融合（图像/视频/音频参考）支持联网搜索 最高 720P",
-        "default_ratio": "16:9",
-        "default_resolution": "720p",
-        "default_duration": 10,
         "extra_params": {
             "generationType": "TEXT",
             "imageUrlList": None,
@@ -1292,9 +1379,6 @@ MODEL_CONFIGS = {
         "methodType": "19",
         "source_name": "DeepSop.HappyHorse",
         "description": "HappyHorse 高效生成高质量短视频，适用于社交、广告等场景",
-        "default_ratio": "16:9",
-        "default_resolution": "720p",
-        "default_duration": 10,
         "extra_params": {
             "generationType": "TEXT",
             "imageUrlList": None,
@@ -1310,9 +1394,6 @@ MODEL_CONFIGS = {
         "methodType": "1",
         "source_name": "DeepSop·Sora2 Beta Max Evolink",
         "description": "Sora 2 Beta Max Evolink",
-        "default_ratio": "16:9",
-        "default_resolution": "720p",
-        "default_duration": 10,
         "extra_params": {}
     },
     "V3.1Pro": {
@@ -1321,9 +1402,6 @@ MODEL_CONFIGS = {
         "methodType": "6",
         "source_name": "DeepSop·V3.1Pro",
         "description": "专业版模型 4K超清 多图参考角色跨场景一致性 商业级",
-        "default_ratio": "16:9",
-        "default_resolution": "1080p",
-        "default_duration": 8,
         "extra_params": {
             "generationType": "FIRST&LAST",
             "negativePrompt": "",
@@ -1341,9 +1419,6 @@ MODEL_CONFIGS = {
         "methodType": "11",
         "source_name": "DeepSop·Sora2.147",
         "description": "物理真实、叙事连贯、音画同步，电影级质感",
-        "default_ratio": "16:9",
-        "default_resolution": "720p",
-        "default_duration": 10,
         "extra_params": {}
     },
     "Sora2Pro-147": {
@@ -1352,9 +1427,6 @@ MODEL_CONFIGS = {
         "methodType": "12",
         "source_name": "DeepSop·Sora2 Pro.147",
         "description": "物理真实、时长更长、音画同步、画质专业、影视级可控性强",
-        "default_ratio": "16:9",
-        "default_resolution": "720p",
-        "default_duration": 10,
         "extra_params": {}
     },
     "Sora2Pro-Evolink": {
@@ -1363,15 +1435,12 @@ MODEL_CONFIGS = {
         "methodType": "13",
         "source_name": "DeepSop·Sora2 Pro Evolink",
         "description": "原生视频生成，具备帧级动态控制、音画同步等视频专属能力",
-        "default_ratio": "16:9",
-        "default_resolution": "720p",
-        "default_duration": 10,
         "extra_params": {}
     }
 }
 
 
-def create_video_task(prompt, model="V3.1FB", ratio=None, resolution=None,
+def create_video_task(prompt, model=None, ratio=None, resolution=None,
                       duration=None, first_image_url=None, last_image_url=None,
                       generate_audio=None, scale_factor=None, generation_type=None,
                       enhance_prompt=None, prompt_extend=None, audio_url=None,
@@ -1403,6 +1472,18 @@ def create_video_task(prompt, model="V3.1FB", ratio=None, resolution=None,
         video_url_list: List of video URLs for reference (WAN *r)
     """
     url = f"{BASE_URL}/AiArtistRecord"
+
+    # API-driven default: when caller omits `model`, pick the first active
+    # non-'auto' video model from consumeSource/list (no hardcoded fallback).
+    if model is None:
+        model = _get_default_model("video")
+        if model is None:
+            print(
+                "无法从接口获取可用的视频模型，请显式通过 model 参数指定，或检查服务端状态。",
+                file=sys.stderr,
+            )
+            return None
+        print(f"[auto] 使用接口返回的第一个可用视频模型 {model}", file=sys.stderr)
 
     # Accept friendly key or methodType (e.g. 'HappyHorse' or '19')
     resolved = _resolve_model_key(model)
@@ -1436,20 +1517,29 @@ def create_video_task(prompt, model="V3.1FB", ratio=None, resolution=None,
         )
 
     config = MODEL_CONFIGS[model]
-    effective_ratio = ratio or config.get("default_ratio", "16:9")
-    effective_resolution = resolution or config.get("default_resolution", "720p")
-    effective_duration = duration or config.get("default_duration", 10)
+    method_type = config["methodType"]
+
+    # Defaults follow the frontend pattern: BASE_DEFAULTS + handleMethodTypeChange
+    # + 'methodType' switch reset block. No model-specific default_ratio /
+    # default_resolution / default_duration overrides.
+    base_params = _build_video_defaults(method_type)
+    base_ratio = base_params["ratio"]
+    base_resolution = base_params["resolution"]
+    base_duration = base_params["duration"]
+
+    effective_ratio = ratio or base_ratio
+    effective_resolution = resolution or base_resolution
+    effective_duration = duration or base_duration
 
     # Validate ratio / resolution / generationType against per-model whitelists.
     if model in VIDEO_RATIOS:
         effective_ratio = _coerce_value(
-            effective_ratio, VIDEO_RATIOS[model],
-            config.get("default_ratio", "16:9"), "ratio", model,
+            effective_ratio, VIDEO_RATIOS[model], base_ratio, "ratio", model,
         )
     if model in VIDEO_RESOLUTIONS:
         effective_resolution = _coerce_value(
-            effective_resolution, VIDEO_RESOLUTIONS[model],
-            config.get("default_resolution", "720p"), "resolution", model,
+            effective_resolution, VIDEO_RESOLUTIONS[model], base_resolution,
+            "resolution", model,
         )
     if generation_type is not None and model in VIDEO_GENERATION_TYPES:
         generation_type = _coerce_value(
@@ -1457,7 +1547,11 @@ def create_video_task(prompt, model="V3.1FB", ratio=None, resolution=None,
             VIDEO_GENERATION_TYPES[model][0], "generationType", model,
         )
 
-    parameter = dict(config["extra_params"])  # copy defaults
+    # Start from frontend-equivalent base defaults, then layer any model-level
+    # extra_params (kept only for fields that are NOT covered by BASE_DEFAULTS,
+    # e.g. legacy targetMax* hints that are normalized later).
+    parameter = base_params
+    parameter.update(config.get("extra_params", {}))
 
     # Resolve pixel size from ratio + resolution
     resolution_size_map = {
@@ -1714,7 +1808,7 @@ def create_video_task(prompt, model="V3.1FB", ratio=None, resolution=None,
         return None
 
 
-def generate_video(prompt, model="V3.1FB", ratio=None, resolution=None,
+def generate_video(prompt, model=None, ratio=None, resolution=None,
                    duration=None, poll_interval=5, first_image_url=None,
                    last_image_url=None, generate_audio=None, scale_factor=None,
                    generation_type=None, enhance_prompt=None, prompt_extend=None,
@@ -1832,7 +1926,7 @@ def generate_video(prompt, model="V3.1FB", ratio=None, resolution=None,
     return result
 
 
-def create_generation_task(prompt, quality="2K", size=None, model="3.1Nano2-Evo",
+def create_generation_task(prompt, quality=None, size=None, model=None,
                            reference_image_url=None, web_search=None,
                            image_search=None, ratiocination=None, n=None):
     """Create an image generation task.
@@ -1852,6 +1946,18 @@ def create_generation_task(prompt, quality="2K", size=None, model="3.1Nano2-Evo"
         n: Image count for Image2 (1-10)
     """
     url = f"{BASE_URL}/AiArtistRecord"
+
+    # API-driven default: when caller omits `model`, pick the first active
+    # non-'auto' image model from consumeSource/list (no hardcoded fallback).
+    if model is None:
+        model = _get_default_model("image")
+        if model is None:
+            print(
+                "无法从接口获取可用的图片模型，请显式通过 model 参数指定，或检查服务端状态。",
+                file=sys.stderr,
+            )
+            return None
+        print(f"[auto] 使用接口返回的第一个可用图片模型 {model}", file=sys.stderr)
 
     # Accept friendly key or methodType (e.g. '3.1Nano2-Evo' or '8')
     resolved = _resolve_model_key(model)
@@ -1874,48 +1980,64 @@ def create_generation_task(prompt, quality="2K", size=None, model="3.1Nano2-Evo"
     prompt = _check_text_length(prompt, image_restriction.get("textLength"), "prompt", model)
 
     config = MODEL_CONFIGS[model]
+    method_type = config["methodType"]
+
+    # Defaults follow the frontend pattern: BASE_DEFAULTS + handleMethodTypeChange.
+    # No model-specific default_quality / default_size overrides.
+    base_params = _build_image_defaults(method_type)
+    base_quality = base_params["quality"]
+    base_size = base_params["size"]
+
+    if quality is None:
+        quality = base_quality
+    if size is None:
+        size = base_size
 
     # Validate quality against per-model whitelist (matchImageQualityOptions)
     if model in IMAGE_QUALITIES:
         quality = _coerce_value(
-            quality, IMAGE_QUALITIES[model],
-            config.get("default_quality", "2K"), "quality", model,
+            quality, IMAGE_QUALITIES[model], base_quality, "quality", model,
         )
 
-    # Use model's default size if not specified
-    if size is None:
-        size = config["default_size"]
-    else:
-        # Validate ratio-style size (e.g. "16:9"); pixel sizes contain 'x' or '*'.
-        is_pixel_size = ("x" in size and any(c.isdigit() for c in size.split("x")[0])) \
-                        or ("*" in size and any(c.isdigit() for c in size.split("*")[0]))
-        if not is_pixel_size and model in IMAGE_SIZE_EXCLUDED:
-            excluded = IMAGE_SIZE_EXCLUDED[model]
-            if size in excluded:
-                print(
-                    f"{model} 不支持 size={size!r}（被排除：{excluded}），"
-                    f"自动调整为默认值 {config['default_size']!r}",
-                    file=sys.stderr,
-                )
-                size = config["default_size"]
-    
+    # Validate ratio-style size (e.g. "16:9"); pixel sizes contain 'x' or '*'.
+    is_pixel_size = ("x" in str(size) and any(c.isdigit() for c in str(size).split("x")[0])) \
+                    or ("*" in str(size) and any(c.isdigit() for c in str(size).split("*")[0]))
+    if not is_pixel_size and model in IMAGE_SIZE_EXCLUDED:
+        excluded = IMAGE_SIZE_EXCLUDED[model]
+        if size in excluded:
+            print(
+                f"{model} 不支持 size={size!r}（被排除：{excluded}），"
+                f"自动调整为默认值 {base_size!r}",
+                file=sys.stderr,
+            )
+            size = base_size
+
+    # Pixel-size models (mt 0,4 → 'x'; mt 6,7 → '*'): if caller passed a ratio
+    # like '1:1', convert to a pixel string matching frontend buildImageParams.
+    pixel_sep = _IMAGE_PIXEL_SEP_BY_MT.get(str(method_type))
+    if pixel_sep and not is_pixel_size:
+        size = _image_size_to_pixels(quality, size, pixel_sep)
+
     # Build image array - support reference image for image-to-image
     image_array = []
     if reference_image_url:
         image_array = [reference_image_url]
-    
-    parameter = {
-        "methodType": config["methodType"],
+
+    # Start from frontend-equivalent base defaults
+    parameter = base_params
+    parameter.update({
+        "methodType": method_type,
         "prompt": prompt,
         "image": image_array,
         "quality": quality,
         "size": size,
-        "webSearch": bool(web_search) if web_search is not None else False,
         "targetMaxSize": 10,
         "targetMaxLength": 6000,
-    }
-    # Merge model-specific extra params (defaults for ratiocination / imageSearch / n etc.)
-    parameter.update(config["extra_params"])
+    })
+    if web_search is not None:
+        parameter["webSearch"] = bool(web_search)
+    # Layer any model-level extra_params (kept only for fields NOT in BASE_DEFAULTS)
+    parameter.update(config.get("extra_params", {}))
 
     # ----- Image2 / Nano2 explicit overrides from caller -----
     if image_search is not None:
@@ -2037,8 +2159,8 @@ def poll_task_status(task_id, interval=5, max_wait=1200):
     }
 
 
-def generate_image(prompt, quality="2K", size=None, poll_interval=5,
-                   download=False, output_dir=None, model="3.1Nano2-Evo",
+def generate_image(prompt, quality=None, size=None, poll_interval=5,
+                   download=False, output_dir=None, model=None,
                    reference_image_path=None, reference_image_url=None,
                    web_search=None, image_search=None, ratiocination=None,
                    n=None, max_wait=1200):
@@ -2219,13 +2341,21 @@ if __name__ == "__main__":
 
     # Auto-select default model when the user did NOT pass --model explicitly.
     # Mirrors frontend: pick the first active (hiddenState=0, sourceValue!='auto')
-    # model returned by consumeSource/list for the inferred media_type.
+    # model returned by consumeSource/list for the inferred media_type. No
+    # hardcoded fallback — if the API is unreachable or returns nothing, abort
+    # with a clear error rather than silently submitting to a stale model.
     if args.model is None:
         inferred = _infer_media_type(args.prompt)
-        fallback = "V3.1FB" if inferred == "video" else "3.1Nano2-Evo"
-        args.model = _get_default_model(inferred, fallback)
-        print(f"[auto] 根据提示词推断媒介 → {inferred}，使用接口返回的第一个可用模型 {args.model}",
-              file=sys.stderr)
+        args.model = _get_default_model(inferred)
+        if args.model is None:
+            parser.error(
+                f"无法从接口获取可用的{inferred}模型，请运行 --list-models 检查服务端状态，"
+                f"或显式通过 --model 指定模型"
+            )
+        print(
+            f"[auto] 根据提示词推断媒介 → {inferred}，使用接口返回的第一个可用模型 {args.model}",
+            file=sys.stderr,
+        )
     else:
         # Resolve friendly-name | methodType to the canonical friendly key
         resolved = _resolve_model_key(args.model)

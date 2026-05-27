@@ -6,9 +6,9 @@ description: |
   ⚠️ 使用前必须设置环境变量 AI_ARTIST_TOKEN 为你自己的 API Key！
   需要 API Key 授权：已有账号请前往 https://ai.deepsop.com/login?source=2 登录获取；没有账号请前往 https://ai.deepsop.com/register?source=2 注册后获取。
 
-  支持图片模型：**3.1Nano2-Evo（默认）**、S5.0L、N2、W2.7、W2.7Pro、Nano2-Beta-Evo、**Image2（GPTimage-2）**。
-  支持视频模型：**V3.1FB（默认）**、S1.5Pro、V3.1PB、V3.1Fast、W2.6t / W2.6i / W2.6r、klingV3Omni、W2.7t / W2.7i / W2.7r、**S2.0 / S2.0Fast**（Seedance2.0 系列，支持多音频参考与联网搜索）、**HappyHorse**（高效短视频，支持文生/首帧/参考图/视频编辑模式）。
-  查看当前服务端激活的模型请运行：`python3 scripts/generate_image.py --list-models`。
+  支持图片模型：3.1Nano2-Evo、S5.0L、N2、W2.7、W2.7Pro、Nano2-Beta-Evo、**Image2（GPTimage-2）**。
+  支持视频模型：V3.1FB、S1.5Pro、V3.1PB、V3.1Fast、W2.6t / W2.6i / W2.6r、klingV3Omni、W2.7t / W2.7i / W2.7r、**S2.0 / S2.0Fast**（Seedance2.0 系列，支持多音频参考与联网搜索）、**HappyHorse**（高效短视频，支持文生/首帧/参考图/视频编辑模式）。
+  默认模型从接口 `consumeSource/list` 实时获取（第一个非 `auto` 的可用模型），无本地硬编码兜底；查看当前服务端激活的模型请运行：`python3 scripts/generate_image.py --list-models`。
 
   触发场景：
   - 用户要求生成图片，如"生成一匹狼"、"画一只猫"、"风景画"、"帮我画"等。
@@ -147,8 +147,8 @@ python3 scripts/generate_image.py "提示词"
 ### 何时可以不提问直接执行
 
 - 用户请求非常明确（提示词清晰 + 指定了模型 + 提供了必要的参考材料 URL）
-- 用户明确说"快速来一张就行" / "随便出个视频"：用默认模型与默认参数，生成后告知用了什么。
-- 用户只要一张插画/头像/风景图 → 直接用默认 `3.1Nano2-Evo` 图片模型。
+- 用户明确说"快速来一张就行" / "随便出个视频"：直接执行，脚本会从接口拉取第一个可用模型并打印 `[auto] 使用接口返回的第一个可用…模型 …`，生成后将实际使用的模型告知用户。
+- 用户只要一张插画/头像/风景图 → 不指定 `--model`，由接口决定默认图片模型。
 
 ## 参考图/视频上传流程
 
@@ -247,7 +247,7 @@ if result and result["status"] == "SUCCESS":
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
 | `--quality` | `2K` | 图片质量 (2K/4K) |
-| `--size` | 模型默认值 | 图片尺寸。`S5.0L` / `W2.7` / `W2.7Pro`: `2048x2048`，`N2` / `3.1Nano2-Evo` / `Nano2-Beta-Evo`: `1:1` |
+| `--size` | 接口/methodType 决定 | 图片尺寸。脚本按前端 `handleMethodTypeChange` 派生默认值（mt ∈ {2,8,9,10,11} → `auto`；其他 → `1:1`），并对 `S5.0L (mt=4)` / `W2.7 (mt=6)` / `W2.7Pro (mt=7)` 自动转换为像素串（如 `2048x2048` / `2048*2048`）|
 | `--download` | - | 下载图片到本地 |
 | `--output-dir` | `workspace/images` | 图片保存目录 |
 | `--markdown-output` | - | 以 Markdown 格式输出图片链接 |
@@ -286,7 +286,7 @@ if result and result["status"] == "SUCCESS":
 
 | 模型 | sourceName | methodType | 默认尺寸 | 特点 |
 |------|-----------|-----------|---------|------|
-| `S5.0L` | DeepSop·S5.0L | `4` | `2048x2048` | 默认模型，质量 2K/3K，支持联网，像素尺寸 WxH |
+| `S5.0L` | DeepSop·S5.0L | `4` | `2048x2048` | 质量 2K/3K，支持联网，像素尺寸 WxH（脚本将 `1:1` 比例自动序列化为像素串） |
 | `N2` | DeepSop·Nano1 Pro | `2` | `1:1` | 多模态输入，精细参数调节，卓越文字渲染与角色一致性（比例格式；服务端已重命名为 Nano1 Pro）|
 | `W2.7` | DeepSop.W2.7 | `6` | `2048*2048` | 文生图/图生图多模态输入，质量 1K/2K，size 用 `*` 分隔 |
 | `W2.7Pro` | DeepSop.W2.7Pro | `7` | `2048*2048` | 精准控图与风格迁移，质量 1K/2K，size 用 `*` 分隔 |
@@ -357,7 +357,7 @@ if result and result["status"] == "SUCCESS":
 # 查看当前服务端激活的模型
 python3 scripts/generate_image.py --list-models
 
-# 基础用法 - 默认图片模型 3.1Nano2-Evo
+# 基础用法 - 由接口决定默认图片模型（第一个可用非 auto）
 python3 scripts/generate_image.py "一匹狼"
 
 # 使用 N2 模型（比例尺寸）
