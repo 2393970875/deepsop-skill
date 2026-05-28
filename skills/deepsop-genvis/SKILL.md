@@ -8,7 +8,7 @@ description: |
 
   支持图片模型：3.1Nano2-Evo、S5.0L、N2、W2.7、W2.7Pro、Nano2-Beta-Evo、**Image2（GPTimage-2）**。
   支持视频模型：V3.1FB、S1.5Pro、V3.1PB、V3.1Fast、W2.6t / W2.6i / W2.6r、klingV3Omni、W2.7t / W2.7i / W2.7r、**S2.0 / S2.0Fast**（Seedance2.0 系列，支持多音频参考与联网搜索）、**HappyHorse**（高效短视频，支持文生/首帧/参考图/视频编辑模式）。
-  默认模型从接口 `consumeSource/list` 实时获取（第一个非 `auto` 的可用模型），无本地硬编码兜底；查看当前服务端激活的模型请运行：`python3 scripts/generate_image.py --list-models`。
+  默认模型从接口 `consumeSource/list` 实时获取（第一个非 `auto` 的可用模型），无本地硬编码兜底；默认模型生成失败时不得自动切换到其他模型，必须把失败模型与失败原因告知用户；查看当前服务端激活的模型请运行：`python3 scripts/generate_image.py --list-models`。
 
   触发场景：
   - 用户要求生成图片，如"生成一匹狼"、"画一只猫"、"风景画"、"帮我画"等。
@@ -143,12 +143,15 @@ python3 scripts/generate_image.py "提示词"
   示例："我打算用 `klingV3Omni` 做参考图生视频，比例 16:9、时长 10s、生成声音。你有几张想作为参考的图片吗？要不要保留原音？"
 - **材料缺失时必须停下来要素材**（URL / 本地文件路径），不要用占位符或假 URL 代替。
 - 用户若说"随便/都行"，按默认值直接执行，并在生成后告知用了哪些默认。
+- 用户未指定模型时，必须使用脚本默认模型选择：按提示词推断图片/视频后，取接口返回的第一个非 `auto` 且 `hiddenState=0` 的可用模型；不要自行指定本地偏好模型。
+- 默认模型或指定模型生成失败时，必须停止并说明实际使用的模型、失败状态与失败原因；不得在同一轮请求中静默切换到其他模型重试或兜底。只有用户明确同意更换模型后，才能再次执行。
 
 ### 何时可以不提问直接执行
 
 - 用户请求非常明确（提示词清晰 + 指定了模型 + 提供了必要的参考材料 URL）
 - 用户明确说"快速来一张就行" / "随便出个视频"：直接执行，脚本会从接口拉取第一个可用模型并打印 `[auto] 使用接口返回的第一个可用…模型 …`，生成后将实际使用的模型告知用户。
 - 用户只要一张插画/头像/风景图 → 不指定 `--model`，由接口决定默认图片模型。
+- 若生成失败，即使知道其他模型可能成功，也必须先把失败原因反馈给用户并询问是否更换模型。
 
 ## 参考图/视频上传流程
 
@@ -241,6 +244,7 @@ if result and result["status"] == "SUCCESS":
 - **退出码**：`0` = 成功，`1` = 失败/超时
 
 脚本会**始终轮询到终态（SUCCESS / FAILED / TIMEOUT）才退出**，无需调用方自己再查询结果。
+当终态不是 `SUCCESS` 时，调用方/技能执行者必须原样反馈失败模型与 `message`；不得自动重新选择其他模型提交第二次任务。
 
 ### 图片专属参数
 
@@ -392,7 +396,7 @@ python3 scripts/generate_image.py "一只可爱的猫" --markdown-output
 # 使用参考图生成（自动上传本地图片并转换为 URL）
 python3 scripts/generate_image.py "基于这张图生成变体" --reference-image "./reference.png"
 
-# 生成视频 - 默认 V3.1FB（快速、固定 8 秒）
+# 生成视频 - 指定 V3.1FB（快速、固定 8 秒）
 python3 scripts/generate_image.py "现代轻奢吊灯" --model V3.1FB
 
 # 生成视频 - S1.5Pro（默认 16:9 / 720p / 10s）
@@ -444,7 +448,7 @@ python3 scripts/generate_image.py "保留角色音色迁移场景" --model W2.7r
 ```python
 from scripts.generate_image import generate_image, generate_video
 
-# 图片 - 默认 3.1Nano2-Evo
+# 图片 - 使用接口默认图片模型（第一个可用非 auto）
 result = generate_image(prompt="一只可爱的猫咪")
 
 # 查询当前激活模型（预览用）
@@ -528,7 +532,7 @@ result = generate_video(
 if result and result["status"] == "SUCCESS":
     print(f"链接: {result['url']}")
 
-# 视频 - 默认 V3.1FB
+# 视频 - 使用接口默认视频模型（第一个可用非 auto）
 result = generate_video(prompt="小骏马祝福大家新年快乐")
 
 # 视频 - 指定比例、分辨率、时长

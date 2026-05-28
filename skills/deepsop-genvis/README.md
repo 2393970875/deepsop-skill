@@ -42,14 +42,14 @@ python3 scripts/test_config.py
 # 查看当前服务端激活的模型
 python3 scripts/generate_image.py --list-models
 
-# 默认图片模型（3.1Nano2-Evo）
+# 默认图片模型（接口返回的第一个可用非 auto 模型）
 python3 scripts/generate_image.py "一只可爱的猫"
 ```
 
 ## 🎨 支持模型
 
 ### 图片模型（以 API sourceName 命名）
-- `3.1Nano2-Evo`（默认）— DeepSop·3.1Nano2-Evo，N2 进化版
+- `3.1Nano2-Evo` — DeepSop·3.1Nano2-Evo，N2 进化版
 - `S5.0L` — DeepSop·S5.0L，生成快、风格全、支持联网
 - `N2` — DeepSop·N2，多模态输入、卓越文字渲染
 - `W2.7` — DeepSop.W2.7，文生图/图生图多模态输入
@@ -57,7 +57,7 @@ python3 scripts/generate_image.py "一只可爱的猫"
 - `Nano2-Beta-Evo` — DeepSop·Nano2 Beta-Evo，N2 Beta 进化版
 
 ### 视频模型（以 API sourceName 命名）
-- `V3.1FB`（默认）— DeepSop·V3.1FB，快速生成基础流畅，固定 8 秒
+- `V3.1FB` — DeepSop·V3.1FB，快速生成基础流畅，固定 8 秒
 - `S1.5Pro` — DeepSop·S1.5Pro，影视级连贯叙事
 - `V3.1PB` — DeepSop·V3.1PB，多图参考角色一致性
 - `V3.1Fast` — DeepSop·V3.1Fast，音画同步、竖屏适配
@@ -117,6 +117,8 @@ pytest tests -q
 
 - 必须使用你自己的 `DEEPSOP_API_KEY`
 - 任务创建前会执行费用预估；若余额不足将不会提交任务
+- 未指定模型时，脚本从服务端模型列表选择第一个非 `auto` 且启用的可用模型作为默认模型，不使用本地写死默认值
+- 生成失败时不要自动切换模型重试；应先反馈实际使用模型与失败原因，由用户决定是否更换模型
 - 请遵守 AI Artist API 的使用条款
 
 ---
