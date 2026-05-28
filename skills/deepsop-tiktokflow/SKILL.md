@@ -65,6 +65,7 @@ DEEPSOP_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxx
 | 1.5 | Step 1.5.1③ 用户 Profile（取 userId） | `GET` | `/ai/user/profile` |
 | 2 | Step 3 提交任务 | `POST` | `/ai/presetEmployee/submitTask` |
 | 3 | Step 3 前置 E-1 TikTok 账号列表 | `GET` | `/ai/authaccount/list?pageNum=1&pageSize=999&platform=1&status=1` |
+| 3.1 | Step 3 前置 E-1.1 TikTok 授权链接 | `GET` | `/ai/auth/tiktok/tiktokAuth` |
 | 4 | Step 3 前置 E-2 TikTok 账号权限 | `GET` | `/ai/auth/tiktok/getCreatorInfo?authAccountId={id}` |
 | 5 | Step 3 前置 E-3 视频模型列表 | `POST` | `/ai/consumeSource/list?pageNum=1&pageSize=999` |
 | 6 | Step 5-1 视频统计 | `GET` | `/ai/data/count?taskId={tobyDagTaskId}&customerPoolId={tobyCustomerPoolId}&platform=1` |
@@ -207,14 +208,31 @@ priceKCoin = actualPrice × (discountRate / 100) × rate
 - `rows[].id`、`rows[].account`、`rows[].fansNum`、`rows[].groupNames`、`rows[].expiredTime`
 
 处理：
-- `rows` 为空 → 终止：
-  > ⚠️ 当前账号未绑定任何 TikTok 授权账号，请先登录 https://ai.deepsop.com 添加 TikTok 授权账号后再试。
-- 1 条 → 列出并等用户回复「确认」：
+- `rows` 为空 → 进入 E-1.1 授权流程，不得直接终止。
+- 1 条 → 列出并等用户回复「确认」或「授权新账号」：
   ```
   检测到以下 TikTok 账号，请确认是否使用（回复「确认」即可）：
   1. @{account}（粉丝：{fansNum}，分组：{groupNames}）
+  如需新增 TikTok 授权账号，请回复「授权新账号」。
   ```
 - 多条 → 列出供用户多选（逗号分隔序号）。
+- 账号列表非空时，用户仍可回复「授权新账号」进入 E-1.1；授权完成后必须重新执行 E-1 刷新列表，再让用户确认/选择账号。
+
+**E-1.1：新增 TikTok 授权账号**
+
+接口：`GET https://ai.deepsop.com/prod-api/ai/auth/tiktok/tiktokAuth`
+
+请求头：`x-api-key: $DEEPSOP_API_KEY`
+
+响应：接口返回 TikTok 授权链接（如响应体为标准 `{code,msg,data}`，优先取 `data`；否则取可识别的链接字符串）。
+
+处理：
+- 获取到授权链接后，自动打开浏览器让用户完成 TikTok 授权。
+- 优先尝试使用无痕/隐私模式打开；若当前环境无法指定无痕模式，则使用系统默认浏览器打开，并明确提示用户可手动复制链接到无痕窗口。
+- 打开后提示：
+  > 已打开 TikTok 授权页面，请在浏览器中完成账号授权。授权完成后回复「已授权」，我将刷新 TikTok 授权账号列表。
+- 用户回复「已授权」后，必须重新调用 E-1 的账号列表接口刷新账号列表。
+- 刷新后仍为空 → 再次提示用户确认是否完成授权，可重新执行 E-1.1 或终止。
 
 **等待用户确认/选择**后，将选中账号的 `id` 列表记为 `selectedAccountIds`。
 
@@ -687,7 +705,7 @@ cron 设置成功后回复：
   - 已有账号 → [https://ai.deepsop.com/login?source=5](https://ai.deepsop.com/login?source=5)
   - 没有账号 → [https://ai.deepsop.com/register?source=5](https://ai.deepsop.com/register?source=5)
 - POST 接口返回非 200：展示错误信息，提示检查参数或稍后重试
-- TikTok 账号为空：终止任务，提示用户登录 https://ai.deepsop.com 添加 TikTok 授权账号
+- TikTok 账号为空：调用 `/ai/auth/tiktok/tiktokAuth` 获取授权链接并打开浏览器，引导用户授权；用户授权完成后刷新账号列表，刷新后仍为空再提示重试或终止
 - 视频模型列表为空：终止任务，提示用户联系管理员开通视频生成权限
 - 获取账号权限失败：提示用户重新授权该 TikTok 账号
 - 统计/列表接口异常或数据为空：提示视频任务可能仍在生成/发布中，给出 tobyDagTaskId 供用户告知「再查 Toby 结果」

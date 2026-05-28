@@ -43,6 +43,8 @@ API_PATHS: Final[dict[str, str]] = {
     "preset_employee_submit_task":     "/ai/presetEmployee/submitTask",
     # 3：TikTok 账号列表
     "authaccount_list":                "/ai/authaccount/list",
+    # 3.1：TikTok 授权链接
+    "tiktok_auth":                     "/ai/auth/tiktok/tiktokAuth",
     # 4：TikTok 账号权限
     "tiktok_get_creator_info":         "/ai/auth/tiktok/getCreatorInfo",
     # 5：视频模型列表
