@@ -229,10 +229,10 @@ python scripts/voice_clone.py --create --name "客服小王" --audio "./wang.mp3
 
 ```bash
 # Windows PowerShell
-$env:DEEPSOP_API_KEY="sk-5c6c262755dc43d59ec5a742a7e80202"
+$env:DEEPSOP_API_KEY="sk-your_api_key_here"
 
 # Linux/macOS
-export DEEPSOP_API_KEY="sk-5c6c262755dc43d59ec5a742a7e80202"
+export DEEPSOP_API_KEY="sk-your_api_key_here"
 ```
 
 ### 方式 2：永久设置（推荐）
