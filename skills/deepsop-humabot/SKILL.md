@@ -937,21 +937,22 @@ SCRIPT_BODY_EOF
 
 > 🧷 **下任务参数总规约（最高优先级，所有员工通用）**
 >
-> 提交任务时 `collaborationSubmitTaskParam` 对象**有且仅有以下 5 个根级键**，键名、类型、取值规则严格如下：
+> 提交任务时 `collaborationSubmitTaskParam` 对象**有且仅有以下 7 个根级键**，键名、类型、取值规则严格如下：
 >
 > ```ts
 > {
 >   "taskName":        String,   // AI 总结出的任务名称（来自 Step 1 的 taskName，非空字符串）
 >   "currentModule":   "content",// 字符串字面量，永远是 "content"（不分员工组合，无任何例外）
 >   "executionMode":   Number,   // 永远写数字 1（当前阶段一律按定额任务下达；后端枚举：周期性=0、定额=1）
+>   "recentFilter":    Boolean,  // 是否过滤30天内已挖掘/已通话/已发短信/已发邮件的客户，默认 true
 >   "employeeParams":  Object,   // 见下方规约
+>   "sourceSettings":  Object | null, // 见下方「员工组合 → sourceSettings 对照表」（含 Fran/Lisa 时为完整对象，否则为 null）
 >   "taskDescription": String    // 用户最初下达的原始任务描述，原文透传，不要改写/精简/翻译
 > }
 > ```
 >
 > 同时与 `collaborationSubmitTaskParam` **同级**必须再带：
 > - `completed`: `true`（布尔字面量）
-> - `sourceSettings`: 见下方「员工组合 → sourceSettings 对照表」（含 Fran/Lisa 时为完整对象，否则为 `null`）
 >
 > **`employeeParams` 规约：**
 > - 是一个对象，key 为参与员工的 PascalCase 名称（`AiWa` / `Frank` / `Fran` / `Lisa`），value 为该员工自己的参数对象。
@@ -967,9 +968,10 @@ SCRIPT_BODY_EOF
 > **必须遵守的硬规则（违反任意一条，后端立即拒绝）：**
 > 1. `currentModule` 永远等于字符串 `"content"`，禁止写 `"analysis"` / `"Content"` / `null` / 省略。
 > 2. `executionMode` 永远等于数字 `1`，禁止写 `0` / `2` / `"1"` / `true` / `"定额任务"` / `"周期性任务"`。
-> 3. `taskDescription` 透传用户原始指令文本，禁止改写为 AI 总结后的简短描述（那是 `taskName` 的活儿）。
-> 4. `employeeParams` 子键必须是 PascalCase 原样（`AiWa` / `Frank` / `Fran` / `Lisa`），不得改成 `aiwa` / `aiwaParam` / `aiwaParams` 等任何变体。
-> 5. Step 1/Step 2 的内部解析变量（`employeeList` / `language` / 根级 `totalTarget`）一律不得出现在最终请求体中——它们只能流到对应员工子对象内的指定字段。
+> 3. `recentFilter` 必须是布尔值，默认写 `true`，含义为过滤最近 30 天内已挖掘、已通话、已发短信或已发邮件的客户；只有用户明确要求不过滤/关闭过滤时才写 `false`，禁止省略或写成 `"true"` / `"false"` 字符串。
+> 4. `taskDescription` 透传用户原始指令文本，禁止改写为 AI 总结后的简短描述（那是 `taskName` 的活儿）。
+> 5. `employeeParams` 子键必须是 PascalCase 原样（`AiWa` / `Frank` / `Fran` / `Lisa`），不得改成 `aiwa` / `aiwaParam` / `aiwaParams` 等任何变体。
+> 6. Step 1/Step 2 的内部解析变量（`employeeList` / `language` / 根级 `totalTarget`）一律不得出现在最终请求体中——它们只能流到对应员工子对象内的指定字段。
 >
 > **下方各员工的"参数构建规则"、"结构强约束"、"请求体示例"是上述规约的展开细节，构建请求体时必须先按本规约确定整体形状，再按对应员工的小节填充值。**
 
@@ -1389,6 +1391,7 @@ curl -s -H "x-api-key: $DEEPSOP_API_KEY" 'https://ai.deepsop.com/prod-api/ai/use
     "taskName": "家纺客户挖掘",
     "taskDescription": "帮我找10个做家纺的客户",
     "executionMode": 1,
+    "recentFilter": true,
     "employeeParams": {
       "AiWa": {
         "totalTarget": 10,
@@ -1482,6 +1485,7 @@ curl -s -H "x-api-key: $DEEPSOP_API_KEY" 'https://ai.deepsop.com/prod-api/ai/use
     "taskName": "启动财务课程电话销售",
     "taskDescription": "帮我找客户并启动电话销售",
     "executionMode": 1,
+    "recentFilter": true,
     "employeeParams": {
       "AiWa": { "...": "同上" },
       "Fran": {
@@ -1538,6 +1542,7 @@ curl -s -H "x-api-key: $DEEPSOP_API_KEY" 'https://ai.deepsop.com/prod-api/ai/use
     "taskName": "双十一老客户短信推广",
     "taskDescription": "帮我找客户并给老客户发短信",
     "executionMode": 1,
+    "recentFilter": true,
     "employeeParams": {
       "AiWa": { "...": "同上" },
       "Lisa": {

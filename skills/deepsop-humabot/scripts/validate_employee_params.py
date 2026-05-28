@@ -150,6 +150,26 @@ def validate_top_level(body: dict, errors: list) -> dict | None:
     else:
         err(errors, "collaborationSubmitTaskParam.executionMode", "MISSING_KEY", "缺少 executionMode")
 
+    # recentFilter 必须是布尔值，默认 true；允许用户明确关闭时为 false
+    if "recentFilter" in cstp:
+        rf = cstp["recentFilter"]
+        if not isinstance(rf, bool):
+            err(
+                errors,
+                "collaborationSubmitTaskParam.recentFilter",
+                "WRONG_TYPE",
+                f"recentFilter 必须是布尔值 true/false，当前为 {rf!r}（type={type(rf).__name__}）",
+                "默认改为布尔 true；仅用户明确要求不过滤/关闭过滤时改为布尔 false",
+            )
+    else:
+        err(
+            errors,
+            "collaborationSubmitTaskParam.recentFilter",
+            "MISSING_KEY",
+            "缺少 recentFilter",
+            "默认补充为布尔 true",
+        )
+
     # currentModule 固定为 "content"
     if "currentModule" in cstp:
         if cstp["currentModule"] != "content":
