@@ -17,10 +17,10 @@ AI Artist API 驱动的声音克隆与语音合成工具。
 
 ```bash
 # Windows PowerShell
-$env:AI_ARTIST_TOKEN="sk-your_api_key_here"
+$env:DEEPSOP_API_KEY="sk-your_api_key_here"
 
 # Linux/macOS
-export AI_ARTIST_TOKEN="sk-your_api_key_here"
+export DEEPSOP_API_KEY="sk-your_api_key_here"
 ```
 
 ### 3. 验证配置
@@ -79,7 +79,7 @@ python scripts/voice_clone.py --create --name "我的音色" --audio "./my_voice
 | **审查文件数** | 5（SKILL.md、README.md、api.md、voice_clone.py 等） |
 | **可疑模式** | ✖ 无 |
 | **网络访问** | `https://ai.deepsop.com/prod-api`（合法的语音合成接口，单一已知域名） |
-| **API Key 处理** | 仅从环境变量 `AI_ARTIST_TOKEN` 读取，未硬编码、无外泄 |
+| **API Key 处理** | 仅从环境变量 `DEEPSOP_API_KEY` 读取，未硬编码、无外泄 |
 | **文件访问** | 用户指定的音频文件读写 |
 | **依赖命令** | Python `requests` 库 |
 | **风险等级** | 🟡 MEDIUM（需配置 API Key） |

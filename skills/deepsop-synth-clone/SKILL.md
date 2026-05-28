@@ -3,7 +3,7 @@ name: deepsop-synth-clone
 description: |
   声音复刻技能，使用 AI Artist API 进行音色克隆和语音合成。支持查询已有音色、上传音频创建新音色、使用指定音色合成语音。
 
-  ⚠️ 使用前必须设置环境变量 AI_ARTIST_TOKEN 为你的 API Key！需要 API Key 授权。
+  ⚠️ 使用前必须设置环境变量 DEEPSOP_API_KEY 为你的 API Key！需要 API Key 授权。
 
   触发场景：
   - 用户要求生成语音，如"用蔡总的音色说..."、"生成一段语音"、"语音合成"等。
@@ -44,10 +44,10 @@ description: |
 
 ```bash
 # Windows PowerShell
-$env:AI_ARTIST_TOKEN="sk-your_api_key_here"
+$env:DEEPSOP_API_KEY="sk-your_api_key_here"
 
 # Linux/macOS/Git Bash (Windows)
-export AI_ARTIST_TOKEN="sk-your_api_key_here"
+export DEEPSOP_API_KEY="sk-your_api_key_here"
 ```
 
 ### 3. 验证配置
@@ -229,10 +229,10 @@ python scripts/voice_clone.py --create --name "客服小王" --audio "./wang.mp3
 
 ```bash
 # Windows PowerShell
-$env:AI_ARTIST_TOKEN="sk-5c6c262755dc43d59ec5a742a7e80202"
+$env:DEEPSOP_API_KEY="sk-5c6c262755dc43d59ec5a742a7e80202"
 
 # Linux/macOS
-export AI_ARTIST_TOKEN="sk-5c6c262755dc43d59ec5a742a7e80202"
+export DEEPSOP_API_KEY="sk-5c6c262755dc43d59ec5a742a7e80202"
 ```
 
 ### 方式 2：永久设置（推荐）
@@ -240,19 +240,19 @@ export AI_ARTIST_TOKEN="sk-5c6c262755dc43d59ec5a742a7e80202"
 创建 `.env` 文件（在脚本同目录或技能根目录）：
 
 ```bash
-AI_ARTIST_TOKEN=sk-your_api_key_here
+DEEPSOP_API_KEY=sk-your_api_key_here
 ```
 
 ### 方式 3：系统环境变量
 
 **Windows:**
 ```powershell
-[System.Environment]::SetEnvironmentVariable('AI_ARTIST_TOKEN', 'sk-your_api_key_here', 'User')
+[System.Environment]::SetEnvironmentVariable('DEEPSOP_API_KEY', 'sk-your_api_key_here', 'User')
 ```
 
 **Linux/macOS:**
 ```bash
-echo 'export AI_ARTIST_TOKEN="sk-your_api_key_here"' >> ~/.bashrc
+echo 'export DEEPSOP_API_KEY="sk-your_api_key_here"' >> ~/.bashrc
 source ~/.bashrc
 ```
 
@@ -338,10 +338,10 @@ python scripts/voice_clone.py --synthesize --name "用户音色" --text "收到�
 **解决：**
 ```bash
 # Windows PowerShell
-$env:AI_ARTIST_TOKEN="sk-your_api_key_here"
+$env:DEEPSOP_API_KEY="sk-your_api_key_here"
 
 # 或创建 .env 文件
-echo "AI_ARTIST_TOKEN=sk-your_api_key_here" > .env
+echo "DEEPSOP_API_KEY=sk-your_api_key_here" > .env
 ```
 
 ### 问题 2：音色状态为 DEPLOYING

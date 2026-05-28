@@ -49,7 +49,7 @@ DeepSOP Skills 旨在为 AI Agent 提供丰富的功能扩展能力，涵盖：
 **快速示例**：
 ```bash
 # 设置 API Key
-export AI_ARTIST_TOKEN="sk-your_api_key_here"
+export DEEPSOP_API_KEY="sk-your_api_key_here"
 
 # 生成图片（默认 3.1Nano2-Evo）
 python3 scripts/generate_image.py "一匹狼"
@@ -83,7 +83,7 @@ python3 scripts/generate_image.py --list-models
 **快速示例**：
 ```bash
 # 设置 API Key
-export AI_ARTIST_TOKEN="sk-your_api_key_here"
+export DEEPSOP_API_KEY="sk-your_api_key_here"
 
 # 列出所有可用音色
 python scripts/voice_clone.py --list
@@ -229,7 +229,7 @@ AI：AiWa 客户挖掘完成，共找到 50 个客户，详见附件
    在项目根目录创建 `.env` 文件：
    ```ini
    # AI Artist API Key（图片/视频生成、声音克隆）
-   AI_ARTIST_TOKEN=sk-your_api_key_here
+   DEEPSOP_API_KEY=sk-your_api_key_here
    
    # DeepSOP API Key（人机协作）
    DEEPSOP_API_KEY=sk-your_api_key_here
@@ -255,11 +255,11 @@ AI：AiWa 客户挖掘完成，共找到 50 个客户，详见附件
 
 ```bash
 # 临时设置（当前终端有效）
-export AI_ARTIST_TOKEN="sk-your_api_key_here"
+export DEEPSOP_API_KEY="sk-your_api_key_here"
 export DEEPSOP_API_KEY="sk-your_api_key_here"
 
 # 永久设置（添加到 ~/.bashrc 或 ~/.zshrc）
-echo 'export AI_ARTIST_TOKEN="sk-your_api_key_here"' >> ~/.bashrc
+echo 'export DEEPSOP_API_KEY="sk-your_api_key_here"' >> ~/.bashrc
 source ~/.bashrc
 ```
 
@@ -267,11 +267,11 @@ source ~/.bashrc
 
 ```powershell
 # 临时设置（当前终端有效）
-$env:AI_ARTIST_TOKEN="sk-your_api_key_here"
+$env:DEEPSOP_API_KEY="sk-your_api_key_here"
 $env:DEEPSOP_API_KEY="sk-your_api_key_here"
 
 # 永久设置（系统级）
-[System.Environment]::SetEnvironmentVariable('AI_ARTIST_TOKEN', 'sk-your_api_key_here', 'User')
+[System.Environment]::SetEnvironmentVariable('DEEPSOP_API_KEY', 'sk-your_api_key_here', 'User')
 ```
 
 #### 使用 .env 文件（推荐）
@@ -279,7 +279,7 @@ $env:DEEPSOP_API_KEY="sk-your_api_key_here"
 在项目根目录创建 `.env` 文件，脚本会自动加载：
 
 ```ini
-AI_ARTIST_TOKEN=sk-your_api_key_here
+DEEPSOP_API_KEY=sk-your_api_key_here
 DEEPSOP_API_KEY=sk-your_api_key_here
 FEISHU_WEBHOOK_URL=
 ```

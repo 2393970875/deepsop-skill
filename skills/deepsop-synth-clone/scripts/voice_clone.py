@@ -18,7 +18,7 @@ BASE_URL = "https://ai.deepsop.com/prod-api"
 FILE_UPLOAD_URL = f"{BASE_URL}/system/fileUpload/upload"
 
 # 环境配置
-API_KEY_ENV = "AI_ARTIST_TOKEN"
+API_KEY_ENV = "DEEPSOP_API_KEY"
 
 
 def get_api_key():

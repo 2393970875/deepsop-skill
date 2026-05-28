@@ -22,12 +22,12 @@
 
 ```bash
 # Linux/macOS/Git Bash
-export AI_ARTIST_TOKEN="sk-your_api_key_here"
+export DEEPSOP_API_KEY="sk-your_api_key_here"
 ```
 
 ```powershell
 # Windows PowerShell
-$env:AI_ARTIST_TOKEN="sk-your_api_key_here"
+$env:DEEPSOP_API_KEY="sk-your_api_key_here"
 ```
 
 ### 3) 验证配置
@@ -115,7 +115,7 @@ pytest tests -q
 
 ## ⚠️ 注意事项
 
-- 必须使用你自己的 `AI_ARTIST_TOKEN`
+- 必须使用你自己的 `DEEPSOP_API_KEY`
 - 任务创建前会执行费用预估；若余额不足将不会提交任务
 - 请遵守 AI Artist API 的使用条款
 
@@ -133,7 +133,7 @@ pytest tests -q
 | **审查文件数** | 6（SKILL.md、README.md、api.md、generate_image.py、test_generate_image.py、飞书集成文档） |
 | **可疑模式** | ✖ 无 |
 | **网络访问** | `https://ai.deepsop.com/prod-api/`（合法的 AI 图像生成接口，单一已知域名） |
-| **API Key 处理** | 仅从环境变量 `AI_ARTIST_TOKEN` 读取，未硬编码、无外泄 |
+| **API Key 处理** | 仅从环境变量 `DEEPSOP_API_KEY` 读取，未硬编码、无外泄 |
 | **文件访问** | 用户指定的图像文件读写 |
 | **依赖命令** | Python `requests` 库 |
 | **风险等级** | 🟡 MEDIUM（需配置 API Key） |

@@ -3,7 +3,7 @@ name: deepsop-genvis
 description: |
   AI 图片与视频异步生成技能，调用 AI Artist API 根据文本提示词生成图片或视频，自动轮询直到任务完成。
 
-  ⚠️ 使用前必须设置环境变量 AI_ARTIST_TOKEN 为你自己的 API Key！
+  ⚠️ 使用前必须设置环境变量 DEEPSOP_API_KEY 为你自己的 API Key！
   需要 API Key 授权：已有账号请前往 https://ai.deepsop.com/login?source=2 登录获取；没有账号请前往 https://ai.deepsop.com/register?source=2 注册后获取。
 
   支持图片模型：3.1Nano2-Evo、S5.0L、N2、W2.7、W2.7Pro、Nano2-Beta-Evo、**Image2（GPTimage-2）**。
@@ -38,16 +38,16 @@ description: |
 
 ```bash
 # Linux/macOS/Git Bash (Windows)
-export AI_ARTIST_TOKEN="sk-your_api_key_here"
+export DEEPSOP_API_KEY="sk-your_api_key_here"
 
 # Windows PowerShell
-$env:AI_ARTIST_TOKEN="sk-your_api_key_here"
+$env:DEEPSOP_API_KEY="sk-your_api_key_here"
 ```
 
 或在项目根目录放一个 `.env` 文件（需 `pip install python-dotenv`，脚本会自动加载）：
 
 ```ini
-AI_ARTIST_TOKEN=sk-your_api_key_here
+DEEPSOP_API_KEY=sk-your_api_key_here
 FEISHU_WEBHOOK_URL=  # 可选，用于结果通知
 ```
 
@@ -580,7 +580,7 @@ if result and result["status"] == "SUCCESS":
 
 2. 编辑 `.env` 文件，填入你的 API Key：
    ```bash
-   AI_ARTIST_TOKEN=sk-your_api_key_here
+   DEEPSOP_API_KEY=sk-your_api_key_here
    ```
 
 3. 在运行脚本前加载环境变量：
@@ -597,7 +597,7 @@ if result and result["status"] == "SUCCESS":
 ##### Linux / macOS / Git Bash (Windows)
 
 ```bash
-export AI_ARTIST_TOKEN="sk-your_api_key_here"
+export DEEPSOP_API_KEY="sk-your_api_key_here"
 ```
 
 为了永久生效，将上述命令添加到 `~/.bashrc` 或 `~/.zshrc` 文件中。
@@ -605,18 +605,18 @@ export AI_ARTIST_TOKEN="sk-your_api_key_here"
 ##### Windows PowerShell
 
 ```powershell
-$env:AI_ARTIST_TOKEN="sk-your_api_key_here"
+$env:DEEPSOP_API_KEY="sk-your_api_key_here"
 ```
 
 永久设置（系统级）：
 ```powershell
-[System.Environment]::SetEnvironmentVariable('AI_ARTIST_TOKEN', 'sk-your_api_key_here', 'User')
+[System.Environment]::SetEnvironmentVariable('DEEPSOP_API_KEY', 'sk-your_api_key_here', 'User')
 ```
 
 ##### Windows CMD
 
 ```cmd
-set AI_ARTIST_TOKEN=sk-your_api_key_here
+set DEEPSOP_API_KEY=sk-your_api_key_here
 ```
 
 #### 验证配置
@@ -625,13 +625,13 @@ set AI_ARTIST_TOKEN=sk-your_api_key_here
 
 ```bash
 # Linux/macOS/Git Bash
-echo $AI_ARTIST_TOKEN
+echo $DEEPSOP_API_KEY
 
 # Windows PowerShell
-echo $env:AI_ARTIST_TOKEN
+echo $env:DEEPSOP_API_KEY
 
 # Windows CMD
-echo %AI_ARTIST_TOKEN%
+echo %DEEPSOP_API_KEY%
 ```
 
 如果输出为空或显示默认值，说明环境变量未正确设置。

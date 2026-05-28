@@ -46,7 +46,7 @@ except Exception:
     pass
 
 # Get API key from environment variable (required)
-API_KEY = os.environ.get("AI_ARTIST_TOKEN")
+API_KEY = os.environ.get("DEEPSOP_API_KEY")
 
 # Feishu webhook configuration (optional)
 FEISHU_WEBHOOK_URL = os.environ.get("FEISHU_WEBHOOK_URL")
@@ -108,10 +108,10 @@ def _emit_cli_result(result, args, markdown_label=""):
 def check_api_key():
     """Check if user has set their API key."""
     if not API_KEY:
-        print("错误：未配置 AI_ARTIST_TOKEN 环境变量", file=sys.stderr)
+        print("错误：未配置 DEEPSOP_API_KEY 环境变量", file=sys.stderr)
         print("", file=sys.stderr)
         print("请先设置你的 API Key:", file=sys.stderr)
-        print("  export AI_ARTIST_TOKEN=\"sk-your_api_key_here\"", file=sys.stderr)
+        print("  export DEEPSOP_API_KEY=\"sk-your_api_key_here\"", file=sys.stderr)
         print("", file=sys.stderr)
         print("验证配置:", file=sys.stderr)
         print("  python3 scripts/test_config.py", file=sys.stderr)
@@ -478,7 +478,7 @@ def _explain_http_error(exc, context=""):
     status = getattr(getattr(exc, "response", None), "status_code", None)
     prefix = f"{context} " if context else ""
     if status == 401:
-        return (f"{prefix}认证失败 (401)。请确认环境变量 AI_ARTIST_TOKEN 已设置且未过期，"
+        return (f"{prefix}认证失败 (401)。请确认环境变量 DEEPSOP_API_KEY 已设置且未过期，"
                 f"并在 {RECHARGE_URL} 重新生成 API Key。")
     if status == 403:
         return f"{prefix}权限不足 (403)。当前 API Key 可能未授权该模型或功能。"
