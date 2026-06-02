@@ -54,6 +54,18 @@ FEISHU_WEBHOOK_URL = os.environ.get("FEISHU_WEBHOOK_URL")
 # Dry-run toggle: when True, task creators print the payload and skip network
 # submission. Set via the CLI `--dry-run` flag or programmatically.
 DRY_RUN = False
+_LAST_ESTIMATE_FAILURE_REASON = None
+
+
+class GenerationTaskCreationError(Exception):
+    """Raised when the selected model fails at task creation and must not fallback."""
+
+
+def _creation_failure_message(model, reason, media_label="任务"):
+    return (
+        f"{media_label}创建失败：模型 {model} 被当前请求拦截或拒绝，原因：{reason or '未知错误'}。"
+        "已停止生成；请调整生成参数后重试，或选择其他模型重新生成。"
+    )
 
 
 # Keep stdout reserved for machine-readable final output (URL / JSON) so
@@ -129,13 +141,16 @@ def get_headers():
 
 
 def estimate_generation_cost(payload):
+    global _LAST_ESTIMATE_FAILURE_REASON
+    _LAST_ESTIMATE_FAILURE_REASON = None
     try:
         response = requests.post(ESTIMATE_COST_URL, json=payload, headers=get_headers(), timeout=30)
         response.raise_for_status()
         result = response.json()
 
         if result.get("code") != 200:
-            print(f"费用预估失败：{result.get('msg', '未知错误')}", file=sys.stderr)
+            _LAST_ESTIMATE_FAILURE_REASON = result.get('msg', '未知错误')
+            print(f"费用预估失败：{_LAST_ESTIMATE_FAILURE_REASON}", file=sys.stderr)
             return False
 
         data = result.get("data") or {}
@@ -150,20 +165,25 @@ def estimate_generation_cost(payload):
             return True
 
         if sufficient_balance is False:
-            print(f"余额不足，无法提交创建任务。请前往 {RECHARGE_URL} 充值 K 币后重试。", file=sys.stderr)
+            _LAST_ESTIMATE_FAILURE_REASON = f"余额不足，无法提交创建任务。请前往 {RECHARGE_URL} 充值 K 币后重试。"
+            print(_LAST_ESTIMATE_FAILURE_REASON, file=sys.stderr)
             return False
 
-        print("费用预估返回结果不完整", file=sys.stderr)
+        _LAST_ESTIMATE_FAILURE_REASON = "费用预估返回结果不完整"
+        print(_LAST_ESTIMATE_FAILURE_REASON, file=sys.stderr)
         return False
 
     except requests.exceptions.HTTPError as e:
-        print(_explain_http_error(e, context="费用预估"), file=sys.stderr)
+        _LAST_ESTIMATE_FAILURE_REASON = _explain_http_error(e, context="费用预估")
+        print(_LAST_ESTIMATE_FAILURE_REASON, file=sys.stderr)
         return False
     except requests.exceptions.RequestException as e:
-        print(f"费用预估网络错误：{e}", file=sys.stderr)
+        _LAST_ESTIMATE_FAILURE_REASON = f"费用预估网络错误：{e}"
+        print(_LAST_ESTIMATE_FAILURE_REASON, file=sys.stderr)
         return False
     except ValueError as e:
-        print(f"费用预估响应解析失败：{e}", file=sys.stderr)
+        _LAST_ESTIMATE_FAILURE_REASON = f"费用预估响应解析失败：{e}"
+        print(_LAST_ESTIMATE_FAILURE_REASON, file=sys.stderr)
         return False
 
 
@@ -1789,7 +1809,10 @@ def create_video_task(prompt, model=None, ratio=None, resolution=None,
         return "DRY_RUN_TASK_ID"
 
     if not estimate_generation_cost(payload):
-        return None
+        message = _creation_failure_message(
+            model, _LAST_ESTIMATE_FAILURE_REASON or "费用预估未通过", "视频任务"
+        )
+        raise GenerationTaskCreationError(message)
 
     try:
         response = requests.post(url, json=payload, headers=get_headers(), timeout=30)
@@ -1799,15 +1822,19 @@ def create_video_task(prompt, model=None, ratio=None, resolution=None,
         if result.get("code") == 200 and result.get("data"):
             return result["data"][0]
         else:
-            print(f"创建视频任务失败：{result.get('msg', '未知错误')}", file=sys.stderr)
-            return None
+            reason = result.get('msg', '未知错误')
+            message = _creation_failure_message(model, reason, "视频任务")
+            print(message, file=sys.stderr)
+            raise GenerationTaskCreationError(message)
 
     except requests.exceptions.HTTPError as e:
-        print(_explain_http_error(e, context="创建视频任务"), file=sys.stderr)
-        return None
+        message = _creation_failure_message(model, _explain_http_error(e, context="创建视频任务"), "视频任务")
+        print(message, file=sys.stderr)
+        raise GenerationTaskCreationError(message) from e
     except requests.exceptions.RequestException as e:
-        print(f"网络错误：{e}", file=sys.stderr)
-        return None
+        message = _creation_failure_message(model, f"网络错误：{e}", "视频任务")
+        print(message, file=sys.stderr)
+        raise GenerationTaskCreationError(message) from e
 
 
 def generate_video(prompt, model=None, ratio=None, resolution=None,
@@ -1897,34 +1924,37 @@ def generate_video(prompt, model=None, ratio=None, resolution=None,
     if video_url_list:
         _progress(f"   参考视频：{video_url_list}")
 
-    task_id = create_video_task(
-        prompt, resolved_model or display_model, ratio, resolution, duration,
-        first_image_url=first_image_url,
-        last_image_url=last_image_url,
-        generate_audio=generate_audio,
-        scale_factor=scale_factor,
-        generation_type=generation_type,
-        enhance_prompt=enhance_prompt,
-        prompt_extend=prompt_extend,
-        audio_url=audio_url,
-        image_url_list=image_url_list,
-        video_url_list=video_url_list,
-        mode=mode,
-        keep_original_sound=keep_original_sound,
-        shot_type=shot_type,
-        element_list=element_list,
-        first_clip_url=first_clip_url,
-        audio_setting=audio_setting,
-        multi_shot=multi_shot,
-        n=n,
-        person_generation=person_generation,
-        resize_mode=resize_mode,
-        negative_prompt=negative_prompt,
-        duration_switch=duration_switch,
-        multi_prompt=multi_prompt,
-        audio_url_list=audio_url_list,
-        web_search=web_search,
-    )
+    try:
+        task_id = create_video_task(
+            prompt, resolved_model or display_model, ratio, resolution, duration,
+            first_image_url=first_image_url,
+            last_image_url=last_image_url,
+            generate_audio=generate_audio,
+            scale_factor=scale_factor,
+            generation_type=generation_type,
+            enhance_prompt=enhance_prompt,
+            prompt_extend=prompt_extend,
+            audio_url=audio_url,
+            image_url_list=image_url_list,
+            video_url_list=video_url_list,
+            mode=mode,
+            keep_original_sound=keep_original_sound,
+            shot_type=shot_type,
+            element_list=element_list,
+            first_clip_url=first_clip_url,
+            audio_setting=audio_setting,
+            multi_shot=multi_shot,
+            n=n,
+            person_generation=person_generation,
+            resize_mode=resize_mode,
+            negative_prompt=negative_prompt,
+            duration_switch=duration_switch,
+            multi_prompt=multi_prompt,
+            audio_url_list=audio_url_list,
+            web_search=web_search,
+        )
+    except GenerationTaskCreationError as e:
+        return {"status": "FAILED", "url": None, "message": str(e), "model": resolved_model or display_model}
     if not task_id:
         return None
 
@@ -2097,7 +2127,10 @@ def create_generation_task(prompt, quality=None, size=None, model=None,
         return "DRY_RUN_TASK_ID"
 
     if not estimate_generation_cost(payload):
-        return None
+        message = _creation_failure_message(
+            model, _LAST_ESTIMATE_FAILURE_REASON or "费用预估未通过", "图片任务"
+        )
+        raise GenerationTaskCreationError(message)
 
     try:
         response = requests.post(url, json=payload, headers=get_headers(), timeout=30)
@@ -2107,15 +2140,19 @@ def create_generation_task(prompt, quality=None, size=None, model=None,
         if result.get("code") == 200 and result.get("data"):
             return result["data"][0]
         else:
-            print(f"创建任务失败：{result.get('msg', '未知错误')}", file=sys.stderr)
-            return None
+            reason = result.get('msg', '未知错误')
+            message = _creation_failure_message(model, reason, "图片任务")
+            print(message, file=sys.stderr)
+            raise GenerationTaskCreationError(message)
 
     except requests.exceptions.HTTPError as e:
-        print(_explain_http_error(e, context="创建图片任务"), file=sys.stderr)
-        return None
+        message = _creation_failure_message(model, _explain_http_error(e, context="创建图片任务"), "图片任务")
+        print(message, file=sys.stderr)
+        raise GenerationTaskCreationError(message) from e
     except requests.exceptions.RequestException as e:
-        print(f"网络错误：{e}", file=sys.stderr)
-        return None
+        message = _creation_failure_message(model, f"网络错误：{e}", "图片任务")
+        print(message, file=sys.stderr)
+        raise GenerationTaskCreationError(message) from e
 
 
 def poll_task_status(task_id, interval=5, max_wait=1200):
@@ -2232,13 +2269,16 @@ def generate_image(prompt, quality=None, size=None, poll_interval=5,
         _progress(f"   参考图：{reference_image_url}")
 
     # Step 1: Create task
-    task_id = create_generation_task(
-        prompt, quality, size, resolved_model or display_model, reference_image_url,
-        web_search=web_search,
-        image_search=image_search,
-        ratiocination=ratiocination,
-        n=n,
-    )
+    try:
+        task_id = create_generation_task(
+            prompt, quality, size, resolved_model or display_model, reference_image_url,
+            web_search=web_search,
+            image_search=image_search,
+            ratiocination=ratiocination,
+            n=n,
+        )
+    except GenerationTaskCreationError as e:
+        return {"status": "FAILED", "url": None, "message": str(e), "model": resolved_model or display_model}
     if not task_id:
         return None
 
