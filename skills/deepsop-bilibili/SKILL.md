@@ -1,11 +1,11 @@
----
+﻿---
 name: deepsop-bilibili
-description: Bilibili 视频自动上传 skill。当用户需要登录 Bilibili、校验账号或上传视频时使用。基于 social-auto-upload 项目，OPclaw 自动准备运行环境，无需用户手动安装。
+description: Bilibili 视频自动上传 skill。当用户需要登录 Bilibili、校验账号或上传视频时使用。基于 social-auto-upload 项目，OPClaw 自动准备运行环境，无需用户手动安装。
 ---
 
 # Bilibili 上传 Skill
 
-本 skill 通过 [social-auto-upload](https://github.com/dreammis/social-auto-upload) 项目（以下简称 SAU）完成 Bilibili 操作。OPclaw 自带 `uv` 工具，会在首次使用时自动 clone SAU 并准备依赖，**不要让用户手动 pip install**。
+本 skill 通过 [social-auto-upload](https://github.com/dreammis/social-auto-upload) 项目（以下简称 SAU）完成 Bilibili 操作。OPClaw 运行环境提供 `uv` 工具，会在首次使用时自动 clone SAU 并准备依赖，**不要让用户手动 pip install**。
 
 ## 功能概览
 

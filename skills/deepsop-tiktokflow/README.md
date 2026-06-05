@@ -1,4 +1,4 @@
-# TikTok 视频 AI 生成与发布（TikTokFlow）
+﻿# TikTok 视频 AI 生成与发布（TikTokFlow）
 
 基于 DeepSOP 平台数字员工 **Toby** 的 AI 视频生成与 TikTok 发布技能。理解自然语言指令、自动拆解任务参数、生成 AI 视频并定时发布到指定 TikTok 账号，按用户指定时间自动查询播放/点赞/评论/分享数据。
 
@@ -29,7 +29,7 @@
    $env:DEEPSOP_API_KEY="sk-your_api_key_here"
    ```
 
-3. **直接对 OpenClaw 说出需求**，例如：
+3. **直接对 OPClaw 说出需求**，例如：
    - "生成一条产品宣传视频发布到 TikTok"
    - "帮我每天发 3 条 AI 视频到 TikTok，从早 9 点开始，间隔 1 小时"
    - "生成 5 条库阔 AI 介绍视频，9:30 开始发布"

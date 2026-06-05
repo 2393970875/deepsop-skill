@@ -1,5 +1,5 @@
 """
-Instagram Search Script (for deepsop-instagram skill)
+Instagram Search Script (for deepsop-socialhub skill)
 Searches Instagram for influencers/daren by keyword via Apify API
 """
 import os, sys, json, re

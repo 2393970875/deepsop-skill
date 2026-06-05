@@ -1,4 +1,4 @@
-# 人机协作台（Human-AI Collaboration）
+﻿# 人机协作台（Human-AI Collaboration）
 
 基于 DeepSOP 平台的智能销售任务助手，理解自然语言指令、自动拆解任务参数、调用 deepsop API 提交任务，并按用户指定时间自动查询结果。
 
@@ -31,7 +31,7 @@
    $env:DEEPSOP_API_KEY="sk-your_api_key_here"
    ```
 
-3. **直接对 OpenClaw 说出需求**，例如：
+3. **直接对 OPClaw 说出需求**，例如：
    - "帮我找 50 个美国做服装的客户"
    - "给这批客户发一封产品介绍邮件"
    - "给老客户发一条短信通知"
@@ -57,7 +57,7 @@
 |---|---|
 | **审计日期** | 2026-05-12 |
 | **审计工具** | skill-vetter (clawhub@latest) |
-| **来源** | ClawdHub / DeepSOP 官方 |
+| **来源** | DeepSOP 技能库 / DeepSOP 官方 |
 | **审查文件数** | 10（SKILL.md、api_paths.py、submit_task.py、submit_script_review.py、3 个参数校验器、格式化脚本等） |
 | **可疑模式** | ✖ 无 |
 | **网络访问** | `https://ai.deepsop.com/prod-api/...`（合法的 DeepSOP 任务提交接口，单一已知域名） |

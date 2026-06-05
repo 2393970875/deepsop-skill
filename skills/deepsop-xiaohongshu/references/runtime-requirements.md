@@ -1,6 +1,6 @@
 ﻿# 运行前提
 
-本 skill 依赖 [social-auto-upload](https://github.com/dreammis/social-auto-upload) 项目（以下简称 SAU）。OPclaw 内置 `uv` 工具，**自动准备**整个运行环境，agent 不应该让用户手动 pip install 或 clone。
+本 skill 依赖 [social-auto-upload](https://github.com/dreammis/social-auto-upload) 项目（以下简称 SAU）。OPClaw 运行环境提供 `uv` 工具，**自动准备**整个运行环境，agent 不应该让用户手动 pip install 或 clone。
 
 ---
 

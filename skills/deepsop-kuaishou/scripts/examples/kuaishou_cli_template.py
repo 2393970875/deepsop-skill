@@ -10,7 +10,7 @@ import shlex
 import subprocess
 from pathlib import Path
 
-# Where OPclaw clones social-auto-upload by convention.
+# Where OPClaw clones social-auto-upload by convention.
 SAU_HOME = Path.home() / ".openclaw" / "social-auto-upload"
 
 # Prefix every sau_cli.py invocation with `uv run --project <SAU_HOME>`.

@@ -1,8 +1,8 @@
-# 小红书上传 Skill
+﻿# 小红书上传 Skill
 
 小红书视频/图文自动上传技能。当用户需要登录小红书、校验账号或上传内容时使用。
 
-底层基于 [social-auto-upload](https://github.com/dreammis/social-auto-upload)（SAU）项目，OPclaw 在首次使用时会自动 clone 仓库并准备依赖，**无需用户手动安装**。
+底层基于 [social-auto-upload](https://github.com/dreammis/social-auto-upload)（SAU）项目，OPClaw 在首次使用时会自动 clone 仓库并准备依赖，**无需用户手动安装**。
 
 ## ✨ 功能概览
 
@@ -20,11 +20,11 @@
 
 ## 🚀 使用流程
 
-直接对 OpenClaw 说出需求，例如：
+直接对 OPClaw 说出需求，例如：
 - "用小红书账号 `myacc` 登录"
 - "把这组图片以图文形式发到小红书"
 
-OpenClaw 会自动选择并执行对应的 SAU 命令。
+OPClaw 会自动选择并执行对应的 SAU 命令。
 
 ## 📖 完整文档
 
@@ -43,7 +43,7 @@ OpenClaw 会自动选择并执行对应的 SAU 命令。
 |---|---|
 | **审计日期** | 2026-05-12 |
 | **审计工具** | skill-vetter (clawhub@latest) |
-| **来源** | ClawdHub / social-auto-upload 包装 |
+| **来源** | DeepSOP 技能库 / social-auto-upload 包装 |
 | **审查文件数** | 6 |
 | **可疑模式** | ✖ 无 |
 | **网络访问** | 通过外部 `social-auto-upload` CLI 工具调用小红书官方接口 |

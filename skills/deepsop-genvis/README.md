@@ -1,4 +1,4 @@
-# AI Image Generator
+﻿# AI Image Generator
 
 基于 AI Artist API 的图片/视频异步生成工具。
 
@@ -131,7 +131,7 @@ pytest tests -q
 |---|---|
 | **审计日期** | 2026-05-12 |
 | **审计工具** | skill-vetter (clawhub@latest) |
-| **来源** | ClawdHub / DeepSOP 官方 |
+| **来源** | DeepSOP 技能库 / DeepSOP 官方 |
 | **审查文件数** | 6（SKILL.md、README.md、api.md、generate_image.py、test_generate_image.py、飞书集成文档） |
 | **可疑模式** | ✖ 无 |
 | **网络访问** | `https://ai.deepsop.com/prod-api/`（合法的 AI 图像生成接口，单一已知域名） |

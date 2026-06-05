@@ -1,4 +1,4 @@
-# Voice Clone - 声音复刻技能
+﻿# Voice Clone - 声音复刻技能
 
 AI Artist API 驱动的声音克隆与语音合成工具。
 
@@ -75,7 +75,7 @@ python scripts/voice_clone.py --create --name "我的音色" --audio "./my_voice
 |---|---|
 | **审计日期** | 2026-05-12 |
 | **审计工具** | skill-vetter (clawhub@latest) |
-| **来源** | ClawdHub / DeepSOP 官方 |
+| **来源** | DeepSOP 技能库 / DeepSOP 官方 |
 | **审查文件数** | 5（SKILL.md、README.md、api.md、voice_clone.py 等） |
 | **可疑模式** | ✖ 无 |
 | **网络访问** | `https://ai.deepsop.com/prod-api`（合法的语音合成接口，单一已知域名） |
