@@ -1,143 +1,128 @@
 ---
 name: deepsop-socialhub
-description: Deepsop SocialHub 社交平台运营 skill。当前仅支持 Instagram 达人搜索与数据采集：基于 Apify API 搜索 Instagram 用户/达人，返回粉丝数、简介、认证状态、帖子数、类别等信息。后续会加入 Instagram 帖子发布和管理、Facebook 帖子发布和管理。触发词：搜Instagram、找达人、instagram达人、IG达人、IG搜索、搜IG用户、社媒达人搜索、SocialHub。
+description: |
+  DeepSOP SocialHub 社交平台运营技能。当前提供 Apify Store 搜索能力，用于按关键词查询可用的 Apify Actor / Scraper，并返回适合 agent 阅读的结果。调用 DeepSOP 后端接口 `/ai/apify/store?search={keyword}&limit={limit}&offset={offset}&responseFormat=agent`，必须携带共享 `DEEPSOP_API_KEY` 作为 `X-Api-Key` 请求头。
+
+  在 OPClaw 项目中运行时直接读取项目设置里的 DEEPSOP_API_KEY；非 OPClaw 运行时，引导用户授权后把 DEEPSOP_API_KEY 配置为共享环境变量或 ~/.openclaw/.env，让其他 DeepSOP 技能也能复用。不要要求用户配置 APIFY_TOKEN，也不要直接调用 Apify SDK 或 Apify Actor。
 ---
 
-# Deepsop SocialHub
+# DeepSOP SocialHub
 
-Deepsop SocialHub 用于社交平台账号、内容和达人相关工作流。
+使用 `scripts/search_instagram.py` 通过 DeepSOP 后端代理查询 Apify Store。脚本会把用户关键词、分页参数和固定 `responseFormat=agent` 拼到 `/ai/apify/store` 查询接口，并在请求头里传 `X-Api-Key: <DEEPSOP_API_KEY>`。
 
-当前版本只提供 **Instagram 达人搜索与数据采集** 能力：通过 **Apify Instagram Search Scraper** 在云端搜索 Instagram 用户，无需登录，也不需要浏览器。
+## 必须遵守
 
-## 当前能力
+- OPClaw 项目运行时使用项目设置里的 `DEEPSOP_API_KEY`；非 OPClaw 运行时，让用户授权后设置共享 `DEEPSOP_API_KEY`。
+- 不读取、不要求、不保存 `APIFY_TOKEN`。
+- 不直接调用 Apify SDK、Apify Actor 或 Apify Console Token。
+- 查询接口固定使用 `GET https://ai.deepsop.com/prod-api/ai/apify/store`。
+- 查询参数必须包含 `search`、`limit`、`offset`、`responseFormat=agent`。
+- 用户没有给分页时，默认 `limit=10`、`offset=0`。
+- `search` 必须来自用户意图或明确的关键词改写；不要空关键词查询。
+- 接口失败时反馈实际状态码或接口 `msg`，不要伪造结果。
 
-- Instagram 用户/达人搜索
-- Instagram 账号基础数据采集
-- 输出粉丝数、关注数、帖子数、简介、认证状态、企业账号状态、类别、头像、主页链接等结构化信息
+## 快速命令
 
-## 后续规划
+```bash
+# 默认分页：limit=10，offset=0
+python scripts/search_instagram.py "web scraper"
 
-以下能力暂未在当前版本中实现，后续会逐步加入：
-
-- Instagram 帖子发布和管理
-- Facebook 帖子发布和管理
-
-在这些能力上线前，请不要把本 skill 用于 Instagram/Facebook 内容发布、帖子管理、评论管理或私信处理。
-
-## 前置条件
-
-必须配置环境变量 `APIFY_TOKEN`。
-
-使用 `gateway config.patch` 或 config 文件设置：
-
-```yaml
-env:
-  APIFY_TOKEN: "apify_api_你的Token"
+# 指定分页
+python scripts/search_instagram.py "instagram scraper" 10 0
+python scripts/search_instagram.py "linkedin scraper" 10 10
 ```
 
-Token 从 https://console.apify.com/settings/integrations 获取。
-已有免费额度可用，不需付费即可开始使用。
+## API 端点
+
+**GET** `/ai/apify/store?search={keyword}&limit={limit}&offset={offset}&responseFormat=agent`
+
+完整示例：
+
+```bash
+curl -X GET "https://ai.deepsop.com/prod-api/ai/apify/store?search=web%20scraper&limit=10&offset=0&responseFormat=agent" \
+  -H "Content-Type: application/json" \
+  -H "X-Api-Key: <api_key>"
+```
+
+请求头：
+
+```text
+Content-Type: application/json
+X-Api-Key: <api_key>
+```
+
+查询参数：
+
+| 参数 | 必填 | 默认值 | 说明 |
+| --- | --- | --- | --- |
+| `search` | 是 | 无 | 查询关键词，例如 `web scraper`、`instagram scraper` |
+| `limit` | 否 | `10` | 本页最多返回条数 |
+| `offset` | 否 | `0` | 分页偏移量 |
+| `responseFormat` | 是 | `agent` | 固定传 `agent`，让后端返回适合 agent 阅读的结果 |
 
 ## 脚本
 
-### `scripts/search_instagram.py` - Instagram 搜索脚本
+### `scripts/search_instagram.py`
 
-搜索 Instagram 用户/达人，返回结构化数据。
+脚本名称保留以兼容旧入口；当前语义是查询 DeepSOP Apify Store，不再直连 Instagram 或 Apify。
 
-**用法：**
+用法：
 
 ```bash
-python scripts/search_instagram.py <关键词> [结果数量]
+python scripts/search_instagram.py <关键词> [limit] [offset]
 ```
 
 参数：
-- `关键词`（必填）：搜索关键词。支持中英文，如 "fashion influencer"、"上海 美妆"
-- `结果数量`（选填，默认 20）：最多返回多少个结果
 
-**输出：**
-- 控制台打印表格：用户名、粉丝数、帖子数、认证状态、名称、类别、简介
-- 保存 `apify_output.json`：结构化 JSON
-- 保存 `apify_output_raw.json`：原始数据，调试用
+- `关键词`：必填，Apify Store 查询关键词。支持中英文和空格，例如 `"web scraper"`。
+- `limit`：选填，默认 `10`。
+- `offset`：选填，默认 `0`。
 
-**费用：**
-- $2.30/1,000 条结果，按实际返回的结果数量计费
-- 一次搜索 20 条大约 $0.046
+输出：
 
-**返回数据字段：**
-
-| 字段 | 说明 |
-|------|------|
-| username | `@用户名` |
-| name | 显示名称 |
-| followers | 粉丝数 |
-| following | 关注数 |
-| posts | 帖子数 |
-| verified | 是否认证 |
-| business | 是否企业账号 |
-| private | 是否私密账号 |
-| category | 商业类别，如 "Digital creator"、"Clothing (Brand)" |
-| bio | 个人简介 |
-| external_url | 主页链接的外链 |
-| profile_url | `https://instagram.com/用户名` |
-| profile_pic | 头像 URL |
-| related_profiles | 相关推荐账号 |
+- 控制台打印简表：名称、作者、计费信息、简介。
+- 保存 `apify_store_output.json`：接口原始 JSON 响应，便于后续筛选和调试。
 
 ## 使用示例
 
-**用户说**：帮我搜一下深圳的潮牌主理人
+用户说：帮我找网页抓取相关的 Apify 工具。
 
 执行：
 
 ```bash
-python scripts/search_instagram.py "深圳潮牌" 30
+python scripts/search_instagram.py "web scraper" 10 0
 ```
 
-**用户说**：找 100 个洛杉矶的健身博主
+用户说：再看下一页。
 
 执行：
 
 ```bash
-python scripts/search_instagram.py "fitness coach Los Angeles" 30
-# 换关键词再搜两轮扩大覆盖
-python scripts/search_instagram.py "personal trainer LA" 20
-python scripts/search_instagram.py "gym influencer California" 20
+python scripts/search_instagram.py "web scraper" 10 10
 ```
 
-**用户说**：看看这个达人的详细信息
+用户说：找 Instagram 数据采集相关工具。
 
-如果搜索结果不够详细，可以针对具体用户名调用 Apify Instagram Profile Scraper：
+执行：
 
-```python
-# 在代码中组合使用两个 actor
-client.actor("apify/instagram-profile-scraper").call(run_input={"usernames": ["目标用户名"]})
+```bash
+python scripts/search_instagram.py "instagram scraper" 10 0
 ```
 
-## 数据格式说明
+## 返回处理
 
-搜索结果以 JSON 数组形式输出到 `apify_output.json`，每个条目包含：
+- 如果接口返回标准 DeepSOP 包装结构，优先读取 `data.rows`、`data.list`、`data.items`、`data.records` 或 `data` 数组。
+- 如果接口直接返回数组，则直接作为结果列表。
+- 如果没有可识别列表，保留原始 JSON 到 `apify_store_output.json`，并说明未识别到列表结构。
+- 展示结果时优先使用 `name/title/actorId/id`、`username/userName/authorUsername/ownerUsername`、`pricing/pricingModel/pricePerUnitUsd`、`description/shortDescription/summary` 等字段。
 
-```json
-{
-  "no": 1,
-  "username": "@username",
-  "name": "显示名",
-  "followers": 50000,
-  "following": 1200,
-  "posts": 350,
-  "verified": true,
-  "business": false,
-  "private": false,
-  "category": "Digital creator",
-  "bio": "简介文本...",
-  "external_url": "",
-  "profile_pic": "https://...",
-  "profile_url": "https://instagram.com/username"
-}
-```
+## 错误处理
 
-## 限制说明
+- `DEEPSOP_API_KEY` 未设置：提示用户在 OPClaw 项目设置中配置；非 OPClaw 运行时配置共享环境变量或 `~/.openclaw/.env`。
+- `401`：提示 API Key 无效或过期。
+- `429`：提示请求过于频繁，稍后重试。
+- `4xx/5xx`：返回接口状态码和错误信息，停止本次查询。
 
-- **搜索结果数量有限**：当前 scraper 基于 Facebook Ads 自动补全接口，每个关键词通常返回 7-15 条结果
-- **扩大覆盖方法**：使用多个类似关键词分别搜索并去重，可以用多轮搜索扩大达人库
-- **不会消耗你的 Instagram 账号**：全部在 Apify 云端完成，无封号风险
-- **无法搜索粉丝列表/关注列表**：如需要深度数据，例如某达人的粉丝列表，需使用 `apify/instagram-profile-scraper` 配合 Instagram 账号 cookies
+## 参考文件
+
+- `scripts/search_instagram.py`：可执行脚本和本地结果格式化逻辑。
