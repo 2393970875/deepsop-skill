@@ -56,38 +56,41 @@ X-Api-Key: <api_key>
 }
 ```
 
-**支持的图片模型（`type="10"`）：**
+**模型列表来源：**
 
-| 模型 Key | sourceName | methodType | 默认尺寸 | 说明 |
-|---------|-----------|-----------|---------|------|
-| `S5.0L` | DeepSop·S5.0L | `"4"` | `2048x2048` | 默认模型，生成快、风格全、支持联网 |
-| `N2` | DeepSop·N2 | `"2"` | `1:1` | 多模态输入，卓越文字渲染与角色一致性 |
-| `W2.7` | DeepSop.W2.7 | `"6"` | `2048x2048` | 文生图/图生图多模态输入 |
-| `W2.7Pro` | DeepSop.W2.7Pro | `"7"` | `2048x2048` | 精准控图与风格迁移 |
-| `3.1Nano2-Evo` | DeepSop·Nano2 | `"8"` | `1:1` | N2 Evo 版（服务端称 Nano2），支持 `imageSearch` |
-| `Nano2-Beta-Evo` | DeepSop·Nano2 Beta-Evo | `"9"` | `1:1` | N2 Beta Evo 版 |
-| `Image2` | DeepSop·Image2 | `"10"` | `auto` | GPTimage-2 接入；新增 `imageSearch`、`ratiocination`(low/medium/high)、`n`(1–10) |
+`POST /ai/consumeSource/list?pageNum=1&pageSize=999`
 
-**支持的视频模型（`type="9"`）：** `S1.5Pro`(2)、`V3.1FB`(3)、`V3.1PB`(4)、`V3.1Fast`(5)、`W2.6t`(7)、`W2.6i`(8)、`W2.6r`(9)、`klingV3Omni`(10)、`W2.7i`(14)、`W2.7t`(15)、`W2.7r`(16)。
+Body 示例：
+```json
+{
+  "sourceTypeList": ["IMAGE_MODEL"],
+  "hiddenState": "0"
+}
+```
 
-> 模型列表来源：`POST /ai/consumeSource/list?pageNum=1&pageSize=999`，Body：`{"sourceTypeList":["IMAGE_MODEL"|"VIDEO_MODEL"],"hiddenState":"0"}`；`hiddenState=1` 表示已停用。
+规则：
+- 图片模型使用接口返回的图片类型模型，提交任务时 `type="10"`。
+- 视频模型使用接口返回的视频类型模型，提交任务时 `type="9"`。
+- 模型名称、可用状态、排序和默认模型都以接口返回为准。
+- 默认模型取对应类型中 `sourceValue != "auto"` 且 `hiddenState == "0"` 的返回顺序第一个。
+- 选中模型后，把接口返回的 `sourceValue` 作为 `methodType`，再按本技能本地 methodType 规则组装参数。
 
 **parameter 字段说明（图片）:**
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `methodType` | string | API sourceValue，对应表中的 methodType |
+| `methodType` | string | API `sourceValue`，用于触发本地 methodType 参数规则 |
 | `prompt` | string | 图片生成提示词 |
 | `image` | array | 参考图片（可选） |
-| `quality` | string | 图片质量: "2K" / "4K" |
-| `size` | string | 尺寸格式因模型而异：`S5.0L`/`W2.7`/`W2.7Pro` 用 "2048x2048"，`N2`/`3.1Nano2-Evo`/`Nano2-Beta-Evo` 用 "1:1" |
-| `webSearch` | boolean | 是否启用网络搜索（仅 `S5.0L` / `3.1Nano2-Evo`）|
-| `imageSearch` | boolean | 是否启用图像搜索（仅 `3.1Nano2-Evo`）|
-| `ratiocination` | string | 渲染质量预设（仅 `Image2`）：`low` / `medium` / `high` |
-| `n` | number | 生成数量（仅 `Image2`，1–10）|
+| `quality` | string | 图片质量，按 methodType 白名单提交 |
+| `size` | string | 尺寸/比例，部分 methodType 会转换成 `WxH` 或 `W*H` |
+| `webSearch` | boolean | 联网搜索，仅 methodType `4/8` |
+| `imageSearch` | boolean | 图像搜索，仅 methodType `8` |
+| `ratiocination` | string | 渲染质量预设，仅 methodType `10`：`low` / `medium` / `high` |
+| `n` | number | 生成数量，仅 methodType `10`，范围 `1-10` |
 | `targetMaxSize` | number | 目标最大尺寸（MB）|
 | `targetMaxLength` | number | 目标最大长度（像素）|
-| `duration` | number | 持续时间（仅 `S5.0L`）|
+| `duration` | number | 持续时间；图片侧仅 methodType `4` 会额外提交 `duration=10` |
 
 **成功响应:**
 ```json
@@ -146,7 +149,7 @@ X-Api-Key: <api_key>
 ## 完整请求示例
 
 ```bash
-# 使用 S5.0L（DeepSop·S5.0L）模型创建图片任务
+# 使用图片 methodType=4 创建图片任务
 curl -X POST "https://ai.deepsop.com/prod-api/ai/AiArtistRecord" \
   -H "Content-Type: application/json" \
   -H "X-Api-Key: <api_key>" \
@@ -156,7 +159,7 @@ curl -X POST "https://ai.deepsop.com/prod-api/ai/AiArtistRecord" \
     "parameter": "{\"methodType\":\"4\",\"prompt\":\"风景画\",\"image\":[],\"quality\":\"2K\",\"size\":\"2048x2048\",\"webSearch\":false,\"targetMaxSize\":10,\"targetMaxLength\":6000,\"duration\":10}"
   }'
 
-# 使用 N2（DeepSop·N2）模型创建图片任务
+# 使用图片 methodType=2 创建图片任务
 curl -X POST "https://ai.deepsop.com/prod-api/ai/AiArtistRecord" \
   -H "Content-Type: application/json" \
   -H "X-Api-Key: <api_key>" \

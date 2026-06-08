@@ -1,149 +1,49 @@
-﻿# AI Image Generator
+# DeepSOP GenVis
 
-基于 AI Artist API 的图片/视频异步生成工具。
+基于 AI Artist API 的图片/视频异步生成技能。
 
-- 支持图片与视频任务创建
-- 自动轮询任务状态直到完成
-- 支持本地参考图自动上传
-- 创建任务前自动调用费用预估，余额不足时会拦截并提示充值
+本技能不维护模型名称清单，也不维护本地默认模型。模型列表、模型名称、展示顺序和默认模型都从 `consumeSource/list` 获取：
 
-## 🚀 快速开始
+- 图片：取接口中图片类型、`sourceValue != "auto"`、`hiddenState == "0"` 的返回顺序第一个作为默认图片模型。
+- 视频：取接口中视频类型、`sourceValue != "auto"`、`hiddenState == "0"` 的返回顺序第一个作为默认视频模型。
+- 用户选中模型后，用接口返回的 `sourceValue` 作为 `methodType`，触发本地参数规则。
 
-### 1) 获取 API Key
+## API Key
 
-本技能需要 **API Key 授权**才能调用 AI Artist API：
-
-- **已有账号** → 前往 [https://ai.deepsop.com/login?source=2](https://ai.deepsop.com/login?source=2) 登录获取
-- **没有账号** → 前往 [https://ai.deepsop.com/register?source=2](https://ai.deepsop.com/register?source=2) 注册后获取
-
-登录后在复制您的 API Key（`sk-` 开头）。
-
-### 2) 设置环境变量
-
-```bash
-# Linux/macOS/Git Bash
-export DEEPSOP_API_KEY="sk-your_api_key_here"
-```
+在 OPClaw 项目中运行时，技能直接读取项目设置里的 `DEEPSOP_API_KEY`。非 OPClaw 运行时，请用户授权后设置共享 Key，其他 DeepSOP 技能也能复用：
 
 ```powershell
-# Windows PowerShell
-$env:DEEPSOP_API_KEY="sk-your_api_key_here"
+[System.Environment]::SetEnvironmentVariable('DEEPSOP_API_KEY', 'sk-your_api_key_here', 'User')
 ```
 
-### 3) 验证配置
+也兼容写入 `~/.openclaw/.env`：
 
-```bash
-python3 scripts/test_config.py
+```ini
+DEEPSOP_API_KEY=sk-your_api_key_here
 ```
 
-### 4) 开始生成
+## 快速命令
 
 ```bash
-# 查看当前服务端激活的模型
+# 查看服务端当前启用模型
 python3 scripts/generate_image.py --list-models
 
-# 默认图片模型（接口返回的第一个可用非 auto 模型）
+# 不指定模型时，由接口顺序选择默认图片/视频模型
 python3 scripts/generate_image.py "一只可爱的猫"
+python3 scripts/generate_image.py "生成一段城市夜景延时视频"
+
+# 指定 methodType/sourceValue
+python3 scripts/generate_image.py "产品宣传图" --model 10 --n 4 --ratiocination high
+python3 scripts/generate_image.py "城市夜景延时" --model 20 --ratio "16:9" --resolution "1080p" --duration 10
 ```
 
-## 🎨 支持模型
+## 本地维护什么
 
-### 图片模型（以 API sourceName 命名）
-- `3.1Nano2-Evo` — DeepSop·3.1Nano2-Evo，N2 进化版
-- `S5.0L` — DeepSop·S5.0L，生成快、风格全、支持联网
-- `N2` — DeepSop·N2，多模态输入、卓越文字渲染
-- `W2.7` — DeepSop.W2.7，文生图/图生图多模态输入
-- `W2.7Pro` — DeepSop.W2.7Pro，精准控图与风格迁移
-- `Nano2-Beta-Evo` — DeepSop·Nano2 Beta-Evo，N2 Beta 进化版
+- `methodType` 对应的参数默认值。
+- 每个 `methodType` 支持哪些参数、参数选项、隐藏字段、必填校验。
+- 本地图片/视频/音频素材能上传什么格式，上传后写入哪个 payload 参数。
+- 创建任务前的费用预估、余额不足拦截、任务轮询。
 
-### 视频模型（以 API sourceName 命名）
-- `V3.1FB` — DeepSop·V3.1FB，快速生成基础流畅，固定 8 秒
-- `S1.5Pro` — DeepSop·S1.5Pro，影视级连贯叙事
-- `V3.1PB` — DeepSop·V3.1PB，多图参考角色一致性
-- `V3.1Fast` — DeepSop·V3.1Fast，音画同步、竖屏适配
-- `W2.6t` / `W2.6i` / `W2.6r` — DeepSop·W2.6 系列（文生/图生/参考视频）
-- `klingV3Omni` — DeepSop.klingV3Omni，多模态融合（按张计费）
-- `W2.7i` / `W2.7t` / `W2.7r` — DeepSop·W2.7 系列（文生 2K 自配音 / 图生首尾帧 / 参考视频）
+模型有哪些、模型名叫什么、默认用哪个模型，都以接口为准。
 
-## 📝 常用示例
-
-```bash
-# 图片：指定模型（比例尺寸）
-python3 scripts/generate_image.py "一只柴犬" --model N2 --size "1:1"
-
-# 图片：W2.7Pro 精准控图
-python3 scripts/generate_image.py "角色三视图" --model W2.7Pro --quality "4K"
-
-# 图片：下载到本地
-python3 scripts/generate_image.py "海边日落" --download
-
-# 图片：参考图生成（本地文件自动上传）
-python3 scripts/generate_image.py "做成赛博朋克风格" --reference-image "./ref.png"
-
-# 视频：基础文生视频（S1.5Pro）
-python3 scripts/generate_image.py "城市夜景延时" --model S1.5Pro
-
-# 视频：V3.1PB 首尾帧控制
-python3 scripts/generate_image.py "灯具变形动画" --model V3.1PB --first-image "./start.jpg" --last-image "./end.jpg" --duration 8
-
-# 视频：W2.7t 文生视频（2K 自配音）
-python3 scripts/generate_image.py "品牌短片" --model W2.7t --resolution "1080p" --duration 10
-```
-
-## 📖 文档
-
-完整参数说明与更多示例见 `SKILL.md`。
-
-## 🧪 调试与测试
-
-```bash
-# 预览最终 payload，不消耗 K 币
-python3 scripts/generate_image.py "测试提示词" --dry-run
-
-# 查看当前激活的模型
-python3 scripts/generate_image.py --list-models
-
-# 运行回归测试（需 pytest）
-pytest tests -q
-```
-
-## 🔧 环境要求
-
-- Python 3.6+
-- `requests`
-- `python-dotenv`（可选；用于自动加载项目根 `.env`）
-
-## ⚠️ 注意事项
-
-- 必须使用你自己的 `DEEPSOP_API_KEY`
-- 任务创建前会执行费用预估；若余额不足将不会提交任务
-- 未指定模型时，脚本从服务端模型列表选择第一个非 `auto` 且启用的可用模型作为默认模型，不使用本地写死默认值
-- 生成失败时不要自动切换模型重试；应先反馈实际使用模型与失败原因，由用户决定是否更换模型
-- 请遵守 AI Artist API 的使用条款
-
----
-
-## 🔒 安全审计报告
-
-> 本技能已通过 `skill-vetter` 安全审计工具的完整审查，可放心安装使用。
-
-| 字段 | 内容 |
-|---|---|
-| **审计日期** | 2026-05-12 |
-| **审计工具** | skill-vetter (clawhub@latest) |
-| **来源** | DeepSOP 技能库 / DeepSOP 官方 |
-| **审查文件数** | 6（SKILL.md、README.md、api.md、generate_image.py、test_generate_image.py、飞书集成文档） |
-| **可疑模式** | ✖ 无 |
-| **网络访问** | `https://ai.deepsop.com/prod-api/`（合法的 AI 图像生成接口，单一已知域名） |
-| **API Key 处理** | 仅从环境变量 `DEEPSOP_API_KEY` 读取，未硬编码、无外泄 |
-| **文件访问** | 用户指定的图像文件读写 |
-| **依赖命令** | Python `requests` 库 |
-| **风险等级** | 🟡 MEDIUM（需配置 API Key） |
-| **审计结论** | ✅ **SAFE TO INSTALL — 安全可安装** |
-
-**误报澄清：**
-- 扫描器命中的 `base64.b64encode` 是把本地图片**编码**后上传给 API，并非"解码可疑数据"的危险模式。
-- 全部网络流量仅指向单一已知域名 `ai.deepsop.com`。
-- API Key 仅通过环境变量传入，不写入磁盘，不上报第三方。
-
-> 完整的多技能审计报告见仓库根目录 `SKILL_VETTING_REPORT.md`。
+完整规则见 [SKILL.md](SKILL.md)，API 请求格式见 [references/api.md](references/api.md)。

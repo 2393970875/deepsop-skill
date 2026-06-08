@@ -19,6 +19,7 @@ import sys
 import argparse
 import os
 import base64
+import getpass
 from pathlib import Path
 
 # Configuration
@@ -45,8 +46,50 @@ try:
 except Exception:
     pass
 
-# Get API key from environment variable (required)
-API_KEY = os.environ.get("DEEPSOP_API_KEY")
+def _read_env_file_value(path, key):
+    """Read KEY=value from a simple .env file without requiring python-dotenv."""
+    try:
+        if not path or not os.path.exists(path):
+            return None
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                name, value = line.split("=", 1)
+                if name.strip() == key:
+                    return value.strip().strip('"\'')
+    except Exception:
+        return None
+    return None
+
+
+def _load_deepsop_api_key():
+    """Load the shared DeepSOP API key.
+
+    OPClaw project settings expose DEEPSOP_API_KEY as an environment variable.
+    For non-OPClaw execution, also check common .env locations so a single
+    configured key can be reused by sibling DeepSOP skills on the same machine.
+    """
+    key = os.environ.get("DEEPSOP_API_KEY", "").strip()
+    if key:
+        return key
+
+    candidates = [
+        Path.cwd() / ".env",
+        Path(__file__).resolve().parent.parent / ".env",
+        Path.home() / ".openclaw" / ".env",
+    ]
+    for env_path in candidates:
+        key = _read_env_file_value(str(env_path), "DEEPSOP_API_KEY")
+        if key:
+            os.environ["DEEPSOP_API_KEY"] = key
+            return key
+    return None
+
+
+# Get API key from OPClaw/project environment or shared .env fallback.
+API_KEY = _load_deepsop_api_key()
 
 # Feishu webhook configuration (optional)
 FEISHU_WEBHOOK_URL = os.environ.get("FEISHU_WEBHOOK_URL")
@@ -119,24 +162,58 @@ def _emit_cli_result(result, args, markdown_label=""):
 
 def check_api_key():
     """Check if user has set their API key."""
-    if not API_KEY:
+    api_key = _load_deepsop_api_key()
+    if not api_key:
         print("错误：未配置 DEEPSOP_API_KEY 环境变量", file=sys.stderr)
         print("", file=sys.stderr)
-        print("请先设置你的 API Key:", file=sys.stderr)
-        print("  export DEEPSOP_API_KEY=\"sk-your_api_key_here\"", file=sys.stderr)
+        print("请先在 OPClaw 项目设置中配置 DEEPSOP_API_KEY。", file=sys.stderr)
+        print("如果不是从 OPClaw 运行，请让用户授权后把 API Key 配置为系统/用户级环境变量，其他 DeepSOP 技能也会共用：", file=sys.stderr)
+        print("  Windows PowerShell: [System.Environment]::SetEnvironmentVariable('DEEPSOP_API_KEY', 'sk-your_api_key_here', 'User')", file=sys.stderr)
+        print("  Linux/macOS: echo 'export DEEPSOP_API_KEY=\"sk-your_api_key_here\"' >> ~/.bashrc", file=sys.stderr)
+        print("  或写入 ~/.openclaw/.env: DEEPSOP_API_KEY=sk-your_api_key_here", file=sys.stderr)
         print("", file=sys.stderr)
-        print("验证配置:", file=sys.stderr)
-        print("  python3 scripts/test_config.py", file=sys.stderr)
+        print("配置后重新打开终端或重启 OPClaw 再运行。", file=sys.stderr)
         print("", file=sys.stderr)
         sys.exit(1)
     return True
 
 
+def ensure_api_key_for_network():
+    """Ensure a shared API key exists before network operations.
+
+    In OPClaw this is normally injected via project settings. Outside OPClaw,
+    allow an interactive user to paste the key once and persist it to
+    ~/.openclaw/.env so sibling DeepSOP skills can reuse it.
+    """
+    api_key = _load_deepsop_api_key()
+    if api_key:
+        return api_key
+
+    if sys.stdin.isatty():
+        print("未检测到 DEEPSOP_API_KEY。请输入已授权的 DeepSOP API Key（输入将隐藏）：", file=sys.stderr)
+        entered = getpass.getpass("DEEPSOP_API_KEY: ").strip()
+        if entered:
+            env_dir = Path.home() / ".openclaw"
+            env_dir.mkdir(parents=True, exist_ok=True)
+            env_file = env_dir / ".env"
+            existing = env_file.read_text(encoding="utf-8") if env_file.exists() else ""
+            lines = [line for line in existing.splitlines() if not line.strip().startswith("DEEPSOP_API_KEY=")]
+            lines.append(f"DEEPSOP_API_KEY={entered}")
+            env_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            os.environ["DEEPSOP_API_KEY"] = entered
+            print(f"已保存到 {env_file}，其他 DeepSOP 技能也会共用。", file=sys.stderr)
+            return entered
+
+    check_api_key()
+    return None
+
+
 def get_headers():
     """Build request headers with API key."""
+    api_key = _load_deepsop_api_key()
     return {
         "Content-Type": "application/json",
-        "X-Api-Key": API_KEY
+        "X-Api-Key": api_key
     }
 
 
@@ -376,6 +453,9 @@ def _resolve_model_key(value):
     s = str(value).strip()
     if not s:
         return None
+    alias = MODEL_ALIASES.get(s.lower())
+    if alias:
+        return alias
     # Direct friendly-key hit (case-insensitive)
     for key in MODEL_CONFIGS:
         if key.lower() == s.lower():
@@ -707,25 +787,26 @@ IMAGE_FIELD_SUPPORT = {
 # imageUrlList, firstImageUrl, targetMax*) are considered universal/contextual
 # and pass through unfiltered.
 VIDEO_FIELD_SUPPORT = {
-    # Negative prompt: V3.1Fast + Wan series (mt 5,6,7,8,9,14,15,16)
-    "negativePrompt": {"V3.1Fast", "W2.6t", "W2.6i", "W2.6r",
+    # Negative prompt: V3.1 Fast/Pro + Wan series (mt 5,6,7,8,9,14,15,16)
+    "negativePrompt": {"V3.1Fast", "V3.1Pro", "W2.6t", "W2.6i", "W2.6r",
                        "W2.7t", "W2.7i", "W2.7r"},
-    # Audio toggle: S1.5Pro, V3.1Fast, klingV3Omni, S2.0, S2.0Fast  (mt 2,5,10,17,18)
-    "generateAudio": {"S1.5Pro", "V3.1Fast", "klingV3Omni", "S2.0", "S2.0Fast"},
-    # English enhancement: V3.1 series (mt 3,4,5)
-    "enhancePrompt": {"V3.1FB", "V3.1PB", "V3.1Fast"},
+    # Audio toggle: S1.5Pro, V3.1 Fast/Pro, klingV3Omni, Seedance2.0 family
+    "generateAudio": {"S1.5Pro", "V3.1Fast", "V3.1Pro", "klingV3Omni",
+                      "S2.0", "S2.0Fast", "S2.0Evo", "S2.0FastEvo"},
+    # English enhancement: V3.1 series (mt 3,4,5,6)
+    "enhancePrompt": {"V3.1FB", "V3.1PB", "V3.1Fast", "V3.1Pro"},
     # Smart rewrite: Wan series (mt 7,8,9,14,15,16)
     "promptExtend": {"W2.6t", "W2.6i", "W2.6r", "W2.7t", "W2.7i", "W2.7r"},
-    # Generation count / people / resize: V3.1Fast  (mt 5)
-    "n": {"V3.1Fast"},
-    "personGeneration": {"V3.1Fast"},
-    "resizeMode": {"V3.1Fast"},
+    # Generation count / people / resize: V3.1 Fast/Pro (mt 5,6)
+    "n": {"V3.1Fast", "V3.1Pro"},
+    "personGeneration": {"V3.1Fast", "V3.1Pro"},
+    "resizeMode": {"V3.1Fast", "V3.1Pro"},
     # Shot mode: Wan2.6 + klingV3Omni  (mt 7,8,9,10)
     "shotType": {"W2.6t", "W2.6i", "W2.6r", "klingV3Omni"},
-    # Duration switch (manual/intelligent): S1.5Pro, S2.0, S2.0Fast  (mt 2,17,18)
-    "durationSwitch": {"S1.5Pro", "S2.0", "S2.0Fast"},
-    # Web search toggle: S2.0, S2.0Fast  (mt 17,18)
-    "webSearch": {"S2.0", "S2.0Fast"},
+    # Duration switch (manual/intelligent): S1.5Pro, Seedance2.0 family
+    "durationSwitch": {"S1.5Pro", "S2.0", "S2.0Fast", "S2.0Evo", "S2.0FastEvo"},
+    # Web search toggle: Seedance2.0 family
+    "webSearch": {"S2.0", "S2.0Fast", "S2.0Evo", "S2.0FastEvo"},
     # klingV3Omni exclusives (mt 10)
     "mode": {"klingV3Omni"},
     "multiShot": {"klingV3Omni"},
@@ -737,30 +818,32 @@ VIDEO_FIELD_SUPPORT = {
     "firstClipUrl": {"klingV3Omni", "W2.7i", "HappyHorse"},
     # Audio control mode (auto / origin): HappyHorse only, EDIT generationType  (mt 19)
     "audioSetting": {"HappyHorse"},
-    # Reference-video list: W2.6r / W2.7r / S2.0 / S2.0Fast  (mt 9,16,17,18)
-    "videoUrlList": {"W2.6r", "W2.7r", "S2.0", "S2.0Fast"},
+    # Reference-video list: W2.6r / W2.7r / Seedance2.0 family
+    "videoUrlList": {"W2.6r", "W2.7r", "S2.0", "S2.0Fast", "S2.0Evo", "S2.0FastEvo"},
     # Audio URL (single): Wan text/image/W2.7 series  (mt 7,8,14,15,16).
-    # NOTE: S2.0 / S2.0Fast (mt 17,18) use audioUrlList instead.
+    # NOTE: Seedance2.0 family uses audioUrlList instead.
     "audioUrl": {"W2.6t", "W2.6i", "W2.7t", "W2.7i", "W2.7r"},
-    # Audio URL list (multi): S2.0, S2.0Fast  (mt 17,18)
-    "audioUrlList": {"S2.0", "S2.0Fast"},
+    # Audio URL list (multi): Seedance2.0 family
+    "audioUrlList": {"S2.0", "S2.0Fast", "S2.0Evo", "S2.0FastEvo"},
     # lastImageUrl: NOT supported by W2.6i (mt=8) or Sora2 variants. All other
     # active video models support it.
     # NOTE: HappyHorse (mt=19) does NOT support lastImageUrl.
-    "lastImageUrl": {"S1.5Pro", "V3.1FB", "V3.1PB", "V3.1Fast",
+    "lastImageUrl": {"S1.5Pro", "V3.1FB", "V3.1PB", "V3.1Fast", "V3.1Pro",
                      "W2.6t", "W2.6r", "klingV3Omni",
                      "W2.7t", "W2.7i", "W2.7r",
-                     "S2.0", "S2.0Fast"},
+                     "S2.0", "S2.0Fast", "S2.0Evo", "S2.0FastEvo"},
     # ratio: W2.6i (mt=8) and W2.7i (mt=14) derive ratio from the first frame.
-    "ratio": {"S1.5Pro", "V3.1FB", "V3.1PB", "V3.1Fast",
+    "ratio": {"Sora2-BetaMax", "Sora2-147", "Sora2Pro-147", "Sora2Pro-Evolink",
+              "S1.5Pro", "V3.1FB", "V3.1PB", "V3.1Fast", "V3.1Pro",
               "W2.6t", "W2.6r", "klingV3Omni",
               "W2.7t", "W2.7r",
-              "S2.0", "S2.0Fast", "HappyHorse"},
+              "S2.0", "S2.0Fast", "S2.0Evo", "S2.0FastEvo", "HappyHorse"},
     # resolution: klingV3Omni (mt=10) does not expose a resolution selector.
-    "resolution": {"S1.5Pro", "V3.1FB", "V3.1PB", "V3.1Fast",
+    "resolution": {"Sora2-BetaMax", "Sora2-147", "Sora2Pro-147", "Sora2Pro-Evolink",
+                   "S1.5Pro", "V3.1FB", "V3.1PB", "V3.1Fast", "V3.1Pro",
                    "W2.6t", "W2.6i", "W2.6r",
                    "W2.7t", "W2.7i", "W2.7r",
-                   "S2.0", "S2.0Fast", "HappyHorse"},
+                   "S2.0", "S2.0Fast", "S2.0Evo", "S2.0FastEvo", "HappyHorse"},
 }
 
 
@@ -779,10 +862,15 @@ def _filter_by_whitelist(parameter, model, support_matrix):
 
 # generationType whitelist per model (matchGenerationTypeOptions)
 VIDEO_GENERATION_TYPES = {
+    "Sora2-BetaMax": ["TEXT", "FIRST&LAST"],
     "S1.5Pro":     ["TEXT", "FIRST&LAST"],
     "V3.1FB":      ["TEXT", "FIRST&LAST", "REFERENCE"],
     "V3.1PB":      ["TEXT", "FIRST&LAST"],
     "V3.1Fast":    ["TEXT", "FIRST&LAST"],
+    "V3.1Pro":     ["TEXT", "FIRST&LAST"],
+    "Sora2-147":   ["TEXT", "FIRST&LAST"],
+    "Sora2Pro-147": ["TEXT", "FIRST&LAST"],
+    "Sora2Pro-Evolink": ["TEXT", "FIRST&LAST", "REFERENCE"],
     "W2.6t":       ["TEXT"],
     "W2.6i":       ["FIRST&LAST"],
     "W2.6r":       ["REFERENCE"],
@@ -792,16 +880,23 @@ VIDEO_GENERATION_TYPES = {
     "W2.7r":       ["REFERENCE"],
     "S2.0":        ["TEXT", "FIRST&LAST", "REFERENCE"],
     "S2.0Fast":    ["TEXT", "FIRST&LAST", "REFERENCE"],
+    "S2.0Evo":     ["TEXT", "FIRST&LAST", "REFERENCE"],
+    "S2.0FastEvo": ["TEXT", "FIRST&LAST", "REFERENCE"],
     "HappyHorse":  ["TEXT", "FIRST&LAST", "REFERENCE", "EDIT"],
 }
 
 # ratio whitelist per model (matchVideoRatioOptions). W2.6i / W2.7i derive from
 # the first frame so ratio is not submitted at all (handled by VIDEO_FIELD_SUPPORT).
 VIDEO_RATIOS = {
+    "Sora2-BetaMax": ["16:9", "9:16"],
     "S1.5Pro":     ["1:1", "3:4", "4:3", "16:9", "9:16", "21:9", "adaptive"],
     "V3.1FB":      ["16:9", "9:16", "adaptive"],
     "V3.1PB":      ["16:9", "9:16", "adaptive"],
     "V3.1Fast":    ["16:9", "9:16", "adaptive"],
+    "V3.1Pro":     ["16:9", "9:16", "adaptive"],
+    "Sora2-147":   ["adaptive", "1:1", "3:4", "4:3", "7:4", "4:7", "16:9", "9:16", "21:9"],
+    "Sora2Pro-147": ["16:9", "9:16", "7:4", "4:7"],
+    "Sora2Pro-Evolink": ["adaptive", "1:1", "3:4", "4:3", "7:4", "4:7", "16:9", "9:16", "21:9"],
     "W2.6t":       ["1:1", "3:4", "4:3", "16:9", "9:16"],
     "W2.6r":       ["1:1", "3:4", "4:3", "16:9", "9:16"],
     "klingV3Omni": ["1:1", "16:9", "9:16"],
@@ -809,16 +904,23 @@ VIDEO_RATIOS = {
     "W2.7r":       ["1:1", "3:4", "4:3", "16:9", "9:16"],
     "S2.0":        ["adaptive", "1:1", "3:4", "4:3", "16:9", "9:16", "21:9"],
     "S2.0Fast":    ["adaptive", "1:1", "3:4", "4:3", "16:9", "9:16", "21:9"],
+    "S2.0Evo":     ["adaptive", "1:1", "3:4", "4:3", "16:9", "9:16", "21:9"],
+    "S2.0FastEvo": ["adaptive", "1:1", "3:4", "4:3", "16:9", "9:16", "21:9"],
     "HappyHorse":  ["1:1", "3:4", "4:3", "5:4", "4:5", "16:9", "9:16", "21:9", "9:21"],
 }
 
 # resolution whitelist per model (matchVideoQualityOptions). klingV3Omni does
 # not submit a resolution at all (handled by VIDEO_FIELD_SUPPORT).
 VIDEO_RESOLUTIONS = {
+    "Sora2-BetaMax": ["720p"],
     "S1.5Pro":     ["480p", "720p", "1080p"],
     "V3.1FB":      ["720p", "1080p", "4K"],
     "V3.1PB":      ["720p", "1080p", "4K"],
     "V3.1Fast":    ["720p", "1080p", "4K"],
+    "V3.1Pro":     ["720p", "1080p", "4K"],
+    "Sora2-147":   ["720p"],
+    "Sora2Pro-147": ["720p", "2K"],
+    "Sora2Pro-Evolink": ["720p", "2K"],
     "W2.6t":       ["720p", "1080p"],
     "W2.6i":       ["720p", "1080p"],
     "W2.6r":       ["720p", "1080p"],
@@ -827,6 +929,8 @@ VIDEO_RESOLUTIONS = {
     "W2.7r":       ["720p", "1080p"],
     "S2.0":        ["480p", "720p", "1080p"],
     "S2.0Fast":    ["480p", "720p"],
+    "S2.0Evo":     ["480p", "720p", "1080p"],
+    "S2.0FastEvo": ["480p", "720p"],
     "HappyHorse":  ["720p", "1080p"],
 }
 
@@ -841,6 +945,10 @@ IMAGE_QUALITIES = {
     "3.1Nano2-Evo":   ["1K", "2K", "4K"],
     "Nano2-Beta-Evo": ["1K", "2K", "4K"],
     "Image2":         ["1K", "2K", "4K"],
+    "S4.5":           ["2K", "4K"],
+    "N1":             ["1K"],
+    "Nano1Pro-147":   ["1K", "2K", "4K"],
+    "Nano2-147":      ["1K", "2K", "4K"],
 }
 
 # Image ratio/size exclusions (matchImageRatioOptions excludedRatios).
@@ -856,6 +964,10 @@ IMAGE_SIZE_EXCLUDED = {
     "Nano2-Beta-Evo":  ["1:2", "2:1", "1:3", "3:1", "9:21"],
     "Image2":          ["1:4", "4:1", "1:8", "8:1"],
     "Image2-Beta-Evo": ["1:4", "4:1", "1:8", "8:1", "4:5", "5:4"],
+    "S4.5":            ["auto"],
+    "N1":              ["1:2", "2:1", "1:3", "3:1", "1:4", "4:1", "1:8", "8:1", "4:5", "5:4", "9:21", "21:9"],
+    "Nano1Pro-147":    ["auto", "1:2", "2:1", "1:3", "3:1", "1:4", "4:1", "1:8", "8:1", "9:21"],
+    "Nano2-147":       ["auto", "1:2", "2:1", "1:3", "3:1", "1:4", "4:1", "1:8", "8:1", "9:21"],
 }
 
 
@@ -879,20 +991,27 @@ def _coerce_value(current, allowed, fallback, label, model):
 #   constraints that MUST be forwarded to the API via the `targetMax*` fields.
 # ---------------------------------------------------------------------------
 VIDEO_RESTRICTIONS = {
+    "Sora2-BetaMax": {"textLength": 2500, "targetMaxSize": 10, "targetMinLength": 300, "targetMaxLength": 6000},
     "S1.5Pro":     {"textLength": 500,  "targetMaxSize": 30, "targetMinLength": 300, "targetMaxLength": 6000},
     "V3.1FB":      {"textLength": 1000, "negativeTextLength": 250, "targetMaxSize": 10, "targetMinLength": 300, "targetMaxLength": 6000},
     "V3.1PB":      {"textLength": 1000, "negativeTextLength": 250, "targetMaxSize": 10, "targetMinLength": 300, "targetMaxLength": 6000},
     "V3.1Fast":    {"textLength": 1000, "negativeTextLength": 250, "targetMaxSize": 10, "targetMinLength": 300, "targetMaxLength": 6000},
+    "V3.1Pro":     {"textLength": 1000, "negativeTextLength": 250, "targetMaxSize": 10, "targetMinLength": 300, "targetMaxLength": 6000},
     "W2.6t":       {"textLength": 750,  "negativeTextLength": 250, "targetMaxSize": 10, "targetMinLength": 360, "targetMaxLength": 2000},
     "W2.6i":       {"textLength": 750,  "negativeTextLength": 250, "targetMaxSize": 10, "targetMinLength": 360, "targetMaxLength": 2000},
     "W2.6r":       {"textLength": 750,  "negativeTextLength": 250, "targetMaxSize": 10, "targetMinLength": 240, "targetMaxLength": 5000},
     "klingV3Omni": {"textLength": 1250, "targetMaxSize": 10, "targetMinLength": 300},
+    "Sora2-147":   {"textLength": 2500, "targetMaxSize": 10, "targetMinLength": 300, "targetMaxLength": 6000},
+    "Sora2Pro-147": {"textLength": 2500, "targetMaxSize": 10, "targetMinLength": 300, "targetMaxLength": 6000},
+    "Sora2Pro-Evolink": {"textLength": 2500, "targetMaxSize": 10, "targetMinLength": 300, "targetMaxLength": 6000},
     "W2.7i":       {"textLength": 2500, "negativeTextLength": 250, "targetMaxSize": 20, "targetMinLength": 240, "targetMaxLength": 8000},
     "W2.7t":       {"textLength": 2500, "negativeTextLength": 250, "targetMaxSize": 20, "targetMinLength": 240, "targetMaxLength": 8000},
     "W2.7r":       {"textLength": 2500, "negativeTextLength": 250, "targetMaxSize": 10, "targetMinLength": 240, "targetMaxLength": 5000},
     "S2.0":        {"textLength": 1000, "targetMaxSize": 30, "targetMinLength": 300, "targetMaxLength": 6000},
     "S2.0Fast":    {"textLength": 1000, "targetMaxSize": 30, "targetMinLength": 300, "targetMaxLength": 6000},
-    "HappyHorse":  {"textLength": 2000, "targetMaxSize": 20, "targetMinLength": 240, "targetMaxLength": 8000},
+    "S2.0Evo":     {"textLength": 1000, "targetMaxSize": 30, "targetMinLength": 300, "targetMaxLength": 6000},
+    "S2.0FastEvo": {"textLength": 1000, "targetMaxSize": 30, "targetMinLength": 300, "targetMaxLength": 6000},
+    "HappyHorse":  {"textLength": 2500, "targetMaxSize": 20, "targetMinLength": 400, "targetMaxLength": 6000},
 }
 
 IMAGE_RESTRICTIONS = {
@@ -1079,6 +1198,21 @@ def _image_size_to_pixels(quality, ratio, sep):
 # methodType → pixel-size separator for image models that submit pixel form.
 _IMAGE_PIXEL_SEP_BY_MT = {"0": "x", "4": "x", "6": "*", "7": "*"}
 
+# Backward-compatible aliases accepted by --model. Canonical keys should match
+# current sourceName/sourceValue semantics where possible.
+MODEL_ALIASES = {
+    "n2-147": "Nano1Pro-147",
+    "n2pro-147": "Nano2-147",
+    "nano1-pro-147": "Nano1Pro-147",
+    "nano1pro-147": "Nano1Pro-147",
+    "nano2-147": "Nano2-147",
+    "s2.0evo": "S2.0Evo",
+    "s2.0-evo": "S2.0Evo",
+    "s2.0fastevo": "S2.0FastEvo",
+    "s2.0fast-evo": "S2.0FastEvo",
+    "s2.0-fast-evo": "S2.0FastEvo",
+}
+
 
 MODEL_CONFIGS = {
     # ===== Image models (type=10) =====
@@ -1086,7 +1220,7 @@ MODEL_CONFIGS = {
         "media_type": "image",
         "type": "10",
         "methodType": "2",
-        "source_name": "DeepSop·N2",
+        "source_name": "DeepSop·Nano1 Pro",
         "description": "N2 支持多模态输入 精细参数调节 卓越的文字渲染和角色一致性",
         "extra_params": {}
     },
@@ -1118,7 +1252,7 @@ MODEL_CONFIGS = {
         "media_type": "image",
         "type": "10",
         "methodType": "8",
-        "source_name": "DeepSop·3.1Nano2-Evo",
+        "source_name": "DeepSop·Nano2",
         "description": "N2 支持多模态输入 精细参数调节 卓越的文字渲染和角色一致性",
         "extra_params": {}
     },
@@ -1144,11 +1278,11 @@ MODEL_CONFIGS = {
         "type": "10",
         "methodType": "11",
         "source_name": "DeepSop·Image2 Beta-Evo",
-        "description": "Image2 Beta（服务端当前 hiddenState=1，待启用）",
+        "description": "Image2 Beta（是否启用以服务端 consumeSource/list 为准）",
         # mt=11 不提交 quality 字段，但保留 default 以防调用者误传
         "extra_params": {},
     },
-    # ----- Image models currently hiddenState=1 (kept for future reactivation) -----
+    # ----- Additional image models retained because frontend rules cover them -----
     "S4.5": {
         "media_type": "image",
         "type": "10",
@@ -1165,19 +1299,19 @@ MODEL_CONFIGS = {
         "description": "N1 支持多模态输入 精细参数调节 卓越的文字渲染和角色一致性",
         "extra_params": {}
     },
-    "N2-147": {
+    "Nano1Pro-147": {
         "media_type": "image",
         "type": "10",
         "methodType": "3",
-        "source_name": "DeepSop·3-Nano2-147",
-        "description": "N2 支持多模态输入 精细参数调节 卓越的文字渲染和角色一致性",
+        "source_name": "DeepSop-Nano1 Pro-147",
+        "description": "N1 Pro 支持多模态输入 精细参数调节 卓越的文字渲染和角色一致性",
         "extra_params": {}
     },
-    "N2Pro-147": {
+    "Nano2-147": {
         "media_type": "image",
         "type": "10",
         "methodType": "5",
-        "source_name": "DeepSop·3.1Nano2-147",
+        "source_name": "DeepSop·Nano2-147",
         "description": "N2 支持多模态输入 精细参数调节 卓越的文字渲染和角色一致性",
         "extra_params": {}
     },
@@ -1393,6 +1527,44 @@ MODEL_CONFIGS = {
             "durationSwitch": "1",
         }
     },
+    "S2.0Evo": {
+        "media_type": "video",
+        "type": "9",
+        "methodType": "20",
+        "source_name": "DeepSop.S2.0  Evo",
+        "description": "Seedance2.0 Evo 影视级视频生成 音画同步与精准口型对齐 支持多镜头叙事 4K高清",
+        "extra_params": {
+            "generationType": "TEXT",
+            "imageUrlList": None,
+            "firstImageUrl": None,
+            "lastImageUrl": None,
+            "videoUrlList": [],
+            "audioUrlList": [],
+            "durationList": [],
+            "generateAudio": True,
+            "webSearch": False,
+            "durationSwitch": "1",
+        }
+    },
+    "S2.0FastEvo": {
+        "media_type": "video",
+        "type": "9",
+        "methodType": "21",
+        "source_name": "DeepSop.S2.0 Fast Evo",
+        "description": "Seedance2.0 Fast Evo 快速生成 基础流畅 音画同步 支持15秒竖屏视频",
+        "extra_params": {
+            "generationType": "TEXT",
+            "imageUrlList": None,
+            "firstImageUrl": None,
+            "lastImageUrl": None,
+            "videoUrlList": [],
+            "audioUrlList": [],
+            "durationList": [],
+            "generateAudio": True,
+            "webSearch": False,
+            "durationSwitch": "1",
+        }
+    },
     "HappyHorse": {
         "media_type": "video",
         "type": "9",
@@ -1407,7 +1579,7 @@ MODEL_CONFIGS = {
             "audioSetting": "auto",
         }
     },
-    # ----- Video models currently hiddenState=1 (kept for future reactivation) -----
+    # ----- Additional video models exposed by consumeSource/list; availability is runtime-checked. -----
     "Sora2-BetaMax": {
         "media_type": "video",
         "type": "9",
@@ -1523,8 +1695,9 @@ def create_video_task(prompt, model=None, ratio=None, resolution=None,
             print(f"模型 {model} 必须提供非空的生成提示词 (prompt)", file=sys.stderr)
             return None
 
-    # Runtime availability check: consumeSource/list 可能随时将模型切成 hiddenState=1
-    if not check_model_available(model):
+    # Runtime availability check: consumeSource/list 可能随时将模型切成 hiddenState=1.
+    # Skip in dry-run so payload debugging works without API credentials/network.
+    if not DRY_RUN and not check_model_available(model):
         return None
 
     # Apply per-model length caps (truncate with warning, match frontend maxlength)
@@ -1608,8 +1781,8 @@ def create_video_task(prompt, model=None, ratio=None, resolution=None,
             parameter["duration"] = effective_duration
         parameter["size"] = effective_ratio
 
-    # V3.1Fast (mt=5): 4 or 8 seconds
-    if model == "V3.1Fast":
+    # V3.1 Fast/Pro (mt=5/6): 4 or 8 seconds
+    if model in {"V3.1Fast", "V3.1Pro"}:
         if effective_duration not in [4, 8]:
             print(f"{model} 时长必须是 4 或 8 秒，当前 {effective_duration} 秒，自动调整为 8 秒")
             effective_duration = 8
@@ -1625,7 +1798,7 @@ def create_video_task(prompt, model=None, ratio=None, resolution=None,
     wan_models = wan_text_models | wan_image_models | wan_ref_models
     pixel_size_models = {"W2.6t", "W2.6r"}  # only these use '1280*720' form
 
-    seedance2_models = {"S2.0", "S2.0Fast"}
+    seedance2_models = {"S2.0", "S2.0Fast", "S2.0Evo", "S2.0FastEvo"}
 
     # S1.5Pro (mt=2): duration 4-12s (frontend matchVideoDurationInfo)
     if model == "S1.5Pro":
@@ -1633,6 +1806,20 @@ def create_video_task(prompt, model=None, ratio=None, resolution=None,
             print(f"{model} 时长必须是 4-12 秒，当前 {effective_duration} 秒，自动调整为 10 秒",
                   file=sys.stderr)
             effective_duration = 10
+            parameter["duration"] = effective_duration
+
+    if model == "Sora2-BetaMax":
+        if effective_duration < 10 or effective_duration > 15:
+            print(f"{model} 时长必须是 10-15 秒，当前 {effective_duration} 秒，自动调整为 10 秒",
+                  file=sys.stderr)
+            effective_duration = 10
+            parameter["duration"] = effective_duration
+
+    if model in {"Sora2-147", "Sora2Pro-147", "Sora2Pro-Evolink"}:
+        if effective_duration < 4 or effective_duration > 12:
+            print(f"{model} 时长必须是 4-12 秒，当前 {effective_duration} 秒，自动调整为 8 秒",
+                  file=sys.stderr)
+            effective_duration = 8
             parameter["duration"] = effective_duration
 
     if model == "HappyHorse":
@@ -1796,6 +1983,39 @@ def create_video_task(prompt, model=None, ratio=None, resolution=None,
             parameter.pop("ratio", None)
             parameter.pop("duration", None)
             parameter.pop("size", None)
+
+    # Frontend-equivalent preflight validation after all field normalization.
+    gen_type = parameter.get("generationType")
+    image_count = len(parameter.get("imageUrlList") or [])
+    element_count = len(parameter.get("elementList") or [])
+    video_count = len(parameter.get("videoUrlList") or [])
+    audio_list_count = len(parameter.get("audioUrlList") or [])
+
+    if parameter.get("lastImageUrl") and not parameter.get("firstImageUrl"):
+        raise GenerationTaskCreationError(_creation_failure_message(model, "已传尾帧图片时必须同时提供首帧图片", "视频任务"))
+    if model in {"W2.6i", "W2.7i", "HappyHorse"} and gen_type == "FIRST&LAST" and not parameter.get("firstImageUrl"):
+        raise GenerationTaskCreationError(_creation_failure_message(model, "FIRST&LAST 模式必须提供首帧图片", "视频任务"))
+    if model == "W2.7i" and gen_type == "CONTINUATION" and not parameter.get("firstClipUrl"):
+        raise GenerationTaskCreationError(_creation_failure_message(model, "CONTINUATION 模式必须提供续写视频 firstClipUrl", "视频任务"))
+    if model == "klingV3Omni":
+        if gen_type == "FIRST&LAST" and not parameter.get("firstImageUrl") and element_count == 0:
+            raise GenerationTaskCreationError(_creation_failure_message(model, "FIRST&LAST 模式必须提供首帧图片或参考主体", "视频任务"))
+        if gen_type == "REFERENCE" and image_count + element_count == 0:
+            raise GenerationTaskCreationError(_creation_failure_message(model, "REFERENCE 模式必须至少提供一张参考图片或一个参考主体", "视频任务"))
+        if gen_type in {"EDIT", "FEATURE"} and not parameter.get("videoList"):
+            raise GenerationTaskCreationError(_creation_failure_message(model, "EDIT/FEATURE 模式必须提供编辑视频或参考视频", "视频任务"))
+        if parameter.get("shotType") == "customize":
+            bad_shot = any(not item.get("duration") or not item.get("prompt") for item in (parameter.get("multiPrompt") or []))
+            if bad_shot:
+                raise GenerationTaskCreationError(_creation_failure_message(model, "自定义分镜必须填写每个镜头的描述和非零时长", "视频任务"))
+    if model in {"W2.6r", "W2.7r"} and (image_count + video_count == 0 or image_count + video_count > 5):
+        raise GenerationTaskCreationError(_creation_failure_message(model, "参考图片+参考视频总数必须为 1-5", "视频任务"))
+    if model in {"V3.1FB", "V3.1PB", "V3.1Fast", "V3.1Pro", "HappyHorse"} and gen_type == "REFERENCE" and image_count == 0:
+        raise GenerationTaskCreationError(_creation_failure_message(model, "REFERENCE 模式必须至少提供一张参考图片", "视频任务"))
+    if model == "HappyHorse" and gen_type == "EDIT" and not parameter.get("firstClipUrl"):
+        raise GenerationTaskCreationError(_creation_failure_message(model, "EDIT 模式必须提供编辑视频 firstClipUrl", "视频任务"))
+    if model in seedance2_models and audio_list_count > 0 and image_count + video_count == 0:
+        raise GenerationTaskCreationError(_creation_failure_message(model, "使用参考音频时必须至少提供一张参考图片或一个参考视频", "视频任务"))
 
     payload = {
         "type": config["type"],
@@ -2016,8 +2236,9 @@ def create_generation_task(prompt, quality=None, size=None, model=None,
         print(f"模型 {model} 必须提供非空的生成提示词 (prompt)", file=sys.stderr)
         return None
 
-    # Runtime availability check: consumeSource/list 可能随时将模型切成 hiddenState=1
-    if not check_model_available(model):
+    # Runtime availability check: consumeSource/list 可能随时将模型切成 hiddenState=1.
+    # Skip in dry-run so payload debugging works without API credentials/network.
+    if not DRY_RUN and not check_model_available(model):
         return None
 
     # Apply per-model prompt length cap
@@ -2315,29 +2536,17 @@ def generate_image(prompt, quality=None, size=None, poll_interval=5,
 
 
 if __name__ == "__main__":
-    # Check API key before proceeding
-    check_api_key()
-
-    image_models = [k for k, v in MODEL_CONFIGS.items() if v["media_type"] == "image"]
-    video_models = [k for k, v in MODEL_CONFIGS.items() if v["media_type"] == "video"]
-    all_models = list(MODEL_CONFIGS.keys())
-    # methodType strings are also accepted (e.g. --model 19 = HappyHorse)
-    all_method_types = sorted({str(v["methodType"]) for v in MODEL_CONFIGS.values()})
-    all_model_inputs = all_models + all_method_types
-
     parser = argparse.ArgumentParser(
         description="AI 图片/视频生成器",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=f"图片模型：{', '.join(image_models)}\n视频模型：{', '.join(video_models)}"
+        formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument("prompt", nargs="?", default=None,
                         help="生成提示词（使用 --list-models 时可省略）")
     parser.add_argument("--list-models", action="store_true",
                         help="列出当前服务端激活的可用模型 (hiddenState=0) 后退出")
     parser.add_argument("--model", default=None,
-                        choices=all_model_inputs,
                         metavar="MODEL",
-                        help="生成模型。可传友好别名（如 HappyHorse）或 methodType（如 19）。"
+                        help="生成模型。推荐传接口 sourceValue/methodType（如 19）；旧友好别名仅用于兼容。"
                              "未指定时根据 prompt 自动推断媒介，并使用接口返回的第一个可用模型。"
                              "查看可用模型：--list-models")
     # 图片专属参数
@@ -2349,16 +2558,16 @@ if __name__ == "__main__":
     parser.add_argument("--reference-image", default=None, help="[图片] 参考图本地路径，自动上传后作为 image-to-image 参考")
     parser.add_argument("--reference-image-url", default=None, help="[图片] 已上传的参考图 URL")
     parser.add_argument("--web-search", dest="web_search", action="store_true", default=None,
-                        help="[图片] 启用联网搜索 (仅 S5.0L / 3.1Nano2-Evo)")
+                        help="[图片] 启用联网搜索 (仅 methodType 4/8)")
     parser.add_argument("--no-web-search", dest="web_search", action="store_false",
                         help="[图片] 关闭联网搜索")
     parser.add_argument("--image-search", dest="image_search", action="store_true", default=None,
-                        help="[图片] 启用图像搜索 (仅 3.1Nano2-Evo)")
+                        help="[图片] 启用图像搜索 (仅 methodType 8)")
     parser.add_argument("--no-image-search", dest="image_search", action="store_false",
                         help="[图片] 关闭图像搜索")
     parser.add_argument("--ratiocination", default=None,
                         choices=["low", "medium", "high"],
-                        help="[图片] 渲染质量预设 (仅 Image2)：low=最快 / medium=平衡 / high=质量")
+                        help="[图片] 渲染质量预设 (仅 methodType 10)：low=最快 / medium=平衡 / high=质量")
     # 视频专属参数
     parser.add_argument("--ratio", default=None, help="[视频] 画面比例，如 16:9、9:16、1:1，不传则按 methodType 默认值")
     parser.add_argument("--resolution", default=None, help="[视频] 分辨率，如 720p、1080p，不传则按 methodType 默认值")
@@ -2372,26 +2581,26 @@ if __name__ == "__main__":
     parser.add_argument("--no-audio", action="store_true", help="[视频] 不生成音频")
     parser.add_argument("--scale-factor", type=float, default=None, help="[视频] 可选 scaleFactor 覆盖值")
     parser.add_argument("--generation-type", default=None, help="[视频] 生成类型，如 FIRST&LAST、TEXT、REFERENCE、CONTINUATION、EDIT、FEATURE")
-    parser.add_argument("--negative-prompt", default=None, help="[视频] 反向提示词 (V3.1Fast/Wan系列)")
-    parser.add_argument("--enhance-prompt", action="store_true", default=None, help="[视频] 翻译成英文 (V3.1 系列)")
-    parser.add_argument("--prompt-extend", action="store_true", default=None, help="[视频] 智能改写 (Wan 系列)")
-    parser.add_argument("--shot-type", default=None, help="[视频] 镜头模式：single/multi/customize (Wan2.6/klingV3Omni)")
-    parser.add_argument("--mode", default=None, help="[视频] 生成模式：std/pro (仅 klingV3Omni)")
-    parser.add_argument("--keep-original-sound", default=None, help="[视频] yes/no (仅 klingV3Omni)")
-    parser.add_argument("--multi-shot", action="store_true", default=None, help="[视频] 多镜头模式 (仅 klingV3Omni)")
+    parser.add_argument("--negative-prompt", default=None, help="[视频] 反向提示词 (methodType 3/4/5/6/7/8/9/14/15/16 等)")
+    parser.add_argument("--enhance-prompt", action="store_true", default=None, help="[视频] 翻译成英文 (methodType 3/4/5/6 等)")
+    parser.add_argument("--prompt-extend", action="store_true", default=None, help="[视频] 智能改写 (methodType 7/8/9/14/15/16 等)")
+    parser.add_argument("--shot-type", default=None, help="[视频] 镜头模式：single/multi/customize (methodType 7/10 等)")
+    parser.add_argument("--mode", default=None, help="[视频] 生成模式：std/pro (仅 methodType 10)")
+    parser.add_argument("--keep-original-sound", default=None, help="[视频] yes/no (仅 methodType 10)")
+    parser.add_argument("--multi-shot", action="store_true", default=None, help="[视频] 多镜头模式 (仅 methodType 10)")
     parser.add_argument("--n", type=int, default=None,
-                        help="[视频] 生成数量 1-4 (仅 V3.1Fast) | [图片] 生成数量 1-10 (仅 Image2)")
-    parser.add_argument("--person-generation", default=None, help="[视频] allow_adult/dont_allow (仅 V3.1Fast)")
-    parser.add_argument("--resize-mode", default=None, help="[视频] pad/crop (仅 V3.1Fast)")
-    parser.add_argument("--duration-switch", default=None, help="[视频] 1=手选秒数, 2=智能时长 (S1.5Pro / S2.0 / S2.0Fast)")
+                        help="[视频] 生成数量 1-4 (methodType 5) | [图片] 生成数量 1-10 (methodType 10)")
+    parser.add_argument("--person-generation", default=None, help="[视频] allow_adult/dont_allow (methodType 5/6)")
+    parser.add_argument("--resize-mode", default=None, help="[视频] pad/crop (methodType 5/6)")
+    parser.add_argument("--duration-switch", default=None, help="[视频] 1=手选秒数, 2=智能时长 (methodType 2/17/18/20/21)")
     parser.add_argument("--audio-url-list", default=None,
-                        help="[视频] 多音频参考 URL，逗号分隔 (仅 S2.0 / S2.0Fast)")
+                        help="[视频] 多音频参考 URL，逗号分隔 (methodType 17/18/20/21)")
     parser.add_argument("--audio-path-list", default=None,
-                        help="[视频] 多音频本地路径，逗号分隔，自动上传 (仅 S2.0 / S2.0Fast)")
+                        help="[视频] 多音频本地路径，逗号分隔，自动上传 (methodType 17/18/20/21)")
     parser.add_argument("--first-clip-url", default=None,
-                        help="[视频] 续写/编辑/参考视频 URL (klingV3Omni / W2.7i / HappyHorse)")
+                        help="[视频] 续写/编辑/参考视频 URL (methodType 10/14/19 等)")
     parser.add_argument("--audio-setting", default=None, choices=["auto", "origin"],
-                        help="[视频] 声音控制：auto=由模型控制 / origin=保留原声 (仅 HappyHorse EDIT)")
+                        help="[视频] 声音控制：auto=由模型控制 / origin=保留原声 (仅 methodType 19 EDIT)")
     # 通用参数
     parser.add_argument("--interval", type=int, default=5, help="轮询间隔秒数")
     parser.add_argument("--max-wait", type=int, default=1200, help="任务轮询最长等待秒数 (默认 1200)")
@@ -2404,6 +2613,7 @@ if __name__ == "__main__":
 
     # --list-models short-circuit (also runs drift detection)
     if args.list_models:
+        ensure_api_key_for_network()
         _validate_local_against_api()
         print_active_models()
         sys.exit(0)
@@ -2421,6 +2631,7 @@ if __name__ == "__main__":
     # hardcoded fallback — if the API is unreachable or returns nothing, abort
     # with a clear error rather than silently submitting to a stale model.
     if args.model is None:
+        ensure_api_key_for_network()
         inferred = _infer_media_type(args.prompt)
         args.model = _get_default_model(inferred)
         if args.model is None:
@@ -2444,6 +2655,9 @@ if __name__ == "__main__":
         args.model = resolved
 
     media_type = MODEL_CONFIGS[args.model]["media_type"]
+
+    if not args.dry_run:
+        ensure_api_key_for_network()
 
     if media_type == "video":
         # Resolve audio flag

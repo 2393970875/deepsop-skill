@@ -1,665 +1,137 @@
 ---
 name: deepsop-genvis
 description: |
-  AI 图片与视频异步生成技能，调用 AI Artist API 根据文本提示词生成图片或视频，自动轮询直到任务完成。
+  DeepSOP AI 图片与视频生成技能。用于调用 AI Artist API 创建图片或视频任务、上传参考图片/视频/音频、预估费用、轮询结果，并按 Vue 前端规则根据接口返回的 sourceValue/methodType 校验 generationType、ratio、resolution、duration、参考素材数量、搜索开关、音频开关等参数约束。
 
-  ⚠️ 使用前必须设置环境变量 DEEPSOP_API_KEY 为你自己的 API Key！
-  需要 API Key 授权：已有账号请前往 https://ai.deepsop.com/login?source=2 登录获取；没有账号请前往 https://ai.deepsop.com/register?source=2 注册后获取。
+  本技能不写死模型名称清单和默认模型。模型列表、模型名、展示顺序和默认模型全部从服务端 consumeSource/list 获取；默认模型取对应类型中 sourceValue != "auto" 且 hiddenState == "0" 的接口返回顺序第一个。用户选中模型后，只使用该模型的 sourceValue/methodType 触发本地参数规则。
 
-  支持图片模型：3.1Nano2-Evo、S5.0L、N2、W2.7、W2.7Pro、Nano2-Beta-Evo、**Image2（GPTimage-2）**。
-  支持视频模型：V3.1FB、S1.5Pro、V3.1PB、V3.1Fast、W2.6t / W2.6i / W2.6r、klingV3Omni、W2.7t / W2.7i / W2.7r、**S2.0 / S2.0Fast**（Seedance2.0 系列，支持多音频参考与联网搜索）、**HappyHorse**（高效短视频，支持文生/首帧/参考图/视频编辑模式）。
-  默认模型从接口 `consumeSource/list` 实时获取（第一个非 `auto` 的可用模型），无本地硬编码兜底；默认模型生成失败时不得自动切换到其他模型，必须把失败模型与失败原因告知用户；查看当前服务端激活的模型请运行：`python3 scripts/generate_image.py --list-models`。
-
-  触发场景：
-  - 用户要求生成图片，如"生成一匹狼"、"画一只猫"、"风景画"、"帮我画"等。
-  - 用户要求生成视频，如"生成视频"、"文生视频"、"图生视频"、"生成一段...的视频"等。
-  - 用户指定模型：N2、S5.0L、W2.7、W2.7Pro、3.1Nano2-Evo、Nano2-Beta-Evo、Image2、GPTimage-2、gpt-image-2、S1.5Pro、V3.1FB、V3.1PB、V3.1Fast、W2.6t、W2.6i、W2.6r、klingV3Omni、W2.7t、W2.7i、W2.7r、S2.0、S2.0Fast、Seedance2.0、HappyHorse。
-  - 用户上传参考图/参考视频时，自动先调用文件上传 API 转换为可访问 URL。
+  在 OPClaw 项目中运行时直接读取项目设置里的 DEEPSOP_API_KEY；非 OPClaw 运行时，引导用户授权后把 DEEPSOP_API_KEY 配置为共享环境变量或 ~/.openclaw/.env，让其他 DeepSOP 技能也能复用。
 ---
 
-# AI Image Generator
+# DeepSOP GenVis
 
-异步生成 AI 图片与视频的技能。
+使用 `scripts/generate_image.py` 创建 AI 图片或视频任务。脚本会先预估费用，再提交任务并轮询到 `SUCCESS` / `FAILED` / `TIMEOUT`。
 
-## ⚠️ 首次使用必读
+## 必须遵守
 
-### 1. 获取 API Key
+- OPClaw 项目运行时使用项目设置里的 `DEEPSOP_API_KEY`；非 OPClaw 运行时，让用户授权后设置共享 `DEEPSOP_API_KEY`。
+- 模型列表、模型名称、模型顺序、默认模型全部来自 `consumeSource/list`。
+- 未指定模型时，先按 prompt 判断图片或视频，再取对应类型下 `sourceValue != "auto"` 且 `hiddenState == "0"` 的接口返回顺序第一个。
+- 指定模型时，优先传接口返回的 `sourceValue/methodType`，例如 `--model 10`。脚本保留友好别名只是兼容旧调用，不作为技能文档依据。
+- 选中模型或切换模型后，只根据 `methodType` 触发本地规则：默认值、可见字段、字段选项、必填校验、payload 组装。
+- 任务失败时，不要自动切换模型重试。必须反馈实际使用的 `methodType`、状态和失败原因。
+- 用户给本地参考图/视频/音频时，先上传成可访问 URL，再放入对应参数。
 
-本技能需要 **API Key 授权**才能调用 AI Artist API：
-
-- **已有账号** → 前往 [https://ai.deepsop.com/login?source=2](https://ai.deepsop.com/login?source=2) 登录获取
-- **没有账号** → 前往 [https://ai.deepsop.com/register?source=2](https://ai.deepsop.com/register?source=2) 注册后获取
-
-登录后在复制您的 API Key（`sk-` 开头）。
-
-### 2. 设置环境变量
-
-**在使用前，你必须先设置自己的 API Key：**
+## 快速命令
 
 ```bash
-# Linux/macOS/Git Bash (Windows)
-export DEEPSOP_API_KEY="sk-your_api_key_here"
-
-# Windows PowerShell
-$env:DEEPSOP_API_KEY="sk-your_api_key_here"
-```
-
-或在项目根目录放一个 `.env` 文件（需 `pip install python-dotenv`，脚本会自动加载）：
-
-```ini
-DEEPSOP_API_KEY=sk-your_api_key_here
-FEISHU_WEBHOOK_URL=  # 可选，用于结果通知
-```
-
-### 3. 验证配置
-
-**验证配置是否正确：**
-
-```bash
-python3 scripts/test_config.py
-```
-
-详细配置说明请查看下方"环境配置"章节。
-
-## 快速开始
-
-```bash
-python3 scripts/generate_image.py "提示词"
-```
-
-## 意图澄清指南（重要）
-
-**调用前必须做的事**：当用户的请求涉及参数复杂的模型，或关键信息缺失时，**先向用户提问确认意图**，再执行生成，避免浪费配额生成不符合预期的作品。
-
-### 通用判断流程
-
-1. **先分辨媒介**：图片 vs 视频（关键词："画/生成图片/海报/插画" → 图片；"视频/动画/片段/动起来" → 视频）。
-2. **判断输入材料**：
-   - 纯文字 → 文生模式（TEXT）
-   - 有一张首帧图 → 首帧图生视频（FIRST&LAST）
-   - 有首尾两张图 → 首尾帧控制（FIRST&LAST，需首帧+尾帧）
-   - 有参考视频 → 续写（CONTINUATION）、编辑（EDIT）、参考生成（FEATURE/REFERENCE）
-   - 有多张参考图（要求角色/元素一致性） → 参考图模式（REFERENCE）
-3. **若用户意图不明确或关键材料缺失，必须提问**，不要擅自假设。
-
-### 按模型列出"必须澄清的关键点"
-
-**所有视频模型通用**：
-- 时长（秒）？ 比例？（16:9 横屏 / 9:16 竖屏 / 1:1 正方）
-- 是否需要生成声音 / 配音 / 音乐？
-- 提示词含有人物时，是否希望保持角色一致性？
-
-**`klingV3Omni`（最复杂）**：5 种生成类型 + 多镜头模式，务必确认：
-- **生成类型**：文生（TEXT）/ 首尾帧（FIRST&LAST）/ 参考图生视频（REFERENCE）/ 编辑已有视频（EDIT）/ 参考视频再创作（FEATURE）？
-- **镜头模式**：单镜头（single）/ 智能多镜头（multi）/ 自定义分镜（customize，需要用户给出每个分镜的描述 + 时长）？
-- **生成模式**：`std` 标准 / `pro` 专家级？
-- 若是 EDIT/FEATURE：需要参考视频 URL，并确认"是否保留原音"（`keep_original_sound` yes/no）
-
-**`W2.6r` / `W2.7r`（参考视频模式）**：
-- 参考图片 + 参考视频的总数 ≤ 5，询问用户是否都准备好了 URL / 本地文件
-- 是否想保留原视频的角色音色？
-- 希望迁移到什么场景？迁移的主体是什么？（让用户把场景描述写进 prompt）
-
-**`W2.7i`（图生视频，支持续写）**：
-- 输入是"一张首帧图"要让它动起来？→ FIRST&LAST（可选提供尾帧，让首尾过渡更可控）
-- 输入是"一段已有视频"要让它继续播？→ CONTINUATION（需要 `first_clip_url`）
-- 动作/运镜希望如何展开？请用户描述（写进 prompt）
-
-**`W2.6t` / `W2.7t`（文生视频）**：
-- 是否需要多镜头叙事？若是 → `shot_type="multi"`（智能分镜）
-- 是否有反向提示词（不希望出现的内容）？
-- 是否需要智能改写提示词（`prompt_extend=True`，默认 false）？
-- 是否需要传入自定义音频？
-
-**`V3.1Fast`（V3.1 系列的复杂款）**：
-- 是否需要翻译为英文提示词（`enhance_prompt`）？
-- 是否允许生成人物（`personGeneration=allow_adult/dont_allow`）？
-- 图像缩放模式（`resize_mode=pad/crop`）？
-- 时长 4 秒还是 8 秒？
-
-**`V3.1FB` / `V3.1PB`**：时长固定 8 秒，不必问；但要确认比例 / 分辨率。
-
-**`S1.5Pro`（影视级）**：
-- 是否追求"音画同步 + 口型对齐"？（说明场景是否包含对话）
-- 时长在 4-12 秒之间，默认 10 秒，可问用户。
-
-**图片复杂款 `W2.7` / `W2.7Pro` / `N2` / `3.1Nano2-Evo`**：
-- 有无参考图？做"风格迁移"、"角色一致性"、"文字渲染"时参考图能显著提升质量。
-- 是否需要特定比例？（默认 1:1，横图/竖图需指定）
-- 质量档位（1K/2K/4K，详见每个模型表）
-
-**`Image2`（GPTimage-2，OpenAI gpt-image-2 接入）**：
-- 渲染质量预设？`low`（最快，默认）/ `medium`（平衡）/ `high`（质量）——用 `--ratiocination`
-- 一次出几张？1–10，用 `--n`
-- 是否需要参考图？支持最多 16 张参考图、单张 ≤50MB；提示词上限 16000 字
-- 默认尺寸 `auto`（智能比例），可改为 `1:1 / 3:4 / 4:3 / 16:9 / 9:16` 等（**禁用** `1:4 / 4:1 / 1:8 / 8:1`）
-- 该模型 **不接受 `webSearch`、不接受 `imageSearch`**；仅 `3.1Nano2-Evo` 支持 `imageSearch`
-
-### 提问姿态（给 Claude 的指令）
-
-- **一次最多问 2-3 个最关键的问题**，别堆 10 个选项让用户懵。
-- **优先问对画面/成本影响最大的参数**（生成类型 > 时长 > 分辨率 > 次要参数）。
-- **提供默认建议**，让用户说"就这样"也能继续，不要强制用户全部自选。
-  示例："我打算用 `klingV3Omni` 做参考图生视频，比例 16:9、时长 10s、生成声音。你有几张想作为参考的图片吗？要不要保留原音？"
-- **材料缺失时必须停下来要素材**（URL / 本地文件路径），不要用占位符或假 URL 代替。
-- 用户若说"随便/都行"，按默认值直接执行，并在生成后告知用了哪些默认。
-- 用户未指定模型时，必须使用脚本默认模型选择：按提示词推断图片/视频后，取接口返回的第一个非 `auto` 且 `hiddenState=0` 的可用模型；不要自行指定本地偏好模型。
-- 默认模型或指定模型生成失败时，必须停止并说明实际使用的模型、失败状态与失败原因；不得在同一轮请求中静默切换到其他模型重试或兜底。只有用户明确同意更换模型后，才能再次执行。
-
-### 何时可以不提问直接执行
-
-- 用户请求非常明确（提示词清晰 + 指定了模型 + 提供了必要的参考材料 URL）
-- 用户明确说"快速来一张就行" / "随便出个视频"：直接执行，脚本会从接口拉取第一个可用模型并打印 `[auto] 使用接口返回的第一个可用…模型 …`，生成后将实际使用的模型告知用户。
-- 用户只要一张插画/头像/风景图 → 不指定 `--model`，由接口决定默认图片模型。
-- 若生成失败，即使知道其他模型可能成功，也必须先把失败原因反馈给用户并询问是否更换模型。
-
-## 参考图/视频上传流程
-
-当用户提供本地文件作为参考图或参考视频时，需要先调用文件上传 API 转换为可访问的 URL：
-
-### 文件上传 API
-
-```bash
-curl --location --request POST 'https://ai.deepsop.com/prod-api/system/fileUpload/upload' \
---header 'x-api-key: sk-your_api_key_here' \
---form 'file=@"C:\\Users\\admin\\Downloads\\image.png"'
-```
-
-**返回结果：**
-```json
-{
-  "msg": "操作成功",
-  "fileName": "image.png",
-  "code": 200,
-  "url": "https://kocgo-ai-sales-test.oss-cn-hangzhou.aliyuncs.com/material/100/xxx.png"
-}
-```
-
-### 使用上传后的 URL
-
-获取到 `url` 后，可作为 `firstImageUrl`、`lastImageUrl` 或其他图片参数传入生成接口。
-
-## 在对话中直接返回图片
-
-### 方式 1: Markdown 图片语法（推荐）
-
-生成图片后，直接在回复中使用 Markdown 语法：
-
-```markdown
-![描述](图片URL)
-```
-
-**平台支持情况：**
-- ✅ WebChat、Discord、Telegram：完全支持
-- ✅ 飞书：支持（需公开 URL）
-- ❌ WhatsApp：不支持
-
-### 方式 2: 下载后发送（需要 message 工具）
-
-使用 `--download` 参数下载图片，然后通过 message 工具发送：
-
-```bash
-python3 scripts/generate_image.py "风景画" --download
-```
-
-然后在代码中读取图片并发送：
-
-```python
-from scripts.generate_image import generate_image
-import base64
-
-result = generate_image(prompt="风景画", download=True)
-
-if result and result["status"] == "SUCCESS":
-    # 方式 A: 使用 data URI
-    image_uri = result["data_uri"]  # data:image/png;base64,...
-    
-    # 方式 B: 读取本地文件
-    with open(result["local_path"], "rb") as f:
-        image_data = f.read()
-        base64_data = base64.b64encode(image_data).decode()
-```
-
-## 参数说明
-
-### 通用参数
-
-| 参数 | 默认值 | 说明 |
-|------|--------|------|
-| `prompt` | 必填 | 生成提示词（图片或视频描述）|
-| `--model` | 自动推断 | 生成模型。**支持双入口**：友好别名（如 `HappyHorse`）或 `methodType` 字符串（如 `19`）。未指定时先按 prompt 关键词判定媒体类型（包含 `视频/动画/短片/动起来/镜头/clip/motion/video` 等 → 视频，其余 → 图片），再实时调用模型列表接口取该类型下**第一个非 `auto` 且 `hiddenState=0` 的可用模型**作为默认（无本地硬编码兜底，因此具体默认值随服务端配置变化）。图片可选：`3.1Nano2-Evo`、`S5.0L`、`N2`、`W2.7`、`W2.7Pro`、`Nano2-Beta-Evo`、`Image2`；视频可选：`V3.1FB`、`S1.5Pro`、`V3.1PB`、`V3.1Fast`、`W2.6t/i/r`、`klingV3Omni`、`W2.7t/i/r`、`S2.0`、`S2.0Fast`、`HappyHorse`。可通过 `--list-models` 查看当前实际激活的模型集 |
-| `--list-models` | - | 列出当前服务端激活的模型（hiddenState=0）后退出，不需 prompt |
-| `--dry-run` | - | 仅构建并打印最终 payload，不提交任务（调试用）|
-| `--json-output` | - | 以单行 JSON 向 **stdout** 输出最终结果 `{status,url,message,local_path?}`，便于 openclaw 等编排器解析 |
-| `--interval` | `5` | 轮询间隔(秒) |
-| `--max-wait` | 图片 600 / 视频 1200 | 任务轮询最长等待秒数 |
-
-#### 输出契约（给编排器/openclaw）
-
-- **stdout**：任务完成后**恰好一行**最终结果
-  - 默认：成功时输出 `URL`，失败时留空
-  - `--json-output`：始终输出一行 JSON，形如 `{"status":"SUCCESS","url":"https://...","message":"..."}`
-  - `--markdown-output`：成功时输出 `![prompt](url)`
-- **stderr**：所有人类可读进度日志（`[auto]`、`[upload]`、预估费用、任务 ID、轮询状态变化、`⚠️` 警告、错误说明）
-- **退出码**：`0` = 成功，`1` = 失败/超时
-
-脚本会**始终轮询到终态（SUCCESS / FAILED / TIMEOUT）才退出**，无需调用方自己再查询结果。
-当终态不是 `SUCCESS` 时，调用方/技能执行者必须原样反馈失败模型与 `message`；不得自动重新选择其他模型提交第二次任务。
-
-### 图片专属参数
-
-| 参数 | 默认值 | 说明 |
-|------|--------|------|
-| `--quality` | methodType 决定 | 图片质量。不传时按前端 `handleMethodTypeChange` 派生：`Image2 (mt=10)` 为 `1K` |
-| `--size` | 接口/methodType 决定 | 图片尺寸。脚本按前端 `handleMethodTypeChange` 派生默认值（mt ∈ {2,8,9,10,11} → `auto`；其他 → `1:1`），并对 `S5.0L (mt=4)` / `W2.7 (mt=6)` / `W2.7Pro (mt=7)` 自动转换为像素串（如 `2048x2048` / `2048*2048`）|
-| `--download` | - | 下载图片到本地 |
-| `--output-dir` | `workspace/images` | 图片保存目录 |
-| `--markdown-output` | - | 以 Markdown 格式输出图片链接 |
-| `--reference-image` | - | 参考图本地路径，自动上传后作为 image-to-image 参考 |
-| `--reference-image-url` | - | 已上传的参考图 URL（跳过上传流程）|
-| `--web-search` / `--no-web-search` | - | 启用/关闭联网搜索（仅 `S5.0L`、`3.1Nano2-Evo`）|
-| `--image-search` / `--no-image-search` | - | 启用/关闭图像搜索（仅 `3.1Nano2-Evo`）|
-| `--ratiocination` | `low` | 渲染质量预设（仅 `Image2`）：`low` / `medium` / `high` |
-| `--n` | `1` | 生成数量（图片 `Image2` 1–10；视频 `V3.1Fast` 1–4）|
-
-### 视频专属参数
-
-| 参数 | 默认值 | 说明 |
-|------|--------|------|
-| `--ratio` | methodType 决定 | 画面比例，如 `16:9`、`9:16`、`1:1`；不传时按前端默认值派生 |
-| `--resolution` | methodType 决定 | 视频分辨率，如 `720p`、`1080p`；不传时按前端默认值派生 |
-| `--duration` | methodType 决定 | 视频时长（秒）；部分模型默认为 `8`，其余通常为 `10` |
-| `--first-image-url` | - | 首帧参考图 URL |
-| `--last-image-url` | - | 尾帧参考图 URL |
-| `--first-image` | - | 首帧参考图本地路径，自动上传后转换为 URL |
-| `--last-image` | - | 尾帧参考图本地路径，自动上传后转换为 URL |
-| `--generate-audio` | - | 开启音频生成（按模型能力生效） |
-| `--no-audio` | - | 关闭音频生成（按模型能力生效） |
-
-## 模型来源与单一真相源
-
-脚本以 **服务端 `consumeSource/list` 接口** 为模型存在性 / `hiddenState` / 命名的唯一真相源，本地仅维护与前端一致的硬编码约束（比例 / 分辨率 / 时长 / 生成类型 / 字段可见性等），无法从接口推导。
-
-- **运行时校验**：每次提交任务前自动调用 `consumeSource/list`，若该模型 `hiddenState=1` 或不存在则直接拒绝
-- **`--list-models`**：从接口拉取激活模型并附带「漂移检测」（drift），若服务端激活了脚本未注册的模型 / 本地模型已下线，会以 `[drift] ...` 形式打印到 stderr
-- **CLI 双入口**：`--model HappyHorse` 与 `--model 19` 等价，前者是友好别名，后者是 `sourceValue`/`methodType`；脚本通过 `_resolve_model_key` 自动归一化
-
-## 支持的模型
-
-### 图片模型
-
-| 模型 | sourceName | methodType | 默认尺寸 | 特点 |
-|------|-----------|-----------|---------|------|
-| `S5.0L` | DeepSop·S5.0L | `4` | `2048x2048` | 质量 2K/3K，支持联网，像素尺寸 WxH（脚本将 `1:1` 比例自动序列化为像素串） |
-| `N2` | DeepSop·Nano1 Pro | `2` | `1:1` | 多模态输入，精细参数调节，卓越文字渲染与角色一致性（比例格式；服务端已重命名为 Nano1 Pro）|
-| `W2.7` | DeepSop.W2.7 | `6` | `2048*2048` | 文生图/图生图多模态输入，质量 1K/2K，size 用 `*` 分隔 |
-| `W2.7Pro` | DeepSop.W2.7Pro | `7` | `2048*2048` | 精准控图与风格迁移，质量 1K/2K，size 用 `*` 分隔 |
-| `3.1Nano2-Evo` | DeepSop·Nano2 | `8` | `1:1` | N2 Evo 版（服务端称 Nano2），支持 `imageSearch` 与 `webSearch` |
-| `Nano2-Beta-Evo` | DeepSop·Nano2 Beta-Evo | `9` | `1:1` | N2 Beta Evo 版，多模态输入、文字渲染与角色一致性 |
-| `Image2` | DeepSop·Image2 | `10` | `auto` | **GPTimage-2** 接入；支持 `ratiocination`(low/medium/high)、`n`(1–10)；提示词 16000 字；参考图 ≤50MB×16 张；禁用 1:4/4:1/1:8/8:1 |
-
-### 视频模型
-
-| 模型 | sourceName | methodType | 默认比例 | 默认分辨率 | 默认时长 | 特点 |
-|------|-----------|-----------|---------|-----------|---------|------|
-| `S1.5Pro` | DeepSop·S1.5Pro | `2` | `16:9` | `720p` | 10s | 影视级连贯叙事，音画同步与精准口型对齐 |
-| `V3.1FB` | DeepSop·V3.1FB | `3` | `16:9` | `1080p` | 8s | 快速生成，**时长固定 8 秒** |
-| `V3.1PB` | DeepSop·V3.1PB | `4` | `adaptive` | `720p` | 8s | V3.1Pro 多图参考，**时长固定 8 秒** |
-| `V3.1Fast` | DeepSop·V3.1Fast | `5` | `16:9` | `720p` | 8s | 快速生成，音画同步，时长 4s/8s |
-| `W2.6t` | DeepSop·W2.6t | `7` | `16:9` | `720p` | 10s | 文生视频，3-15s，size 用 `*` 像素，15s 1080P |
-| `W2.6i` | DeepSop·W2.6i | `8` | `16:9` | `720p` | 10s | 图生视频，3-15s，size 用 ratio，无尾帧支持 |
-| `W2.6r` | DeepSop·W2.6r | `9` | `16:9` | `720p` | 10s | 参考视频，**3-10s**，size 用 `*` 像素 |
-| `klingV3Omni` | DeepSop.klingV3Omni | `10` | `16:9` | `720p` | 10s | 多模态融合，**3-15s**，按张计费，支持分镜 |
-| `W2.7i` | DeepSop·W2.7i | `14` | `16:9` | `720p` | 10s | 图生视频，首尾帧平滑过渡，动作延展与视频续写 |
-| `W2.7t` | DeepSop.W2.7t | `15` | `16:9` | `720p` | 10s | 文生视频，智能多镜头剪辑，自动配音，2K 高清 |
-| `W2.7r` | DeepSop.W2.7r | `16` | `16:9` | `720p` | 10s | 参考视频生成，保留角色音色，多模态融合编辑 |
-| `S2.0` | DeepSop·S2.0 | `17` | `16:9` | `720p` | 10s | Seedance2.0，4-15s，支持多音频参考（`audioUrlList`）+ 联网搜索（`webSearch`），分辨率 480p/720p/1080p |
-| `S2.0Fast` | DeepSop·S2.0Fast | `18` | `16:9` | `720p` | 10s | Seedance2.0 Fast 快速版，4-15s，多音频参考 + 联网搜索，最高 720p |
-| `HappyHorse` | DeepSop.HappyHorse | `19` | `16:9` | `720p` | 10s | 高效短视频，3-15s，支持 TEXT/FIRST&LAST/REFERENCE/EDIT，独有 `audioSetting`（auto/origin），EDIT 模式需 `firstClipUrl` |
-
-**V3.1 系列时长（来自前端 `matchVideoDurationInfo`）：**
-- `V3.1FB` / `V3.1PB`：**时长固定为 8 秒**
-- `V3.1Fast`：4 秒 或 8 秒
-- 分辨率可选：720p / 1080p / 4K；比例 16:9 / 9:16 / adaptive
-
-**WAN2.6 / WAN2.7 / klingV3Omni 系列：**
-- `*t`：纯文生视频  ·  `*i`：首帧图生视频  ·  `*r`：参考图/视频生成
-- 时长范围：`W2.6r` 为 **3-10s**；其余（包含 `klingV3Omni`）为 **3-15s**
-- `size` 序列化规则：**仅 `W2.6t` / `W2.6r`** 使用 `宽*高` 像素格式；`W2.6i` / `W2.7t/i/r` / `klingV3Omni` 的 `size` 为比例字符串（如 `16:9`）
-- 分辨率可选：720p / 1080p（`klingV3Omni` 无分辨率选项）
-- 比例：`W2.6t` / `W2.6r` / `W2.7t` / `W2.7r` 支持 1:1 / 3:4 / 4:3 / 16:9 / 9:16；`W2.6i` / `W2.7i` 不可选比例（由首帧决定）；`klingV3Omni` 仅 1:1 / 16:9 / 9:16
-- `W2.6i` / Sora2 系列不支持尾帧图片（仅 `W2.7i` 支持）
-- `W2.6t` / `W2.6i` / `W2.7*` 支持传入自定义音频（`audioUrl`）
-
-**Seedance2.0 系列（`S2.0` / `S2.0Fast`）：**
-- 生成类型：`TEXT` / `FIRST&LAST` / `REFERENCE`
-- 时长：**4-15 秒**，默认 10s，支持智能时长（`durationSwitch=2`）
-- 比例：`adaptive` / `1:1` / `3:4` / `4:3` / `16:9` / `9:16` / `21:9`，`size` 直接提交比例字符串
-- 分辨率：`S2.0` 支持 480p / 720p / 1080p；`S2.0Fast` 仅 480p / 720p
-- 独有参数：
-  - `audioUrlList`：多音频参考（至多 3 个，时长 2-15s，总时长 ≤ 15s）
-  - `videoUrlList`：参考视频（至多 3 个，时长 2-15s，总时长 ≤ 15s）
-  - `webSearch`：是否启用联网搜索
-  - `generateAudio`：是否生成音频（默认开启）
-- 校验：当传入 `audioUrlList` 时，必须至少提供一张参考图或一个参考视频
-
-**HappyHorse（`HappyHorse`，methodType=19）：**
-- 生成类型：`TEXT` / `FIRST&LAST` / `REFERENCE` / `EDIT`
-- 时长：**3-15 秒**，默认 10s（EDIT 模式时长由编辑视频决定，前端隐藏滑块）
-- 比例：`1:1` / `3:4` / `4:3` / `5:4` / `4:5` / `16:9` / `9:16` / `21:9` / `9:21`（EDIT 模式无 ratio）
-- 分辨率：`720p` / `1080p`
-- **不支持** 尾帧图片（`lastImageUrl`）、`negativePrompt`、`generateAudio`、`enhancePrompt`、`promptExtend`、`shotType`、`webSearch`
-- 独有参数：
-  - `firstClipUrl`：编辑视频 URL（EDIT 模式**必填**）
-  - `audioSetting`：声音控制，`auto`（由模型控制，默认）/ `origin`（保留视频原声），仅 EDIT 模式可见
-- EDIT 模式下 `imageUrlList` 至多 5 张参考图
-- 校验：EDIT 模式必须上传 `firstClipUrl`
-
-## 使用示例
-
-```bash
-# 查看当前服务端激活的模型
+# 查看接口当前启用模型
 python3 scripts/generate_image.py --list-models
 
-# 基础用法 - 由接口决定默认图片模型（第一个可用非 auto）
-python3 scripts/generate_image.py "一匹狼"
+# 图片/视频默认模型都由接口返回顺序决定
+python3 scripts/generate_image.py "一只可爱的猫"
+python3 scripts/generate_image.py "生成一段城市夜景延时视频"
 
-# 使用 N2 模型（比例尺寸）
-python3 scripts/generate_image.py "生成一只狗" --model N2 --size "16:9"
+# 指定 methodType/sourceValue
+python3 scripts/generate_image.py "产品宣传图 4 种风格" --model 10 --n 4 --ratiocination high
+python3 scripts/generate_image.py "城市夜景延时短片" --model 20 --ratio "16:9" --resolution "1080p" --duration 10
 
-# W2.7 图片模型
-python3 scripts/generate_image.py "复古海报" --model W2.7 --quality "4K"
-
-# W2.7Pro 精准控图
-python3 scripts/generate_image.py "角色三视图" --model W2.7Pro
-
-# 3.1Nano2-Evo / Nano2-Beta-Evo（N2 进化版）
-python3 scripts/generate_image.py "赛博朋克街景" --model 3.1Nano2-Evo --size "16:9"
-python3 scripts/generate_image.py "少女肖像" --model Nano2-Beta-Evo --size "3:4"
-
-# Image2（GPTimage-2）—— 默认 auto 比例，medium 渲染质量
-python3 scripts/generate_image.py "一只可爱的柯基犬坐在草地上" --model Image2
-# Image2 出 4 张高质量图片
-python3 scripts/generate_image.py "产品宣传图 4 种风格" --model Image2 --n 4 --ratiocination high --size "1:1"
-# 3.1Nano2-Evo 启用图像搜索 + 联网搜索
-python3 scripts/generate_image.py "帮我画一种雨季仅出现三天的菌菇" --model 3.1Nano2-Evo --image-search --web-search
-
-# 下载图片
-python3 scripts/generate_image.py "风景画" --download
-
-# 高质量生成（S5.0L）
-python3 scripts/generate_image.py "风景画" --quality "4K" --size "4096x4096"
-
-# 直接输出 Markdown 图片链接
-python3 scripts/generate_image.py "一只可爱的猫" --markdown-output
-
-# 使用参考图生成（自动上传本地图片并转换为 URL）
-python3 scripts/generate_image.py "基于这张图生成变体" --reference-image "./reference.png"
-
-# 生成视频 - 指定 V3.1FB（快速、固定 8 秒）
-python3 scripts/generate_image.py "现代轻奢吊灯" --model V3.1FB
-
-# 生成视频 - S1.5Pro（默认 16:9 / 720p / 10s）
-python3 scripts/generate_image.py "小骏马祝福大家新年快乐" --model S1.5Pro
-
-# 生成视频 - 指定比例和分辨率
-python3 scripts/generate_image.py "海边日落风景" --model S1.5Pro --ratio "9:16" --resolution "1080p"
-
-# V3.1FB - 快速基础（8 秒）
-python3 scripts/generate_image.py "现代轻奢吊灯" --model V3.1FB --ratio "16:9" --resolution "1080p" --duration 8
-
-# V3.1PB - 自适应比例（8 秒）
-python3 scripts/generate_image.py "水晶灯特写" --model V3.1PB --ratio "adaptive" --resolution "720p" --duration 8
-
-# V3.1Fast - 首帧图生视频（4 秒）
-python3 scripts/generate_image.py "灯具展示" --model V3.1Fast --first-image "./lamp.jpg" --duration 4
-
-# klingV3Omni - 多模态融合（按张计费）
-python3 scripts/generate_image.py "多模态融合镜头" --model klingV3Omni --ratio "16:9" --duration 8
-
-# W2.6t / W2.7t - 文生视频（10 秒）
-python3 scripts/generate_image.py "现代轻奢吊灯宣传" --model W2.6t --ratio "16:9" --resolution "1080p" --duration 10
-python3 scripts/generate_image.py "品牌短片自动配音 2K" --model W2.7t --ratio "16:9" --resolution "1080p" --duration 10
-
-# W2.6i / W2.7i - 首帧图生视频（8 秒）
-python3 scripts/generate_image.py "水晶灯展示" --model W2.6i --first-image "./lamp.jpg" --ratio "9:16" --resolution "720p" --duration 8
-python3 scripts/generate_image.py "角色动作延展" --model W2.7i --first-image "./char.jpg" --last-image "./char_end.jpg" --duration 8
-
-# S2.0 / S2.0Fast - Seedance2.0 文生视频
-python3 scripts/generate_image.py "海浪拍打礁石" --model S2.0 --ratio "16:9" --resolution "1080p" --duration 10
-python3 scripts/generate_image.py "城市夜景延时" --model S2.0Fast --ratio "9:16" --resolution "720p" --duration 6 --web-search
-# S2.0 多音频参考（自动上传本地音频）
-python3 scripts/generate_image.py "猫咪互动" --model S2.0 --first-image "./cat.jpg" --audio-path-list "./bg.mp3,./voice.wav"
-
-# HappyHorse - 文生短视频（社交/广告场景）
-python3 scripts/generate_image.py "咖啡店开业宣传短片" --model HappyHorse --ratio "9:16" --resolution "1080p" --duration 8
-# HappyHorse - 首帧图生视频
-python3 scripts/generate_image.py "产品旋转展示" --model HappyHorse --first-image "./product.jpg" --generation-type "FIRST&LAST"
-# HappyHorse - 视频编辑模式（保留原声）
-python3 scripts/generate_image.py "把背景换成海边" --model HappyHorse --generation-type EDIT --first-clip-url "https://.../source.mp4" --audio-setting origin
-
-# W2.6r / W2.7r - 参考视频生成（CLI 需传已上传 URL，或使用程序化调用）
-python3 scripts/generate_image.py "参考素材风格生成" --model W2.6r --ratio "16:9" --resolution "720p" --duration 10
-python3 scripts/generate_image.py "保留角色音色迁移场景" --model W2.7r --ratio "16:9" --resolution "720p" --duration 10
+# 调试 payload，不提交任务
+python3 scripts/generate_image.py "测试" --model 15 --dry-run --json-output
 ```
 
-## 程序化调用
+## 先问什么
 
-```python
-from scripts.generate_image import generate_image, generate_video
+当用户信息不足且会影响成本或结果时，一次只问 2-3 个关键问题：
 
-# 图片 - 使用接口默认图片模型（第一个可用非 auto）
-result = generate_image(prompt="一只可爱的猫咪")
+- 图片：是否有参考图、比例/尺寸、质量档位。
+- 视频：生成类型、时长、比例/分辨率、是否生成声音。
+- 参考/编辑/续写视频：必须问素材 URL 或本地文件路径。
+- 多镜头：确认单镜头、智能分镜或自定义分镜；自定义分镜必须有每个镜头的描述和时长。
 
-# 查询当前激活模型（预览用）
-from scripts.generate_image import list_active_models
-print(list_active_models())
+用户说“随便/快速来一个”时，可以按接口默认模型和脚本默认参数直接生成，并在结果里说明实际使用的 `methodType` 和默认参数。
 
-# 图片 - N2（比例尺寸）
-result = generate_image(prompt="生成一只狗", model="N2", size="16:9")
+## 图片 methodType 规则
 
-# 图片 - W2.7Pro 精准控图
-result = generate_image(prompt="角色三视图", model="W2.7Pro", quality="4K")
+切换图片模型后触发前端默认逻辑：
 
-# 图片 - 下载到本地
-result = generate_image(prompt="风景画", model="S5.0L", download=True, output_dir="./images")
+- `quality`: methodType `1/10/11` 默认 `1K`，其他默认 `2K`。
+- `size`: methodType `2/8/9/10/11` 默认 `auto`，其他默认 `1:1`。
+- `webSearch`: methodType `4/8` 默认开启。
 
-# V3.1FB - 文生视频
-result = generate_video(
-    prompt="现代轻奢吊灯",
-    model="V3.1FB",
-    ratio="16:9",
-    resolution="1080p",
-    duration=8
-)
+| methodType | quality | size/ratio 规则 | 特殊参数 | 参考素材规则 |
+| --- | --- | --- | --- | --- |
+| `0` | `2K/4K` | 不支持 `auto`；提交为 `WxH`，如 `2048x2048` | 无 | 标准图片参考 |
+| `1` | `1K` | 禁用 `1:2/2:1/1:3/3:1/1:4/4:1/1:8/8:1/4:5/5:4/9:21/21:9` | 无 | 标准图片参考 |
+| `2` | `1K/2K/4K` | 支持 `auto`；禁用 `1:2/2:1/1:3/3:1/1:4/4:1/1:8/8:1/9:21` | 无 | 参考图最多 10 张，单张 10MB |
+| `3` | `1K/2K/4K` | 禁用 `auto/1:2/2:1/1:3/3:1/1:4/4:1/1:8/8:1/9:21` | 无 | 标准图片参考 |
+| `4` | `2K/3K` | 不支持 `auto`；提交为 `WxH`，如 `2048x2048` | `webSearch` | 标准图片参考，额外提交 `duration=10` |
+| `5` | `1K/2K/4K` | 同 `3` | 无 | 标准图片参考 |
+| `6` | `1K/2K` | 禁用 `auto/9:21/21:9`；提交为 `W*H` | 无 | 最多 9 张；单张 20MB；最短边 240，最长边 8000 |
+| `7` | `1K/2K` | 同 `6` | 无 | 同 `6` |
+| `8` | `1K/2K/4K` | 支持 `auto`；禁用 `1:2/2:1/1:3/3:1/9:21` | `webSearch`、`imageSearch` | 单张 20MB；最长边 6000 |
+| `9` | `1K/2K/4K` | 同 `8` | 无 | 参考图最多 14 张，单张 10MB |
+| `10` | `1K/2K/4K` | 支持 `auto`；禁用 `1:4/4:1/1:8/8:1` | `ratiocination=low/medium/high`、`n=1-10`；不提交 `webSearch/imageSearch` | 参考图最多 16 张；单张 50MB；prompt 上限 16000 字 |
+| `11` | 前端隐藏 `quality` | 支持 `auto`；禁用 `1:4/4:1/1:8/8:1/4:5/5:4` | 不提交 `quality` | 参考图最多 16 张；单张 50MB；prompt 上限 16000 字 |
 
-# V3.1Fast - 首帧图生视频
-result = generate_video(
-    prompt="灯具展示",
-    model="V3.1Fast",
-    first_image_url="https://example.com/lamp.jpg",
-    ratio="9:16",
-    resolution="1080p",
-    duration=8
-)
+图片上传映射：
 
-# V3.1PB - 首尾帧控制
-result = generate_video(
-    prompt="灯具变形动画",
-    model="V3.1PB",
-    first_image_url="https://example.com/start.jpg",
-    last_image_url="https://example.com/end.jpg",
-    ratio="16:9",
-    resolution="1080p",
-    duration=8
-)
+| 本地素材 | 允许格式 | 上传后参数 | 备注 |
+| --- | --- | --- | --- |
+| 参考图 | JPEG/JPG/PNG/WEBP | `image` | methodType `6/7` 使用更高图片尺寸限制；methodType `10/11` 单张 50MB |
 
-# W2.7r - 参考视频生成（多模态融合）
-result = generate_video(
-    prompt="保留角色音色迁移到新场景",
-    model="W2.7r",
-    image_url_list=["https://example.com/ref1.jpg", "https://example.com/ref2.jpg"],
-    video_url_list=["https://example.com/ref.mp4"],
-    ratio="16:9",
-    resolution="720p",
-    duration=10
-)
+## 视频 methodType 规则
 
-# S2.0 - Seedance2.0 多模态融合（图像 + 多音频参考 + 联网搜索）
-result = generate_video(
-    prompt="海浪拍打礁石，海鸥飞过",
-    model="S2.0",
-    first_image_url="https://example.com/sea.jpg",
-    audio_url_list=[
-        "https://example.com/wave.mp3",
-        "https://example.com/seagull.mp3",
-    ],
-    web_search=True,
-    ratio="16:9",
-    resolution="1080p",
-    duration=10,
-)
+切换视频模型后触发前端默认逻辑：
 
-# klingV3Omni - 多模态融合（按张计费）
-result = generate_video(
-    prompt="镜头一致性多图融合",
-    model="klingV3Omni",
-    image_url_list=["https://example.com/scene1.jpg", "https://example.com/scene2.jpg"],
-    ratio="16:9",
-    duration=8
-)
+- 基础重置：`resolution=720p`、`ratio=16:9`、`duration=10`、`generateAudio=true`、`shotType=single`、`mode=pro`。
+- methodType `3/4/5/6/11/12` 默认 `duration=8`。
+- methodType `10` 默认 `shotType=multi`。
+- 默认 `generationType`: `7/15` 为 `TEXT`；`1/4/5/6/8/14` 为 `FIRST&LAST`；其他为 `REFERENCE`。之后按白名单校正。
 
-if result and result["status"] == "SUCCESS":
-    print(f"链接: {result['url']}")
+| methodType | generationType | ratio | resolution | duration | 关键规则 |
+| --- | --- | --- | --- | --- | --- |
+| `1` | `TEXT/FIRST&LAST` | `16:9/9:16` | `720p` | `10-15s` | 首尾帧模式用 `firstImageUrl` |
+| `2` | `TEXT/FIRST&LAST` | `adaptive/1:1/4:3/3:4/16:9/9:16/21:9` | `480p/720p/1080p` | `4-12s` | 支持 `durationSwitch` |
+| `3` | `TEXT/FIRST&LAST/REFERENCE` | `adaptive/16:9/9:16` | `720p/1080p/4K` | 固定 `8s` | `REFERENCE` 至少一张参考图 |
+| `4` | `TEXT/FIRST&LAST` | `adaptive/16:9/9:16` | `720p/1080p/4K` | 固定 `8s` | 默认首尾帧 |
+| `5` | `TEXT/FIRST&LAST` | `adaptive/16:9/9:16` | `720p/1080p/4K` | `4s/8s` | 支持 `n=1-4`、`personGeneration`、`resizeMode` |
+| `6` | `TEXT/FIRST&LAST` | `adaptive/16:9/9:16` | `720p/1080p/4K` | `4s/8s` | 同 `5` 的时长规则 |
+| `7` | `TEXT` | `1:1/4:3/3:4/16:9/9:16` | `720p/1080p` | `3-15s` | `size` 提交为 `W*H`，支持 `negativePrompt/promptExtend/shotType` |
+| `8` | `FIRST&LAST` | 由首帧决定，不提交 ratio | `720p/1080p` | `3-15s` | 必须传首帧；不支持尾帧 |
+| `9` | `REFERENCE` | `1:1/4:3/3:4/16:9/9:16` | `720p/1080p` | `3-10s` | 参考图片+参考视频总数 `1-5`，`size` 提交为 `W*H` |
+| `10` | `TEXT/FIRST&LAST/REFERENCE/EDIT/FEATURE` | `1:1/16:9/9:16`，部分模式隐藏 | 无 | `3-15s` | 支持 `shotType=single/multi/customize`、`mode`、`keepOriginalSound`；`EDIT/FEATURE` 需要视频 |
+| `11` | `TEXT/FIRST&LAST` | `adaptive/1:1/4:3/3:4/7:4/4:7/16:9/9:16/21:9` | `720p` | `4-12s` | 默认 `8s` |
+| `12` | `TEXT/FIRST&LAST` | `16:9/9:16/7:4/4:7` | `720p/2K` | `4-12s` | 默认 `8s` |
+| `13` | `TEXT/FIRST&LAST/REFERENCE` | `adaptive/1:1/4:3/3:4/7:4/4:7/16:9/9:16/21:9` | `720p/2K` | `4-12s` | `REFERENCE` 可用参考图 |
+| `14` | `FIRST&LAST/CONTINUATION` | 由首帧决定，不提交 ratio | `720p/1080p` | `3-15s` | `CONTINUATION` 必须有 `firstClipUrl` |
+| `15` | `TEXT` | `1:1/4:3/3:4/16:9/9:16` | `720p/1080p` | `3-15s` | 支持 `negativePrompt/promptExtend` |
+| `16` | `REFERENCE` | `1:1/4:3/3:4/16:9/9:16` | `720p/1080p` | 有参考视频时 `3-10s`，否则 `3-15s` | 参考图片+参考视频总数 `1-5` |
+| `17` | `TEXT/FIRST&LAST/REFERENCE` | `adaptive/1:1/4:3/3:4/16:9/9:16/21:9` | `480p/720p/1080p` | `4-15s` | 支持 `durationSwitch`、`webSearch`、参考图片/视频/音频 |
+| `18` | `TEXT/FIRST&LAST/REFERENCE` | 同 `17` | `480p/720p` | `4-15s` | 同 `17` |
+| `19` | `TEXT/FIRST&LAST/REFERENCE/EDIT` | `1:1/4:3/3:4/5:4/4:5/16:9/9:16/21:9/9:21`，`EDIT` 时隐藏 | `720p/1080p` | `3-15s`；`EDIT` 由视频决定 | 不支持尾帧、`negativePrompt/generateAudio/enhancePrompt/promptExtend/shotType/webSearch`；`EDIT` 必须有 `firstClipUrl` |
+| `20` | `TEXT/FIRST&LAST/REFERENCE` | 同 `17` | `480p/720p/1080p` | `4-15s` | 同 `17` |
+| `21` | `TEXT/FIRST&LAST/REFERENCE` | 同 `17` | `480p/720p` | `4-15s` | 同 `17` |
 
-# 视频 - 使用接口默认视频模型（第一个可用非 auto）
-result = generate_video(prompt="小骏马祝福大家新年快乐")
+## 视频素材上传与参数映射
 
-# 视频 - 指定比例、分辨率、时长
-result = generate_video(
-    prompt="海边日落风景",
-    model="S1.5Pro",
-    ratio="9:16",
-    resolution="1080p",
-    duration=5
-)
+| 本地素材 | 允许格式/限制摘要 | 上传后参数 | 适用规则 |
+| --- | --- | --- | --- |
+| 首帧图 | JPEG/JPG/PNG/WEBP；按 methodType 图片尺寸限制校验 | `firstImageUrl` | `FIRST&LAST`、部分首帧/图生视频必填 |
+| 尾帧图 | JPEG/JPG/PNG/WEBP | `lastImageUrl` | 传尾帧时必须同时传首帧；methodType `8/19` 不支持尾帧 |
+| 参考图 | JPEG/JPG/PNG/WEBP | `imageUrlList` | `REFERENCE` 或多模态参考；methodType `9/16` 与参考视频合计 `1-5` |
+| 参考主体图 | JPEG/JPG/PNG | `elementList` | methodType `10` 的主体参考 |
+| 续写/编辑/参考视频 | MP4/MOV；Wan r2v 通常 100MB、1-30s；methodType `10` 200MB、3-10s；methodType `17/18/20/21` 50MB、2-15s；methodType `19` 100MB、3-60s | `firstClipUrl` 或 `videoUrlList` / `videoList` | `CONTINUATION/EDIT/FEATURE/REFERENCE` |
+| 音频 | WAV/MP3；Wan 单音频 15MB、3-30s；methodType `17/18/20/21` 最多 3 个、2-15s、总时长不超过 15s | `audioUrlList` | methodType `17/18/20/21` 使用音频时，必须同时提供参考图或参考视频 |
 
-if result and result["status"] == "SUCCESS":
-    print(f"视频链接: {result['url']}")
-```
+## 输出契约
 
-## 返回字段
+- stdout 只输出最终一行结果：默认 URL，`--json-output` 为单行 JSON，`--markdown-output` 为 Markdown 图片链接。
+- stderr 输出进度、费用、任务 ID、警告和失败原因。
+- 退出码：`0` 成功，`1` 失败或超时。
 
-| 字段 | 说明 |
-|------|------|
-| `status` | SUCCESS / FAILED / TIMEOUT |
-| `url` | 图片URL |
-| `message` | 状态描述 |
-| `local_path` | 本地保存路径（需 --download） |
-| `data_uri` | Base64 Data URI（需 --download） |
-| `image_data` | 原始图片字节（需 --download） |
+## 参考文件
 
-## 环境配置
-
-### 必需配置 - API Key
-
-**重要：使用前必须设置你自己的 API Key！**
-
-#### 获取 API Key
-
-本技能需要 **API Key 授权**：
-
-1. 访问入口：
-   - **已有账号** → [https://ai.deepsop.com/login?source=2](https://ai.deepsop.com/login?source=2) 登录获取
-   - **没有账号** → [https://ai.deepsop.com/register?source=2](https://ai.deepsop.com/register?source=2) 注册获取
-2. 登录后在复制您的 API Key
-3. 复制生成的 API Key（格式：`sk-xxxxxx...`）
-
-#### 方式 1：使用 .env 文件（推荐）
-
-1. 复制 `.env.example` 为 `.env`：
-   ```bash
-   cp .env.example .env
-   ```
-
-2. 编辑 `.env` 文件，填入你的 API Key：
-   ```bash
-   DEEPSOP_API_KEY=sk-your_api_key_here
-   ```
-
-3. 在运行脚本前加载环境变量：
-   ```bash
-   # Linux/macOS/Git Bash
-   source .env
-
-   # 或使用 export
-   export $(cat .env | xargs)
-   ```
-
-#### 方式 2：直接设置环境变量
-
-##### Linux / macOS / Git Bash (Windows)
-
-```bash
-export DEEPSOP_API_KEY="sk-your_api_key_here"
-```
-
-为了永久生效，将上述命令添加到 `~/.bashrc` 或 `~/.zshrc` 文件中。
-
-##### Windows PowerShell
-
-```powershell
-$env:DEEPSOP_API_KEY="sk-your_api_key_here"
-```
-
-永久设置（系统级）：
-```powershell
-[System.Environment]::SetEnvironmentVariable('DEEPSOP_API_KEY', 'sk-your_api_key_here', 'User')
-```
-
-##### Windows CMD
-
-```cmd
-set DEEPSOP_API_KEY=sk-your_api_key_here
-```
-
-#### 验证配置
-
-运行以下命令验证 API Key 是否设置成功：
-
-```bash
-# Linux/macOS/Git Bash
-echo $DEEPSOP_API_KEY
-
-# Windows PowerShell
-echo $env:DEEPSOP_API_KEY
-
-# Windows CMD
-echo %DEEPSOP_API_KEY%
-```
-
-如果输出为空或显示默认值，说明环境变量未正确设置。
-
-#### 测试配置（推荐）
-
-运行配置测试脚本，验证 API Key 是否正确设置：
-
-```bash
-python3 scripts/test_config.py
-```
-
-该脚本会检查：
-- API Key 是否已设置
-- 是否使用了默认 Key（需要替换为你自己的）
-- 配置是否可以正常使用
-
-### 可选配置 - 飞书通知
-
-```bash
-export FEISHU_WEBHOOK_URL="https://open.feishu.cn/open-apis/bot/v2/hook/xxx"
-```
-
-## 相关文件
-
-- `scripts/generate_image.py` - 主脚本
-- `references/api.md` - API 详细文档
+- `scripts/generate_image.py`: 可执行脚本与本地 methodType 规则矩阵。
+- `references/api.md`: API 端点、请求格式、素材字段映射。
+- `references/chat-integration.md` / `references/feishu-integration.md`: 对话和飞书集成说明。
