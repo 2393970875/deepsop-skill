@@ -75,9 +75,12 @@ def _load_deepsop_api_key():
     if key:
         return key
 
+    script_dir = Path(__file__).resolve().parent
+    skill_dir = script_dir.parent
     candidates = [
         Path.cwd() / ".env",
-        Path(__file__).resolve().parent.parent / ".env",
+        script_dir / ".env",
+        skill_dir / ".env",
         Path.home() / ".openclaw" / ".env",
     ]
     for env_path in candidates:

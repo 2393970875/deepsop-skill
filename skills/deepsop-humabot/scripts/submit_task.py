@@ -68,6 +68,52 @@ import urllib.request  # noqa: E402
 API_URL = api_paths.build_url("preset_employee_submit_task")
 api_paths.assert_url_matches(API_URL, "preset_employee_submit_task")
 TIMEOUT_SEC = 30
+API_KEY_ENV = "DEEPSOP_API_KEY"
+
+
+def _read_env_file_value(path: Path, key: str) -> str | None:
+    try:
+        if not path.is_file():
+            return None
+        with path.open("r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                name, value = line.split("=", 1)
+                if name.strip() == key:
+                    return value.strip().strip('"\'')
+    except Exception:
+        return None
+    return None
+
+
+def load_deepsop_api_key() -> str | None:
+    key = os.environ.get(API_KEY_ENV, "").strip()
+    if key:
+        return key
+
+    skill_dir = SCRIPT_DIR.parent
+    candidates = [
+        Path.cwd() / ".env",
+        SCRIPT_DIR / ".env",
+        skill_dir / ".env",
+        Path.home() / ".openclaw" / ".env",
+    ]
+    for env_path in candidates:
+        key = _read_env_file_value(env_path, API_KEY_ENV)
+        if key:
+            os.environ[API_KEY_ENV] = key
+            return key
+    return None
+
+
+def missing_api_key_summary() -> str:
+    return (
+        "DEEPSOP_API_KEY is not configured. Please sign in to OPClaw first. "
+        "If you are not running inside OPClaw, manually configure DEEPSOP_API_KEY "
+        "as an environment variable or in ~/.openclaw/.env."
+    )
 
 
 def emit(payload: dict) -> None:
@@ -245,12 +291,12 @@ def main() -> int:
         return 0
 
     # API Key
-    api_key = os.environ.get("DEEPSOP_API_KEY", "").strip()
+    api_key = load_deepsop_api_key()
     if not api_key:
         emit({
             "ok": False,
             "stage": "validate",
-            "summary": "环境变量 DEEPSOP_API_KEY 未设置，无法提交",
+            "summary": missing_api_key_summary(),
         })
         return 4
 

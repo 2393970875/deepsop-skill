@@ -21,32 +21,44 @@ FILE_UPLOAD_URL = f"{BASE_URL}/system/fileUpload/upload"
 API_KEY_ENV = "DEEPSOP_API_KEY"
 
 
+def _read_env_file_value(path, key):
+    """Read KEY=value from a simple .env file without requiring python-dotenv."""
+    try:
+        if not path or not os.path.exists(path):
+            return None
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                name, value = line.split("=", 1)
+                if name.strip() == key:
+                    return value.strip().strip('"\'')
+    except Exception:
+        return None
+    return None
+
+
 def get_api_key():
     """获取 API Key"""
-    api_key = os.environ.get(API_KEY_ENV)
-    if not api_key:
-        # Try loading from .env file (in script directory)
-        env_file = Path(__file__).parent / ".env"
-        if env_file.exists():
-            with open(env_file, "r", encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if line and not line.startswith("#") and line.startswith(f"{API_KEY_ENV}="):
-                        api_key = line.split("=", 1)[1].strip('"\'')
-                        break
-        
-        # Also check parent directory (skill root)
-        if not api_key:
-            env_file = Path(__file__).parent.parent / ".env"
-            if env_file.exists():
-                with open(env_file, "r", encoding="utf-8") as f:
-                    for line in f:
-                        line = line.strip()
-                        if line and not line.startswith("#") and line.startswith(f"{API_KEY_ENV}="):
-                            api_key = line.split("=", 1)[1].strip('"\'')
-                            break
-    
-    return api_key
+    api_key = os.environ.get(API_KEY_ENV, "").strip()
+    if api_key:
+        return api_key
+
+    script_dir = Path(__file__).resolve().parent
+    skill_dir = script_dir.parent
+    candidates = [
+        Path.cwd() / ".env",
+        script_dir / ".env",
+        skill_dir / ".env",
+        Path.home() / ".openclaw" / ".env",
+    ]
+    for env_path in candidates:
+        api_key = _read_env_file_value(str(env_path), API_KEY_ENV)
+        if api_key:
+            os.environ[API_KEY_ENV] = api_key
+            return api_key
+    return None
 
 
 def check_api_key():
@@ -54,6 +66,7 @@ def check_api_key():
     api_key = get_api_key()
     if not api_key:
         print(f"[ERROR] 未配置 {API_KEY_ENV} 环境变量", file=sys.stderr)
+        print("请先登录 OPClaw；如果不是在 OPClaw 中运行，请手动配置 DEEPSOP_API_KEY。", file=sys.stderr)
         print(f"\n请设置 API Key:")
         print(f"  Windows PowerShell: $env:{API_KEY_ENV}=\"sk-your_api_key_here\"")
         print(f"  Linux/macOS: export {API_KEY_ENV}=\"sk-your_api_key_here\"")
