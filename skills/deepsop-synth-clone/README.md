@@ -4,16 +4,16 @@ AI Artist API 驱动的声音克隆与语音合成工具。
 
 ## 🚀 快速开始
 
-### 1. 获取 API Key
+### 1. DEEPSOP_API_KEY
 
-本技能需要 **API Key 授权**才能调用 AI Artist API：
+本技能需要 **API Key 授权**才能调用 AI Artist API。
 
-- **已有账号** → 前往 [https://ai.deepsop.com/login?source=4](https://ai.deepsop.com/login?source=4) 登录获取
-- **没有账号** → 前往 [https://ai.deepsop.com/register?source=4](https://ai.deepsop.com/register?source=4) 注册后获取
+- OPClaw 项目运行时直接读取项目设置里的 `DEEPSOP_API_KEY`。
+- 非 OPClaw 运行时，引导用户授权后把 `DEEPSOP_API_KEY` 配置为共享环境变量或 `~/.openclaw/.env`，让其他 DeepSOP 技能也能复用。
+- 读取不到 Key 时：已有账号 → [https://ai.deepsop.com/login?source=4](https://ai.deepsop.com/login?source=4)，没有账号 → [https://ai.deepsop.com/register?source=4](https://ai.deepsop.com/register?source=4)。
+- API Key 通常以 `sk-` 开头。
 
-登录后在复制您的 API Key（`sk-` 开头）。
-
-### 2. 设置 API Key
+### 2. 设置共享 Key
 
 ```bash
 # Windows PowerShell

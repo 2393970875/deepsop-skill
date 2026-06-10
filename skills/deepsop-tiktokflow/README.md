@@ -12,12 +12,13 @@
 
 ## 🚀 快速开始
 
-1. **获取 API Key**
-   - 已有账号 → [https://ai.deepsop.com/login?source=5](https://ai.deepsop.com/login?source=5)
-   - 没有账号 → [https://ai.deepsop.com/register?source=5](https://ai.deepsop.com/register?source=5)
-   - 复制以 `sk-` 开头的密钥
+1. **DEEPSOP_API_KEY**
+   - OPClaw 项目运行时直接读取项目设置里的 `DEEPSOP_API_KEY`
+   - 非 OPClaw 运行时，引导用户授权后配置共享环境变量或 `~/.openclaw/.env`
+   - 读取不到 Key 时：已有账号 → [https://ai.deepsop.com/login?source=5](https://ai.deepsop.com/login?source=5)，没有账号 → [https://ai.deepsop.com/register?source=5](https://ai.deepsop.com/register?source=5)
+   - API Key 通常以 `sk-` 开头
 
-2. **配置环境变量**
+2. **配置共享 Key**
 
    ```bash
    # Linux/macOS

@@ -10,7 +10,14 @@
 
 ## API Key
 
-在 OPClaw 项目中运行时，技能直接读取项目设置里的 `DEEPSOP_API_KEY`。非 OPClaw 运行时，请用户授权后设置共享 Key，其他 DeepSOP 技能也能复用：
+在 OPClaw 项目中运行时，技能直接读取项目设置里的 `DEEPSOP_API_KEY`。非 OPClaw 运行时，请用户授权后设置共享 Key，其他 DeepSOP 技能也能复用。
+
+读取不到 Key 时，引导用户登录/注册并新建 API Key：
+
+- 已有账号 → [https://ai.deepsop.com/login?source=2](https://ai.deepsop.com/login?source=2)
+- 没有账号 → [https://ai.deepsop.com/register?source=2](https://ai.deepsop.com/register?source=2)
+
+配置示例：
 
 ```powershell
 [System.Environment]::SetEnvironmentVariable('DEEPSOP_API_KEY', 'sk-your_api_key_here', 'User')

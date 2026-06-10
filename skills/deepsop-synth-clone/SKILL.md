@@ -3,8 +3,6 @@ name: deepsop-synth-clone
 description: |
   声音复刻技能，使用 AI Artist API 进行音色克隆和语音合成。支持查询已有音色、上传音频创建新音色、使用指定音色合成语音。
 
-  在 OPClaw 项目中运行时直接读取项目设置里的 DEEPSOP_API_KEY；非 OPClaw 运行时，引导用户授权后把 DEEPSOP_API_KEY 配置为共享环境变量或 ~/.openclaw/.env，让其他 DeepSOP 技能也能复用。
-
   触发场景：
   - 用户要求生成语音，如"用蔡总的音色说..."、"生成一段语音"、"语音合成"等。
   - 用户要求克隆音色，如"上传音频创建音色"、"复刻这个声音"、"创建我的音色"等。
@@ -35,6 +33,9 @@ description: |
 
 - OPClaw 项目运行时直接读取项目设置里的 `DEEPSOP_API_KEY`。
 - 非 OPClaw 运行时，引导用户授权后把 `DEEPSOP_API_KEY` 配置为共享环境变量或 `~/.openclaw/.env`，让其他 DeepSOP 技能也能复用。
+- 读取不到 Key 时，引导用户登录/注册并新建 API Key：
+  - 已有账号 → [https://ai.deepsop.com/login?source=4](https://ai.deepsop.com/login?source=4)
+  - 没有账号 → [https://ai.deepsop.com/register?source=4](https://ai.deepsop.com/register?source=4)
 - API Key 通常以 `sk-` 开头。
 
 ### 2. 设置共享 Key
@@ -336,11 +337,15 @@ python scripts/voice_clone.py --synthesize --name "用户音色" --text "收到�
 
 ## 🔍 故障排查
 
-### 问题 1：提示 "未配置 API_ARTIST_TOKEN"
+### 问题 1：提示未配置 `DEEPSOP_API_KEY`
 
 **原因：** 环境变量未设置
 
 **解决：**
+- OPClaw 项目运行时检查项目设置里的 `DEEPSOP_API_KEY`。
+- 非 OPClaw 运行时先登录/注册获取 Key：已有账号 [login?source=4](https://ai.deepsop.com/login?source=4)，没有账号 [register?source=4](https://ai.deepsop.com/register?source=4)。
+- 配置共享环境变量或写入 `~/.openclaw/.env` 后重试。
+
 ```bash
 # Windows PowerShell
 $env:DEEPSOP_API_KEY="sk-your_api_key_here"

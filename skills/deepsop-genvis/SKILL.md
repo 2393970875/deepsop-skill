@@ -5,12 +5,28 @@ description: |
 
   本技能不写死模型名称清单和默认模型。模型列表、模型名、展示顺序和默认模型全部从服务端 consumeSource/list 获取；默认模型取对应类型中 sourceValue != "auto" 且 hiddenState == "0" 的接口返回顺序第一个。用户选中模型后，只使用该模型的 sourceValue/methodType 触发本地参数规则。
 
-  在 OPClaw 项目中运行时直接读取项目设置里的 DEEPSOP_API_KEY；非 OPClaw 运行时，引导用户授权后把 DEEPSOP_API_KEY 配置为共享环境变量或 ~/.openclaw/.env，让其他 DeepSOP 技能也能复用。
 ---
 
 # DeepSOP GenVis
 
 使用 `scripts/generate_image.py` 创建 AI 图片或视频任务。脚本会先预估费用，再提交任务并轮询到 `SUCCESS` / `FAILED` / `TIMEOUT`。
+
+## 前置条件：DEEPSOP_API_KEY
+
+本技能需要 **API Key 授权**才能调用 DeepSOP 接口。
+
+- OPClaw 项目运行时直接读取项目设置里的 `DEEPSOP_API_KEY`。
+- 非 OPClaw 运行时，引导用户授权后把 `DEEPSOP_API_KEY` 配置为共享环境变量或 `~/.openclaw/.env`，让其他 DeepSOP 技能也能复用。
+- 读取不到 Key 时，引导用户登录/注册并新建 API Key：
+  - 已有账号 → [https://ai.deepsop.com/login?source=2](https://ai.deepsop.com/login?source=2)
+  - 没有账号 → [https://ai.deepsop.com/register?source=2](https://ai.deepsop.com/register?source=2)
+- API Key 通常以 `sk-` 开头。
+
+共享配置示例：
+
+```text
+DEEPSOP_API_KEY=sk-your_api_key_here
+```
 
 ## 必须遵守
 
@@ -129,6 +145,15 @@ python3 scripts/generate_image.py "测试" --model 15 --dry-run --json-output
 - stdout 只输出最终一行结果：默认 URL，`--json-output` 为单行 JSON，`--markdown-output` 为 Markdown 图片链接。
 - stderr 输出进度、费用、任务 ID、警告和失败原因。
 - 退出码：`0` 成功，`1` 失败或超时。
+
+## 错误处理
+
+- `DEEPSOP_API_KEY` 未设置：提示用户需要 API Key 授权。
+  - OPClaw 项目运行时检查项目设置里的 `DEEPSOP_API_KEY`。
+  - 非 OPClaw 运行时，引导用户登录/注册获取 Key：已有账号 [login?source=2](https://ai.deepsop.com/login?source=2)，没有账号 [register?source=2](https://ai.deepsop.com/register?source=2)。
+  - 配置共享环境变量或 `~/.openclaw/.env` 后再重试。
+- `401`：提示 API Key 无效或过期，按上面的登录/注册入口重新获取 Key。
+- `4xx/5xx`：反馈实际状态码和接口错误信息，不要自动切换模型或伪造结果。
 
 ## 参考文件
 
