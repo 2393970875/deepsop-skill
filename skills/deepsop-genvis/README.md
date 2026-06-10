@@ -23,7 +23,7 @@
 [System.Environment]::SetEnvironmentVariable('DEEPSOP_API_KEY', 'sk-your_api_key_here', 'User')
 ```
 
-也兼容写入 `~/.openclaw/.env`：
+也兼容写入 `~/.openclaw/openclaw.json`：
 
 ```ini
 DEEPSOP_API_KEY=sk-your_api_key_here

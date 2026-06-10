@@ -31,7 +31,7 @@ description: 人机协作台技能。用户输入自然语言销售指令，AI�
 本技能需要 **API Key 授权**才能调用 DeepSOP 接口。
 
 - OPClaw 项目运行时直接读取项目设置里的 `DEEPSOP_API_KEY`。
-- 非 OPClaw 运行时，引导用户授权后把 `DEEPSOP_API_KEY` 配置为共享环境变量或 `~/.openclaw/.env`，让其他 DeepSOP 技能也能复用。
+- 非 OPClaw 运行时，引导用户授权后把 `DEEPSOP_API_KEY` 配置为共享环境变量或 `~/.openclaw/openclaw.json`，让其他 DeepSOP 技能也能复用。
 - 读取不到 Key 时，引导用户登录/注册并新建 API Key：
   - 已有账号 → [https://ai.deepsop.com/login?source=3](https://ai.deepsop.com/login?source=3)
   - 没有账号 → [https://ai.deepsop.com/register?source=3](https://ai.deepsop.com/register?source=3)
@@ -2296,7 +2296,7 @@ python3 ~/.openclaw/workspace/skills/deepsop-humabot/scripts/format_emails.py "$
 - `DEEPSOP_API_KEY` 未设置：提示用户**需要 API Key 授权**才能使用本技能：
   - OPClaw 项目运行时检查项目设置里的 `DEEPSOP_API_KEY`
   - 非 OPClaw 运行时，引导用户登录/注册获取 Key：已有账号 [login?source=3](https://ai.deepsop.com/login?source=3)，没有账号 [register?source=3](https://ai.deepsop.com/register?source=3)
-  - 配置共享环境变量或 `~/.openclaw/.env`
+  - 配置共享环境变量或 `~/.openclaw/openclaw.json`
   - 配置 `DEEPSOP_API_KEY` 后再重试
 - POST 接口返回非 200：展示错误信息，提示检查参数或稍后重试
 - AiWa GET 接口 data 为空：提示任务可能仍在执行，给出 taskId 供用户告知「再查一次」

@@ -64,12 +64,46 @@ def _read_env_file_value(path, key):
     return None
 
 
+def _read_openclaw_json_api_key(skill_name=None):
+    """Read DEEPSOP_API_KEY from ~/.openclaw/openclaw.json."""
+    try:
+        config_path = Path.home() / ".openclaw" / "openclaw.json"
+        if not config_path.is_file():
+            return None
+        with config_path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        entries = data.get("skills", {}).get("entries", {})
+        candidate_names = []
+        if skill_name:
+            candidate_names.append(skill_name)
+        candidate_names.extend([name for name in entries if str(name).startswith("deepsop-")])
+
+        seen = set()
+        for name in candidate_names:
+            if name in seen:
+                continue
+            seen.add(name)
+            entry = entries.get(name)
+            if not isinstance(entry, dict):
+                continue
+            for value in (
+                entry.get("apiKey"),
+                entry.get("env", {}).get("DEEPSOP_API_KEY") if isinstance(entry.get("env"), dict) else None,
+            ):
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
+    except Exception:
+        return None
+    return None
+
+
 def _load_deepsop_api_key():
     """Load the shared DeepSOP API key.
 
-    OPClaw project settings expose DEEPSOP_API_KEY as an environment variable.
-    For non-OPClaw execution, also check common .env locations so a single
-    configured key can be reused by sibling DeepSOP skills on the same machine.
+    OPClaw stores skill API keys in ~/.openclaw/openclaw.json.
+    For compatibility, also check DEEPSOP_API_KEY and common .env locations so
+    a single configured key can be reused by sibling DeepSOP skills.
     """
     key = os.environ.get("DEEPSOP_API_KEY", "").strip()
     if key:
@@ -77,6 +111,11 @@ def _load_deepsop_api_key():
 
     script_dir = Path(__file__).resolve().parent
     skill_dir = script_dir.parent
+    key = _read_openclaw_json_api_key(skill_dir.name)
+    if key:
+        os.environ["DEEPSOP_API_KEY"] = key
+        return key
+
     candidates = [
         Path.cwd() / ".env",
         script_dir / ".env",
@@ -173,7 +212,7 @@ def check_api_key():
         print("如果不是从 OPClaw 运行，请让用户授权后把 API Key 配置为系统/用户级环境变量，其他 DeepSOP 技能也会共用：", file=sys.stderr)
         print("  Windows PowerShell: [System.Environment]::SetEnvironmentVariable('DEEPSOP_API_KEY', 'sk-your_api_key_here', 'User')", file=sys.stderr)
         print("  Linux/macOS: echo 'export DEEPSOP_API_KEY=\"sk-your_api_key_here\"' >> ~/.bashrc", file=sys.stderr)
-        print("  或写入 ~/.openclaw/.env: DEEPSOP_API_KEY=sk-your_api_key_here", file=sys.stderr)
+        print("  或写入 ~/.openclaw/openclaw.json: DEEPSOP_API_KEY=sk-your_api_key_here", file=sys.stderr)
         print("", file=sys.stderr)
         print("配置后重新打开终端或重启 OPClaw 再运行。", file=sys.stderr)
         print("", file=sys.stderr)
@@ -186,7 +225,7 @@ def ensure_api_key_for_network():
 
     In OPClaw this is normally injected via project settings. Outside OPClaw,
     allow an interactive user to paste the key once and persist it to
-    ~/.openclaw/.env so sibling DeepSOP skills can reuse it.
+    ~/.openclaw/openclaw.json so sibling DeepSOP skills can reuse it. OPClaw's primary shared config is ~/.openclaw/openclaw.json.
     """
     api_key = _load_deepsop_api_key()
     if api_key:

@@ -88,12 +88,51 @@ def _read_env_file_value(path: Path, key: str) -> str | None:
     return None
 
 
+def _read_openclaw_json_api_key(skill_name=None):
+    """Read DEEPSOP_API_KEY from ~/.openclaw/openclaw.json."""
+    try:
+        config_path = Path.home() / ".openclaw" / "openclaw.json"
+        if not config_path.is_file():
+            return None
+        with config_path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        entries = data.get("skills", {}).get("entries", {})
+        candidate_names = []
+        if skill_name:
+            candidate_names.append(skill_name)
+        candidate_names.extend([name for name in entries if str(name).startswith("deepsop-")])
+
+        seen = set()
+        for name in candidate_names:
+            if name in seen:
+                continue
+            seen.add(name)
+            entry = entries.get(name)
+            if not isinstance(entry, dict):
+                continue
+            for value in (
+                entry.get("apiKey"),
+                entry.get("env", {}).get("DEEPSOP_API_KEY") if isinstance(entry.get("env"), dict) else None,
+            ):
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
+    except Exception:
+        return None
+    return None
+
+
 def load_deepsop_api_key() -> str | None:
     key = os.environ.get(API_KEY_ENV, "").strip()
     if key:
         return key
 
     skill_dir = SCRIPT_DIR.parent
+    key = _read_openclaw_json_api_key(skill_dir.name)
+    if key:
+        os.environ[API_KEY_ENV] = key
+        return key
+
     candidates = [
         Path.cwd() / ".env",
         SCRIPT_DIR / ".env",
@@ -112,7 +151,7 @@ def missing_api_key_summary() -> str:
     return (
         "DEEPSOP_API_KEY is not configured. Please sign in to OPClaw first. "
         "If you are not running inside OPClaw, manually configure DEEPSOP_API_KEY "
-        "as an environment variable or in ~/.openclaw/.env."
+        "in ~/.openclaw/openclaw.json, as an environment variable, or in ~/.openclaw/openclaw.json."
     )
 
 

@@ -37,10 +37,50 @@ def _read_env_file_value(path, key):
     return None
 
 
+def _read_openclaw_json_api_key(skill_name=None):
+    """Read DEEPSOP_API_KEY from ~/.openclaw/openclaw.json."""
+    try:
+        config_path = Path.home() / ".openclaw" / "openclaw.json"
+        if not config_path.is_file():
+            return None
+        with config_path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        entries = data.get("skills", {}).get("entries", {})
+        candidate_names = []
+        if skill_name:
+            candidate_names.append(skill_name)
+        candidate_names.extend([name for name in entries if str(name).startswith("deepsop-")])
+
+        seen = set()
+        for name in candidate_names:
+            if name in seen:
+                continue
+            seen.add(name)
+            entry = entries.get(name)
+            if not isinstance(entry, dict):
+                continue
+            for value in (
+                entry.get("apiKey"),
+                entry.get("env", {}).get("DEEPSOP_API_KEY") if isinstance(entry.get("env"), dict) else None,
+            ):
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
+    except Exception:
+        return None
+    return None
+
+
 def load_deepsop_api_key():
     """Load the shared DeepSOP API key from env or common .env locations."""
     key = os.environ.get("DEEPSOP_API_KEY", "").strip()
     if key:
+        return key
+
+    skill_dir = Path(__file__).resolve().parent.parent
+    key = _read_openclaw_json_api_key(skill_dir.name)
+    if key:
+        os.environ["DEEPSOP_API_KEY"] = key
         return key
 
     candidates = [
@@ -70,7 +110,7 @@ def check_api_key():
         return
     print("错误：未配置 DEEPSOP_API_KEY 环境变量", file=sys.stderr)
     print("请先在 OPClaw 项目设置中配置 DEEPSOP_API_KEY。", file=sys.stderr)
-    print("非 OPClaw 运行时，请让用户授权后把 API Key 配置为共享环境变量或 ~/.openclaw/.env。", file=sys.stderr)
+    print("非 OPClaw 运行时，请让用户授权后把 API Key 配置为共享环境变量或 ~/.openclaw/openclaw.json。", file=sys.stderr)
     sys.exit(1)
 
 

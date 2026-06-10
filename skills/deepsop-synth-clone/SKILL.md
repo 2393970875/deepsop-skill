@@ -32,7 +32,7 @@ description: |
 本技能需要 **API Key 授权**才能调用 AI Artist API。
 
 - OPClaw 项目运行时直接读取项目设置里的 `DEEPSOP_API_KEY`。
-- 非 OPClaw 运行时，引导用户授权后把 `DEEPSOP_API_KEY` 配置为共享环境变量或 `~/.openclaw/.env`，让其他 DeepSOP 技能也能复用。
+- 非 OPClaw 运行时，引导用户授权后把 `DEEPSOP_API_KEY` 配置为共享环境变量或 `~/.openclaw/openclaw.json`，让其他 DeepSOP 技能也能复用。
 - 读取不到 Key 时，引导用户登录/注册并新建 API Key：
   - 已有账号 → [https://ai.deepsop.com/login?source=4](https://ai.deepsop.com/login?source=4)
   - 没有账号 → [https://ai.deepsop.com/register?source=4](https://ai.deepsop.com/register?source=4)
@@ -50,7 +50,7 @@ $env:DEEPSOP_API_KEY="sk-your_api_key_here"
 export DEEPSOP_API_KEY="sk-your_api_key_here"
 ```
 
-也可以写入共享配置 `~/.openclaw/.env`：
+也可以写入共享配置 `~/.openclaw/openclaw.json`：
 
 ```text
 DEEPSOP_API_KEY=sk-your_api_key_here
@@ -344,7 +344,7 @@ python scripts/voice_clone.py --synthesize --name "用户音色" --text "收到�
 **解决：**
 - OPClaw 项目运行时检查项目设置里的 `DEEPSOP_API_KEY`。
 - 非 OPClaw 运行时先登录/注册获取 Key：已有账号 [login?source=4](https://ai.deepsop.com/login?source=4)，没有账号 [register?source=4](https://ai.deepsop.com/register?source=4)。
-- 配置共享环境变量或写入 `~/.openclaw/.env` 后重试。
+- 配置共享环境变量或写入 `~/.openclaw/openclaw.json` 后重试。
 
 ```bash
 # Windows PowerShell

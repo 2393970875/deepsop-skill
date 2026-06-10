@@ -23,7 +23,7 @@ description: TikTok 视频 AI 生成与发布技能（数字员工 Toby）。用
 本技能需要 **API Key 授权**才能调用 DeepSOP 接口。
 
 - OPClaw 项目运行时直接读取项目设置里的 `DEEPSOP_API_KEY`。
-- 非 OPClaw 运行时，引导用户授权后把 `DEEPSOP_API_KEY` 配置为共享环境变量或 `~/.openclaw/.env`，让其他 DeepSOP 技能也能复用。
+- 非 OPClaw 运行时，引导用户授权后把 `DEEPSOP_API_KEY` 配置为共享环境变量或 `~/.openclaw/openclaw.json`，让其他 DeepSOP 技能也能复用。
 - 读取不到 Key 时，引导用户登录/注册并新建 API Key：
   - 已有账号 → [https://ai.deepsop.com/login?source=5](https://ai.deepsop.com/login?source=5)
   - 没有账号 → [https://ai.deepsop.com/register?source=5](https://ai.deepsop.com/register?source=5)
@@ -707,7 +707,7 @@ cron 设置成功后回复：
 - `DEEPSOP_API_KEY` 未设置：提示用户**需要 API Key 授权**
   - OPClaw 项目运行时检查项目设置里的 `DEEPSOP_API_KEY`
   - 非 OPClaw 运行时，引导用户登录/注册获取 Key：已有账号 [login?source=5](https://ai.deepsop.com/login?source=5)，没有账号 [register?source=5](https://ai.deepsop.com/register?source=5)
-  - 配置共享环境变量或 `~/.openclaw/.env`
+  - 配置共享环境变量或 `~/.openclaw/openclaw.json`
   - 配置 `DEEPSOP_API_KEY` 后再重试
 - POST 接口返回非 200：展示错误信息，提示检查参数或稍后重试
 - TikTok 账号为空：调用 `/ai/auth/tiktok/tiktokAuth` 获取授权链接并打开浏览器，引导用户授权；用户授权完成后刷新账号列表，刷新后仍为空再提示重试或终止

@@ -39,6 +39,40 @@ def _read_env_file_value(path, key):
     return None
 
 
+def _read_openclaw_json_api_key(skill_name=None):
+    """Read DEEPSOP_API_KEY from ~/.openclaw/openclaw.json."""
+    try:
+        config_path = Path.home() / ".openclaw" / "openclaw.json"
+        if not config_path.is_file():
+            return None
+        with config_path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        entries = data.get("skills", {}).get("entries", {})
+        candidate_names = []
+        if skill_name:
+            candidate_names.append(skill_name)
+        candidate_names.extend([name for name in entries if str(name).startswith("deepsop-")])
+
+        seen = set()
+        for name in candidate_names:
+            if name in seen:
+                continue
+            seen.add(name)
+            entry = entries.get(name)
+            if not isinstance(entry, dict):
+                continue
+            for value in (
+                entry.get("apiKey"),
+                entry.get("env", {}).get("DEEPSOP_API_KEY") if isinstance(entry.get("env"), dict) else None,
+            ):
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
+    except Exception:
+        return None
+    return None
+
+
 def get_api_key():
     """获取 API Key"""
     api_key = os.environ.get(API_KEY_ENV, "").strip()
@@ -47,6 +81,11 @@ def get_api_key():
 
     script_dir = Path(__file__).resolve().parent
     skill_dir = script_dir.parent
+    api_key = _read_openclaw_json_api_key(skill_dir.name)
+    if api_key:
+        os.environ[API_KEY_ENV] = api_key
+        return api_key
+
     candidates = [
         Path.cwd() / ".env",
         script_dir / ".env",

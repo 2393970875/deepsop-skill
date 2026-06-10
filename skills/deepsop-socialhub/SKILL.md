@@ -26,7 +26,7 @@ DeepSOP SocialHub 是基于 DeepSOP 平台的社交平台运营与数据采集�
 本技能需要 **API Key 授权**才能调用 DeepSOP 接口。
 
 - OPClaw 项目运行时直接读取项目设置里的 `DEEPSOP_API_KEY`。
-- 非 OPClaw 运行时，引导用户授权后把 `DEEPSOP_API_KEY` 配置为共享环境变量或 `~/.openclaw/.env`，让其他 DeepSOP 技能也能复用。
+- 非 OPClaw 运行时，引导用户授权后把 `DEEPSOP_API_KEY` 配置为共享环境变量或 `~/.openclaw/openclaw.json`，让其他 DeepSOP 技能也能复用。
 - 读取不到 Key 时，引导用户登录/注册并新建 API Key：
   - 已有账号 → [https://ai.deepsop.com/login?source=6](https://ai.deepsop.com/login?source=6)
   - 没有账号 → [https://ai.deepsop.com/register?source=6](https://ai.deepsop.com/register?source=6)
@@ -73,7 +73,7 @@ DEEPSOP_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxx
 ## 必须遵守
 
 - OPClaw 项目运行时使用项目设置里的 `DEEPSOP_API_KEY`。
-- 非 OPClaw 运行时，让用户授权后设置共享 `DEEPSOP_API_KEY`，优先使用环境变量，也可写入 `~/.openclaw/.env`。
+- 非 OPClaw 运行时，让用户授权后设置共享 `DEEPSOP_API_KEY`，优先使用环境变量，也可写入 `~/.openclaw/openclaw.json`。
 - 不读取、不要求、不保存 `APIFY_TOKEN`。
 - 不直接调用 Apify SDK、Apify Actor 或 Apify Console Token。
 - 查询接口固定使用 `GET https://ai.deepsop.com/prod-api/ai/apify/store`。
@@ -211,7 +211,7 @@ python scripts/search_instagram.py "instagram scraper" 10 10
 - `DEEPSOP_API_KEY` 未设置：提示用户**需要 API Key 授权**才能使用本技能：
   - OPClaw 项目运行时检查项目设置里的 `DEEPSOP_API_KEY`
   - 非 OPClaw 运行时，引导用户登录/注册获取 Key：已有账号 [login?source=6](https://ai.deepsop.com/login?source=6)，没有账号 [register?source=6](https://ai.deepsop.com/register?source=6)
-  - 配置共享环境变量或 `~/.openclaw/.env`
+  - 配置共享环境变量或 `~/.openclaw/openclaw.json`
   - 配置 `DEEPSOP_API_KEY` 后再重试
 - `401`：提示 API Key 无效或过期。
 - `429`：提示请求过于频繁，稍后重试。
