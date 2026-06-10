@@ -1,6 +1,6 @@
 ﻿---
 name: deepsop-humabot
-description: 人机协作台技能。用户输入自然语言销售指令，AI自动分析拆解任务参数，调用 deepsop 平台接口提交任务，等待后查询结果并推送。触发场景：用户说「帮我找客户」「挖掘XXX行业客户」「找XXX个客户」「提交任务」等与客户挖掘、销售任务相关的指令；或用户说「创建电话场景」「新建外呼话术」「新建电话机器人」「提交场景审核」「我要做一个外呼场景」等与场景创建/审核相关的指令；或收到包含 [DeepSOP-AutoQuery] 标记的系统定时事件（cron 回调，用于自动查询并推送任务结果）。需要提前配置环境变量 DEEPSOP_API_KEY。⚠️ 调用本 SKILL 前必须先完整阅读 SKILL.md。提交 agentSubmitTask **必须**走 scripts/submit_task.py、创建/审核场景 **必须**走 scripts/submit_script_review.py（均通过 heredoc 把 body 喂给 stdin），脚本内部串行跑参数校验 + UTF-8 安全 HTTP 提交，**禁止**直接写 curl 命令（会因 Windows cp936 代码页导致中文字段乱码）。脚本退出码 0 才算成功；非 0 必须把 summary/errors 原样回给用户后修正重试，禁止绕过校验或假装成功。
+description: 人机协作台技能。用户输入自然语言销售指令，AI自动分析拆解任务参数，调用 deepsop 平台接口提交任务，等待后查询结果并推送。触发场景：用户说「帮我找客户」「挖掘XXX行业客户」「找XXX个客户」「提交任务」等与客户挖掘、销售任务相关的指令；或用户说「创建电话场景」「新建外呼话术」「新建电话机器人」「提交场景审核」「我要做一个外呼场景」等与场景创建/审核相关的指令；或收到包含 [DeepSOP-AutoQuery] 标记的系统定时事件（cron 回调，用于自动查询并推送任务结果）。在 OPClaw 项目中运行时直接读取项目设置里的 DEEPSOP_API_KEY；非 OPClaw 运行时，引导用户授权后把 DEEPSOP_API_KEY 配置为共享环境变量或 ~/.openclaw/.env，让其他 DeepSOP 技能也能复用。⚠️ 调用本 SKILL 前必须先完整阅读 SKILL.md。提交 agentSubmitTask **必须**走 scripts/submit_task.py、创建/审核场景 **必须**走 scripts/submit_script_review.py（均通过 heredoc 把 body 喂给 stdin），脚本内部串行跑参数校验 + UTF-8 安全 HTTP 提交，**禁止**直接写 curl 命令（会因 Windows cp936 代码页导致中文字段乱码）。脚本退出码 0 才算成功；非 0 必须把 summary/errors 原样回给用户后修正重试，禁止绕过校验或假装成功。
 ---
 
 # 人机协作台（Human-AI Collaboration）
@@ -26,16 +26,15 @@ description: 人机协作台技能。用户输入自然语言销售指令，AI�
 
 ---
 
-## 前置条件：获取 API Key
+## 前置条件：DEEPSOP_API_KEY
 
-本技能需要 **API Key 授权**才能调用 DeepSOP 接口。请按以下步骤获取：
+本技能需要 **API Key 授权**才能调用 DeepSOP 接口。
 
-1. 获取 API Key 入口：
-   - **已有账号** → 前往 [https://ai.deepsop.com/login?source=3](https://ai.deepsop.com/login?source=3) 登录获取
-   - **没有账号** → 前往 [https://ai.deepsop.com/register?source=3](https://ai.deepsop.com/register?source=3) 注册后获取
-2. 登录后进入「设置」或「API 管理」页面
-3. 新建 API Key，复制以 `sk-` 开头的密钥
-4. 在 OPClaw 中配置环境变量：
+- OPClaw 项目运行时直接读取项目设置里的 `DEEPSOP_API_KEY`。
+- 非 OPClaw 运行时，引导用户授权后把 `DEEPSOP_API_KEY` 配置为共享环境变量或 `~/.openclaw/.env`，让其他 DeepSOP 技能也能复用。
+- API Key 通常以 `sk-` 开头。
+
+共享配置示例：
 
 ```
 DEEPSOP_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxx
@@ -2292,10 +2291,9 @@ python3 ~/.openclaw/workspace/skills/deepsop-humabot/scripts/format_emails.py "$
 ## 错误处理
 
 - `DEEPSOP_API_KEY` 未设置：提示用户**需要 API Key 授权**才能使用本技能：
-  - **已有账号** → 前往 [https://ai.deepsop.com/login?source=3](https://ai.deepsop.com/login?source=3) 登录获取
-  - **没有账号** → 前往 [https://ai.deepsop.com/register?source=3](https://ai.deepsop.com/register?source=3) 注册获取
-  
-  登录后在控制台新建 API Key（`sk-` 开头），配置 `DEEPSOP_API_KEY` 环境变量后再重试
+  - OPClaw 项目运行时检查项目设置里的 `DEEPSOP_API_KEY`
+  - 非 OPClaw 运行时，引导用户授权后配置共享环境变量或 `~/.openclaw/.env`
+  - 配置 `DEEPSOP_API_KEY` 后再重试
 - POST 接口返回非 200：展示错误信息，提示检查参数或稍后重试
 - AiWa GET 接口 data 为空：提示任务可能仍在执行，给出 taskId 供用户告知「再查一次」
 - Frank 邮件统计/列表接口异常：提示邮件任务可能仍在发送中，给出 taskId 供用户告知「再查Frank结果」

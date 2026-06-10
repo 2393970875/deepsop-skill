@@ -3,7 +3,7 @@ name: deepsop-synth-clone
 description: |
   声音复刻技能，使用 AI Artist API 进行音色克隆和语音合成。支持查询已有音色、上传音频创建新音色、使用指定音色合成语音。
 
-  ⚠️ 使用前必须设置环境变量 DEEPSOP_API_KEY 为你的 API Key！需要 API Key 授权。
+  在 OPClaw 项目中运行时直接读取项目设置里的 DEEPSOP_API_KEY；非 OPClaw 运行时，引导用户授权后把 DEEPSOP_API_KEY 配置为共享环境变量或 ~/.openclaw/.env，让其他 DeepSOP 技能也能复用。
 
   触发场景：
   - 用户要求生成语音，如"用蔡总的音色说..."、"生成一段语音"、"语音合成"等。
@@ -29,18 +29,17 @@ description: |
 
 ## ⚠️ 首次使用必读
 
-### 1. 获取 API Key
+### 1. DEEPSOP_API_KEY
 
-本技能需要 **API Key 授权**才能调用 AI Artist API：
+本技能需要 **API Key 授权**才能调用 AI Artist API。
 
-- **已有账号** → 前往 [https://ai.deepsop.com/login?source=4](https://ai.deepsop.com/login?source=4) 登录获取
-- **没有账号** → 前往 [https://ai.deepsop.com/register?source=4](https://ai.deepsop.com/register?source=4) 注册后获取
+- OPClaw 项目运行时直接读取项目设置里的 `DEEPSOP_API_KEY`。
+- 非 OPClaw 运行时，引导用户授权后把 `DEEPSOP_API_KEY` 配置为共享环境变量或 `~/.openclaw/.env`，让其他 DeepSOP 技能也能复用。
+- API Key 通常以 `sk-` 开头。
 
-登录后在复制您的 API Key（`sk-` 开头）。
+### 2. 设置共享 Key
 
-### 2. 设置环境变量
-
-**在使用前，你必须先设置自己的 API Key：**
+非 OPClaw 运行时可临时设置当前终端环境变量：
 
 ```bash
 # Windows PowerShell
@@ -48,6 +47,12 @@ $env:DEEPSOP_API_KEY="sk-your_api_key_here"
 
 # Linux/macOS/Git Bash (Windows)
 export DEEPSOP_API_KEY="sk-your_api_key_here"
+```
+
+也可以写入共享配置 `~/.openclaw/.env`：
+
+```text
+DEEPSOP_API_KEY=sk-your_api_key_here
 ```
 
 ### 3. 验证配置
@@ -229,10 +234,10 @@ python scripts/voice_clone.py --create --name "客服小王" --audio "./wang.mp3
 
 ```bash
 # Windows PowerShell
-$env:DEEPSOP_API_KEY="sk-5c6c262755dc43d59ec5a742a7e80202"
+$env:DEEPSOP_API_KEY="sk-your_api_key_here"
 
 # Linux/macOS
-export DEEPSOP_API_KEY="sk-5c6c262755dc43d59ec5a742a7e80202"
+export DEEPSOP_API_KEY="sk-your_api_key_here"
 ```
 
 ### 方式 2：永久设置（推荐）
