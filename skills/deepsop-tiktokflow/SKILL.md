@@ -16,8 +16,6 @@ description: TikTok 视频 AI 生成与发布技能（数字员工 Toby）。用
 
 > Toby 不依赖客户挖掘（AiWa）等其他员工，可独立执行。如需配合客户挖掘 / 邮件销售 / 电话销售 / 短信销售等多员工协作，请改用 `deepsop-humabot`。
 
----
-
 ## 前置条件：DEEPSOP_API_KEY
 
 本技能需要 **API Key 授权**才能调用 DeepSOP 接口。
@@ -37,8 +35,6 @@ DEEPSOP_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxx
 
 > 所有 API 请求头需携带：`x-api-key: $DEEPSOP_API_KEY`
 > API Base URL：`https://ai.deepsop.com/prod-api/`
-
----
 
 ## ⛔ 接口路径强约束（最高优先级）
 
@@ -82,8 +78,6 @@ DEEPSOP_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxx
 > - **脚本调用 API 时：** 严禁脚本内硬编码 URL，必须从 `api_paths.py` 通过 `build_url("xxx")` 获取，并配合 `assert_url_matches()` 自检。
 > - 漂移检测：运行 `python scripts/api_paths.py` 会扫描本文件中所有 `https://ai.deepsop.com/prod-api/...` 路径，未在 `api_paths.py` 登记则非零退出。
 
----
-
 ## 完整执行流程
 
 ### Step 0：触发类型判断（每次进入技能必须首先执行）
@@ -92,8 +86,6 @@ DEEPSOP_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxx
 
 - **包含**：cron 定时回调。**不得询问用户、不得等待确认**。立即从输入中解析 `taskId` / `tobyDagTaskId` / `tobyCustomerPoolId` / `taskName` / `feishuChatId`，跳过 Step 1～4 直接执行 Step 5。
 - **不包含**：用户主动指令，继续 Step 1。
-
----
 
 ### Step 1：AI 分析（任务拆解）
 
@@ -115,8 +107,6 @@ DEEPSOP_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxx
 - `tiktokContent` → `employeeParams.Toby.content` 与 `employeeParams.Toby.param.text`（不得作为独立字段出现）
 
 **`executionMode` 当前阶段强制规则：** 提交请求体时一律硬编码为数字 `1`（定额任务）。后端枚举：`周期性任务 = 0`，`定额任务 = 1`。**绝不允许**写中文字符串、`"1"` 字符串、`true`、`null`。
-
----
 
 ### Step 1.5：数字员工 Toby 可用性校验（Step 1 完成后立即执行）
 
@@ -196,8 +186,6 @@ priceKCoin = actualPrice × (discountRate / 100) × rate
 ```
 
 成功 → 回复成功并回到 Step 1.5 校验后继续；失败 → 终止。
-
----
 
 ### Step 2：Toby TikTok 账号与发布参数配置（Step 3 前置）
 
@@ -297,8 +285,6 @@ priceKCoin = actualPrice × (discountRate / 100) × rate
 ```
 
 **等待所有账号回复完毕**后，构建 `publishTemplates`。
-
----
 
 ### Step 3：构建并提交任务
 
@@ -575,8 +561,6 @@ x-api-key: $DEEPSOP_API_KEY
 >
 > 后台正在生成与发布，**你希望多久后查询结果并推送给你？**（直接告诉我时间，例如「8 分钟」「半小时」「20 分钟后」，直接回复「好」或不填则默认 8 分钟）
 
----
-
 ### Step 3.5：解析用户指定的等待时间
 
 | 用户说 | 解析为秒数 |
@@ -590,8 +574,6 @@ x-api-key: $DEEPSOP_API_KEY
 
 回复确认：
 > 好的，将在 {用户指定时间描述}（约 {N} 分钟）后为你查询结果，请稍候 ☕
-
----
 
 ### Step 4：按用户指定时间设置自动查询
 
@@ -622,8 +604,6 @@ cron 设置成功后回复：
 > - cron 设置完成到 [DeepSOP-AutoQuery-Toby] 到达之前，不得主动执行 Step 5。
 > - 用户在等待期间问其他话题，正常回应，但不要提前查询。
 > - 用户说「现在就查结果」/「提前查」→ 立即执行 Step 5。
-
----
 
 ### Step 5：查询结果并返回给用户
 
@@ -685,22 +665,16 @@ cron 设置成功后回复：
 > 任务ID：{tobyDagTaskId}
 > 你可以告诉我「再查 Toby 结果」，我会立即重新查询。
 
----
-
 ## 实现方式
 
 - **AI 分析**：直接在当前对话中用 LLM 完成
 - **HTTP 请求**：使用 `exec` 工具调用 `curl`（仅 GET 接口；POST submitTask **必须**走 `submit_task.py`）
 - **定时等待**：使用 `cron(action=add)` 设置一次性 systemEvent
 
----
-
 ## 依赖
 
 - Python 3（系统自带）
 - 仅 Python 标准库（urllib），无第三方依赖
-
----
 
 ## 错误处理
 
