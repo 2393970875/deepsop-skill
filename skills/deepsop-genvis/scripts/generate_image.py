@@ -2110,7 +2110,8 @@ def generate_video(prompt, model=None, ratio=None, resolution=None,
                    n=None, person_generation=None, resize_mode=None,
                    negative_prompt=None, duration_switch=None,
                    multi_prompt=None, audio_url_list=None, audio_path_list=None,
-                   web_search=None, audio_setting=None, max_wait=1200):
+                   web_search=None, audio_setting=None, max_wait=1200,
+                   submit_only=False):
     """Generate a video from a text prompt.
 
     Args:
@@ -2221,6 +2222,10 @@ def generate_video(prompt, model=None, ratio=None, resolution=None,
         return None
 
     _progress(f"   任务 ID: {task_id}")
+
+    if submit_only:
+        return {"status": "SUBMITTED", "task_id": task_id, "url": None, "message": "任务已提交，使用 --poll 轮询结果"}
+
     _progress(f"   开始轮询任务结果（间隔 {poll_interval}s，最长等待 {max_wait}s）…")
 
     result = poll_task_status(task_id, interval=poll_interval, max_wait=max_wait)
@@ -2479,7 +2484,7 @@ def generate_image(prompt, quality=None, size=None, poll_interval=5,
                    download=False, output_dir=None, model=None,
                    reference_image_path=None, reference_image_url=None,
                    web_search=None, image_search=None, ratiocination=None,
-                   n=None, max_wait=1200):
+                   n=None, max_wait=1200, submit_only=False):
     """
     Main function to generate an image from a prompt.
     
@@ -2546,6 +2551,10 @@ def generate_image(prompt, quality=None, size=None, poll_interval=5,
         return None
 
     _progress(f"   任务 ID: {task_id}")
+
+    if submit_only:
+        return {"status": "SUBMITTED", "task_id": task_id, "url": None, "message": "任务已提交，使用 --poll 轮询结果"}
+
     _progress(f"   开始轮询任务结果（间隔 {poll_interval}s，最长等待 {max_wait}s）…")
 
     # Step 2: Poll until complete
@@ -2650,8 +2659,25 @@ if __name__ == "__main__":
                         help="仅构建并打印最终 payload，不实际调用 API（用于调试）")
     parser.add_argument("--json-output", action="store_true",
                         help="以单行 JSON 向 stdout 输出最终结果 {status,url,message}，便于外部编排解析")
+    parser.add_argument("--submit-only", action="store_true",
+                        help="只提交任务，立即将 task_id 输出到 stdout，不轮询结果（配合 --poll 使用）")
+    parser.add_argument("--poll", default=None, metavar="TASK_ID",
+                        help="只轮询已存在的任务，不重新提交（用于 --submit-only 提交后的独立轮询）")
 
     args = parser.parse_args()
+
+    # --poll short-circuit: only poll an existing task, no submission
+    if args.poll:
+        ensure_api_key_for_network()
+        result = poll_task_status(args.poll, interval=args.interval, max_wait=args.max_wait)
+        if args.json_output:
+            import json
+            print(json.dumps(result, ensure_ascii=False))
+        elif result.get("status") == "SUCCESS":
+            print(result.get("url", ""))
+        else:
+            print(result.get("message", ""), file=sys.stderr)
+        sys.exit(0 if result.get("status") == "SUCCESS" else 1)
 
     # --list-models short-circuit (also runs drift detection)
     if args.list_models:
@@ -2740,12 +2766,13 @@ if __name__ == "__main__":
             first_clip_url=args.first_clip_url,
             audio_setting=args.audio_setting,
             max_wait=args.max_wait,
+            submit_only=args.submit_only,
         )
         # Send result to Feishu if webhook is configured
-        if FEISHU_WEBHOOK_URL:
+        if FEISHU_WEBHOOK_URL and result and result.get("status") != "SUBMITTED":
             send_feishu_message(args.prompt, result, media_type="video")
         _emit_cli_result(result, args, markdown_label=args.prompt)
-        sys.exit(0 if (result and result.get("status") == "SUCCESS") else 1)
+        sys.exit(0 if (result and result.get("status") in ("SUCCESS", "SUBMITTED")) else 1)
     else:
         result = generate_image(
             prompt=args.prompt,
@@ -2761,11 +2788,12 @@ if __name__ == "__main__":
             image_search=args.image_search,
             ratiocination=args.ratiocination,
             n=args.n,
-            max_wait=args.max_wait
+            max_wait=args.max_wait,
+            submit_only=args.submit_only,
         )
 
         # Send result to Feishu if webhook is configured
-        if FEISHU_WEBHOOK_URL:
+        if FEISHU_WEBHOOK_URL and result and result.get("status") != "SUBMITTED":
             send_feishu_message(args.prompt, result, media_type="image")
         _emit_cli_result(result, args, markdown_label=args.prompt)
-        sys.exit(0 if (result and result.get("status") == "SUCCESS") else 1)
+        sys.exit(0 if (result and result.get("status") in ("SUCCESS", "SUBMITTED")) else 1)

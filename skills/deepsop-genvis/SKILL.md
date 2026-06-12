@@ -54,6 +54,12 @@ python3 scripts/generate_image.py "城市夜景延时短片" --model 20 --ratio 
 
 # 调试 payload，不提交任务
 python3 scripts/generate_image.py "测试" --model 15 --dry-run --json-output
+
+# 两步工作流（解决 exec 超时导致重复提交的问题）：
+# 第一步：只提交任务，立即拿到 task_id，不阻塞等待
+python3 scripts/generate_image.py "库阔AI宣传图" --model 10 --submit-only --json-output
+# 第二步：用 task_id 单独轮询（可设置较短的 max-wait，多次调用直到成功）
+python3 scripts/generate_image.py "x" --poll <task_id> --max-wait 120 --json-output
 ```
 
 ## 先问什么
