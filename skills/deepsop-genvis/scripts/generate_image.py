@@ -1951,7 +1951,8 @@ def create_video_task(prompt, model=None, ratio=None, resolution=None,
     if multi_shot is not None:
         parameter["multiShot"] = multi_shot
     if n is not None:
-        parameter["n"] = n
+        if model in VIDEO_FIELD_SUPPORT.get("n", set()):
+            parameter["n"] = n
     if person_generation is not None:
         parameter["personGeneration"] = person_generation
     if resize_mode is not None:
@@ -2375,7 +2376,8 @@ def create_generation_task(prompt, quality=None, size=None, model=None,
                     file=sys.stderr,
                 )
                 n_int = max(1, min(10, n_int))
-            parameter["n"] = n_int
+            if model in IMAGE_FIELD_SUPPORT.get("n", set()):
+                parameter["n"] = n_int
 
     # Overwrite targetMaxSize / targetMinLength / targetMaxLength per model
     _apply_restriction(parameter, image_restriction)
@@ -2453,9 +2455,12 @@ def poll_task_status(task_id, interval=5, max_wait=1200):
                 last_status = status
             
             if status == "SUCCESS":
+                urls = data.get("urls") or []
+                single_url = data.get("url")
                 return {
                     "status": "SUCCESS",
-                    "url": data.get("url"),
+                    "url": urls[0] if urls else single_url,
+                    "urls": urls if urls else ([single_url] if single_url else []),
                     "message": data.get("message", "生成成功")
                 }
             elif status == "FAILED":
