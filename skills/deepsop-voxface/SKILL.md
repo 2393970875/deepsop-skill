@@ -23,8 +23,11 @@ description: 数字人生成与参考音频技能。用于调用 deepsop / AI Ar
 本技能需要 `DEEPSOP_API_KEY` 才能调用 DeepSOP / AI Artist 接口。
 
 - OPClaw 项目运行时直接读取项目设置里的 `DEEPSOP_API_KEY`。
-- 非 OPClaw 运行时，先引导用户授权，再把 `DEEPSOP_API_KEY` 配到共享环境变量或 `~/.openclaw/openclaw.json`。
-- 读取不到 Key 时，引导用户登录/注册并新建 API Key。
+- 非 OPClaw 运行时，引导用户授权后把 `DEEPSOP_API_KEY` 配置为共享环境变量或 `~/.openclaw/openclaw.json`，让其他 DeepSOP 技能也能复用。
+- 读取不到 Key 时，引导用户登录/注册并新建 API Key：
+  - 已有账号 → [https://ai.deepsop.com/login?source=4](https://ai.deepsop.com/login?source=4)
+  - 没有账号 → [https://ai.deepsop.com/register?source=4](https://ai.deepsop.com/register?source=4)
+- API Key 通常以 `sk-` 开头。
 
 ## 脚本入口
 
@@ -370,3 +373,12 @@ this.form.methodType = newVal && newVal[0]?.sourceValue || ''
 - “用克隆音色合成一句话”
 
 其中 `预设音色 + 文字` 和 `克隆音色 + 文字` 都可以单独作为音频合成任务使用，不必先进入数字人生成流程；只有当用户明确要“生成数字人视频”时，才把合成出来的音频继续接到数字人任务里。
+
+## 错误处理
+
+- `DEEPSOP_API_KEY` 未设置：提示用户需要 API Key 授权。
+  - OPClaw 项目运行时检查项目设置里的 `DEEPSOP_API_KEY`。
+  - 非 OPClaw 运行时，引导用户登录/注册获取 Key：已有账号 [login?source=4](https://ai.deepsop.com/login?source=4)，没有账号 [register?source=4](https://ai.deepsop.com/register?source=4)。
+  - 配置共享环境变量或 `~/.openclaw/openclaw.json` 后再重试。
+- `401`：提示 API Key 无效或过期，按上面的登录/注册入口重新获取 Key。
+- `4xx/5xx`：反馈实际状态码和接口错误信息，不要自动切换模型或伪造结果。
