@@ -31,11 +31,12 @@ MODEL_LIST_URL = f"{BASE_URL}/consumeSource/list?pageNum=1&pageSize=999"
 RECHARGE_URL = "https://ai.deepsop.com/"
 
 # In-process cache for the model list (TTL seconds). Models can be toggled
-# on/off server-side at any time, so we re-fetch periodically instead of
-# hard-coding hiddenState values. A disk-backed fallback avoids hammering the
-# API across short-lived CLI invocations on the same machine.
+# on/off server-side at any time, so explicit availability checks bypass the
+# disk cache and prefer a fresh API response. The disk cache is only a best-
+# effort fallback for list/default-model discovery when the API is unreachable.
 _MODEL_LIST_CACHE = {"rows": None, "expires_at": 0.0}
 _MODEL_LIST_TTL = 300  # 5 minutes
+_MODEL_LIST_DISK_TTL = 300  # 5 minutes; reject stale/future-skewed cache files
 import tempfile as _tempfile
 _MODEL_LIST_DISK_CACHE = os.path.join(_tempfile.gettempdir(), "deepsop_model_list.json")
 
@@ -316,7 +317,10 @@ def _load_disk_cache():
             blob = json.load(f)
         if not isinstance(blob, dict) or "rows" not in blob:
             return None
-        if blob.get("expires_at", 0) < time.time():
+        now = time.time()
+        expires_at = float(blob.get("expires_at", 0) or 0)
+        # Guard against stale files and accidental far-future expiry values.
+        if expires_at < now or expires_at > now + _MODEL_LIST_DISK_TTL:
             return None
         return blob["rows"]
     except Exception:
@@ -379,10 +383,14 @@ def fetch_model_list(force_refresh=False):
         return rows
     except requests.exceptions.HTTPError as e:
         print(_explain_http_error(e, context="模型列表查询"), file=sys.stderr)
-        return _MODEL_LIST_CACHE["rows"] or []
+        if _MODEL_LIST_CACHE["rows"] is not None:
+            return _MODEL_LIST_CACHE["rows"]
+        return [] if force_refresh else (_load_disk_cache() or [])
     except Exception as e:
         print(f"[warn] 模型列表查询异常，使用上次缓存：{e}", file=sys.stderr)
-        return _MODEL_LIST_CACHE["rows"] or []
+        if _MODEL_LIST_CACHE["rows"] is not None:
+            return _MODEL_LIST_CACHE["rows"]
+        return [] if force_refresh else (_load_disk_cache() or [])
 
 
 def check_model_available(model_key):
@@ -398,9 +406,11 @@ def check_model_available(model_key):
     want_type = "IMAGE_MODEL" if config["media_type"] == "image" else "VIDEO_MODEL"
     want_value = str(config["methodType"])
 
-    rows = fetch_model_list()
+    # Explicit model checks must not rely on disk cache: stale hiddenState data
+    # can incorrectly report an enabled model such as V3.1FB as disabled.
+    rows = fetch_model_list(force_refresh=True)
     if not rows:
-        print(f"[warn] 无法确认 {model_key} 启用状态（模型列表为空），跳过校验", file=sys.stderr)
+        print(f"[warn] 无法实时确认 {model_key} 启用状态（模型列表为空），跳过停用校验", file=sys.stderr)
         return True
 
     for row in rows:
@@ -474,7 +484,7 @@ def _get_default_model(media_type):
         if entry.get("key"):
             return entry["key"]
         # Otherwise translate sourceValue → friendly key (in case caller passes raw mt)
-        resolved = _resolve_model_key(sval)
+        resolved = _resolve_model_key(sval, media_type=media_type)
         if resolved:
             return resolved
 
@@ -482,12 +492,14 @@ def _get_default_model(media_type):
     return None
 
 
-def _resolve_model_key(value):
+def _resolve_model_key(value, media_type=None):
     """Accept either a friendly key (e.g. 'HappyHorse') or a methodType
     string/int (e.g. '19', 19) and return the friendly key used internally.
 
     The friendly-name registry remains MODEL_CONFIGS (single source of truth).
     Existence and hiddenState are validated separately via the API.
+    When a numeric methodType is reused by image and video models, `media_type`
+    disambiguates it (for example image methodType=3 vs video V3.1FB=3).
     Returns None if the value cannot be resolved.
     """
     if value is None:
@@ -500,12 +512,12 @@ def _resolve_model_key(value):
         return alias
     # Direct friendly-key hit (case-insensitive)
     for key in MODEL_CONFIGS:
-        if key.lower() == s.lower():
+        if key.lower() == s.lower() and (media_type is None or MODEL_CONFIGS[key]["media_type"] == media_type):
             return key
     # methodType lookup (numeric or numeric-string)
     if s.isdigit():
         for key, cfg in MODEL_CONFIGS.items():
-            if str(cfg["methodType"]) == s:
+            if str(cfg["methodType"]) == s and (media_type is None or cfg["media_type"] == media_type):
                 return key
     return None
 
@@ -1144,10 +1156,14 @@ IMAGE_BASE_DEFAULTS = {
 
 # Frontend `case 'methodType'` (moduleKey '9') sets generationType based on the
 # new model's methodType:
-#   ['7', '15']                      → 'TEXT'
+#   ['3', '7', '15']                 → 'TEXT'
 #   ['1', '4', '5', '6', '8', '14']  → 'FIRST&LAST'
 #   else                             → 'REFERENCE'
-_VIDEO_GEN_TYPE_TEXT = {"7", "15"}
+#
+# V3.1FB (methodType=3) supports TEXT/FIRST&LAST/REFERENCE; use TEXT as the
+# safe default so explicit "FB video" text-only requests do not get blocked by
+# REFERENCE's required image input.
+_VIDEO_GEN_TYPE_TEXT = {"3", "7", "15"}
 _VIDEO_GEN_TYPE_FIRST_LAST = {"1", "4", "5", "6", "8", "14"}
 
 
@@ -1243,6 +1259,14 @@ _IMAGE_PIXEL_SEP_BY_MT = {"0": "x", "4": "x", "6": "*", "7": "*"}
 # Backward-compatible aliases accepted by --model. Canonical keys should match
 # current sourceName/sourceValue semantics where possible.
 MODEL_ALIASES = {
+    "fb": "V3.1FB",
+    "fbvideo": "V3.1FB",
+    "fb-video": "V3.1FB",
+    "fb视频": "V3.1FB",
+    "v3.1 fb": "V3.1FB",
+    "v3.1-fb": "V3.1FB",
+    "v3.1fb": "V3.1FB",
+    "v31fb": "V3.1FB",
     "n2-147": "Nano1Pro-147",
     "n2pro-147": "Nano2-147",
     "nano1-pro-147": "Nano1Pro-147",
@@ -1720,7 +1744,7 @@ def create_video_task(prompt, model=None, ratio=None, resolution=None,
         print(f"[auto] 使用接口返回的第一个可用视频模型 {model}", file=sys.stderr)
 
     # Accept friendly key or methodType (e.g. 'HappyHorse' or '19')
-    resolved = _resolve_model_key(model)
+    resolved = _resolve_model_key(model, media_type="video")
     if resolved is None or MODEL_CONFIGS.get(resolved, {}).get("media_type") != "video":
         print(f"不支持的视频模型：{model}", file=sys.stderr)
         return None
@@ -2168,7 +2192,7 @@ def generate_video(prompt, model=None, ratio=None, resolution=None,
             return None
         print(f"[auto] 使用接口返回的第一个可用视频模型 {display_model}", file=sys.stderr)
 
-    resolved_model = _resolve_model_key(display_model)
+    resolved_model = _resolve_model_key(display_model, media_type="video")
     config = MODEL_CONFIGS.get(resolved_model, {})
     defaults = _build_video_defaults(config["methodType"]) if config else VIDEO_BASE_DEFAULTS
     effective_ratio = ratio or defaults["ratio"]
@@ -2273,7 +2297,7 @@ def create_generation_task(prompt, quality=None, size=None, model=None,
         print(f"[auto] 使用接口返回的第一个可用图片模型 {model}", file=sys.stderr)
 
     # Accept friendly key or methodType (e.g. '3.1Nano2-Evo' or '8')
-    resolved = _resolve_model_key(model)
+    resolved = _resolve_model_key(model, media_type="image")
     if resolved is None:
         print(f"不支持的模型：{model}，可用模型：{list(MODEL_CONFIGS.keys())}", file=sys.stderr)
         return None
@@ -2520,7 +2544,7 @@ def generate_image(prompt, quality=None, size=None, poll_interval=5,
             return None
         print(f"[auto] 使用接口返回的第一个可用图片模型 {display_model}", file=sys.stderr)
 
-    resolved_model = _resolve_model_key(display_model)
+    resolved_model = _resolve_model_key(display_model, media_type="image")
     config = MODEL_CONFIGS.get(resolved_model, {})
     defaults = _build_image_defaults(config["methodType"]) if config else IMAGE_BASE_DEFAULTS
     effective_quality = quality or defaults["quality"]
@@ -2717,8 +2741,11 @@ if __name__ == "__main__":
             file=sys.stderr,
         )
     else:
-        # Resolve friendly-name | methodType to the canonical friendly key
-        resolved = _resolve_model_key(args.model)
+        # Resolve friendly-name | methodType to the canonical friendly key.
+        # Numeric methodTypes are ambiguous across image/video, so infer the
+        # requested media from the prompt before resolving.
+        inferred = _infer_media_type(args.prompt)
+        resolved = _resolve_model_key(args.model, media_type=inferred)
         if resolved is None:
             parser.error(f"未知模型：{args.model}（可运行 --list-models 查看可用模型）")
         if resolved != args.model:

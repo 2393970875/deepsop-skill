@@ -34,8 +34,10 @@ DEEPSOP_API_KEY=sk-your_api_key_here
 - 模型列表、模型名称、模型顺序、默认模型全部来自 `consumeSource/list`。
 - 未指定模型时，先按 prompt 判断图片或视频，再取对应类型下 `sourceValue != "auto"` 且 `hiddenState == "0"` 的接口返回顺序第一个。
 - 指定模型时，优先传接口返回的 `sourceValue/methodType`，例如 `--model 10`。脚本保留友好别名只是兼容旧调用，不作为技能文档依据。
+- 用户明确提到 `V3.1FB`、`V3.1 FB`、`FB视频`、`FB 视频` 或“FB模型”时，必须显式传 `--model 3`（等价于 `sourceValue/methodType=3`），不要走默认视频模型。
 - 选中模型或切换模型后，只根据 `methodType` 触发本地规则：默认值、可见字段、字段选项、必填校验、payload 组装。
 - 任务失败时，不要自动切换模型重试。必须反馈实际使用的 `methodType`、状态和失败原因。
+- 只有脚本本次执行的 stderr 明确返回 `hiddenState=1` / `当前已停用` 时，才允许告诉用户模型已停用；如果脚本实际使用了默认模型，只能说明“未显式指定模型，按接口默认顺序选择了该模型”，禁止推断或编造某个模型已停用。
 - 用户给本地参考图/视频/音频时，先上传成可访问 URL，再放入对应参数。
 
 ## 快速命令
@@ -51,6 +53,7 @@ python3 scripts/generate_image.py "生成一段城市夜景延时视频"
 # 指定 methodType/sourceValue
 python3 scripts/generate_image.py "产品宣传图 4 种风格" --model 10 --n 4 --ratiocination high
 python3 scripts/generate_image.py "城市夜景延时短片" --model 20 --ratio "16:9" --resolution "1080p" --duration 10
+python3 scripts/generate_image.py "企业宣传短片，16:9 横屏" --model 3 --ratio "16:9" --resolution "1080p"
 
 # 调试 payload，不提交任务
 python3 scripts/generate_image.py "测试" --model 15 --dry-run --json-output
