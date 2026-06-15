@@ -65,7 +65,7 @@ python3 scripts/generate_image.py --list-models
 
 ---
 
-### 2. 🎙️ Voice Clone (deepsop-synth-clone)
+### 2. 🎙️ Voice Clone (deepsop-voxface)
 
 **功能描述**：使用 AI Artist API 进行音色克隆和语音合成，基于 CosyVoice v3.5 Plus 模型。
 
@@ -86,16 +86,16 @@ python3 scripts/generate_image.py --list-models
 export DEEPSOP_API_KEY="sk-your_api_key_here"
 
 # 列出所有可用音色
-python scripts/voice_clone.py --list
+python scripts/voxface.py --list
 
 # 使用音色 ID 合成语音
-python scripts/voice_clone.py --synthesize --id 13 --text "你好世界"
+python scripts/voxface.py --synthesize --id 13 --text "你好世界"
 
 # 创建新音色
-python scripts/voice_clone.py --create --name "我的音色" --audio "./my_voice.mp3"
+python scripts/voxface.py --create --name "我的音色" --audio "./my_voice.mp3"
 ```
 
-📖 [详细文档](skills/deepsop-synth-clone/SKILL.md) | [API 文档](skills/deepsop-synth-clone/references/api.md)
+📖 [详细文档](skills/deepsop-voxface/SKILL.md) | [API 文档](skills/deepsop-voxface/references/api.md)
 
 ---
 
@@ -244,7 +244,7 @@ AI：AiWa 客户挖掘完成，共找到 50 个客户，详见附件
    python3 skills/deepsop-genvis/scripts/test_config.py
    
    # 测试声音克隆配置
-   python skills/deepsop-synth-clone/scripts/voice_clone.py --list
+   python skills/deepsop-voxface/scripts/voxface.py --list
    ```
 
 ---
@@ -343,11 +343,11 @@ deepsop-skill/
 │   │   │   └── test_generate_image.py
 │   │   ├── README.md
 │   │   └── SKILL.md
-│   ├── deepsop-synth-clone/     # 声音克隆技能
+│   ├── deepsop-voxface/     # 声音克隆技能
 │   │   ├── references/
 │   │   │   └── api.md
 │   │   ├── scripts/
-│   │   │   └── voice_clone.py
+│   │   │   └── voxface.py
 │   │   ├── README.md
 │   │   └── SKILL.md
 │   ├── deepsop-douyin/          # 抖音上传技能
