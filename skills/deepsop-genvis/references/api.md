@@ -71,15 +71,16 @@ Body 示例：
 规则：
 - 图片模型使用接口返回的图片类型模型，提交任务时 `type="10"`。
 - 视频模型使用接口返回的视频类型模型，提交任务时 `type="9"`。
-- 模型名称、可用状态、排序和默认模型都以接口返回为准。
-- 默认模型取对应类型中 `sourceValue != "auto"` 且 `hiddenState == "0"` 的返回顺序第一个。
-- 选中模型后，把接口返回的 `sourceValue` 作为 `methodType`，再按本技能本地 methodType 规则组装参数。
+- 模型名称、可用状态、排序和运行时默认选中值都以接口返回为准；本文不维护可对用户展示的模型清单。
+- 未指定模型时，取对应类型中 `sourceValue != "auto"` 且 `hiddenState == "0"` 的返回顺序第一项作为本次运行的选中值，不把它声明为固定默认模型。
+- 选中模型后，把接口返回的 `sourceValue` 作为 `methodType`，再按本技能本地 methodType 规则组装参数；methodType 规则仅用于参数生成/校验。
+- 查询模型列表或状态只用于回答用户的信息请求，不代表可以自动创建生成任务；只有用户明确要求生成/提交时才进入费用预估和创建任务。
 
 **parameter 字段说明（图片）:**
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| `methodType` | string | API `sourceValue`，用于触发本地 methodType 参数规则 |
+| `methodType` | string | API `sourceValue`，仅用于触发本地 methodType 参数生成/校验规则 |
 | `prompt` | string | 图片生成提示词 |
 | `image` | array | 参考图片（可选） |
 | `quality` | string | 图片质量，按 methodType 白名单提交 |

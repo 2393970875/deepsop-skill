@@ -11,7 +11,9 @@ description: 数字人生成与参考音频技能。用于调用 deepsop / AI Ar
 
 - 模型列表来自现有前端接口返回值，按 `sourceTypeList: ['IMAGE_PROCESS', 'IMAGE_MODEL', 'VIDEO_MODEL', 'HUMAN_MODEL']` 取数。
 - 数字人可用模型只使用 `HUMAN_MODEL` 分类；展示时过滤 `hiddenState !== '0'` 的项。
-- 用户选择模型后，前端只依据该模型的 `sourceValue` / `methodType` 触发本地参数规则。
+- 用户选择模型后，前端只依据接口返回的 `sourceValue`（写入 `methodType`）触发本地参数规则；这些规则不代表技能内置模型清单。
+- 费用预估、创建任务、只提交任务前，都必须重新读取 `HUMAN_MODEL` 列表并确认当前 `methodType/sourceValue` 的 `hiddenState === '0'`；如果接口返回 `hiddenState !== '0'` 或列表中不存在该值，必须停止，不得下任务。
+- 用户只是在查询数字人模型列表、状态、参数、分辨率、素材限制或音色列表时，只返回查询信息；不要因为查询结果发现某个模型/音色可用而自动创建、预估或继续生成任务。
 - 提交生成前会先做费用预估，调用 `/ai/estimate/cost`。
 - 默认表单里的 `req_key` 是 `jimeng_realman_avatar_picture_omni_v15`。
 - 数字人创建任务通过 `/ai/AiArtistRecord` 提交。
@@ -60,12 +62,15 @@ description: 数字人生成与参考音频技能。用于调用 deepsop / AI Ar
 1. 先确认用户要的是数字人任务，而不是普通图片/视频生成。
 2. 读取数字人模型列表，优先使用 `HUMAN_MODEL`。
 3. 根据所选模型校验参数可见性。
-4. 在提交前调用 `/ai/estimate/cost` 预估费用。
-5. 余额不足时立即拦截，不进入创建任务。
-6. 余额充足时再进入实际提交。
-7. 任务提交后按项目现有轮询逻辑查询结果并返回。
+4. 在预估和提交前都重新校验所选 `HUMAN_MODEL sourceValue` 是否仍为 `hiddenState === '0'`。
+5. 在提交前调用 `/ai/estimate/cost` 预估费用。
+6. 余额不足时立即拦截，不进入创建任务。
+7. 余额充足时再进入实际提交。
+8. 任务提交后按项目现有轮询逻辑查询结果并返回。
 
-## 模型列表
+如果用户请求是“查看/列出/告诉我/有什么参数/支持什么分辨率/所有模型列表/包括停用模型”等信息查询，只回答查询结果或本文的参数规则，不进入上述生成流程。
+
+## 模型列表取值原则
 
 ### 已确认来源
 
@@ -89,21 +94,21 @@ description: 数字人生成与参考音频技能。用于调用 deepsop / AI Ar
 - `VIDEO_MODEL` -> `sys_generate_video_model`
 - `HUMAN_MODEL` -> `sys_generate_human_model`
 
-数字人只使用 `sys_generate_human_model`，并过滤 `hiddenState === '0'`。
+数字人只使用 `sys_generate_human_model`。展示和生成前都必须过滤/校验 `hiddenState === '0'`；不能只在 `--list-models` 时过滤，创建任务时也必须实时校验。
 
-### 默认模型
+### 默认选中值
 
-当前 Vue 片段中，`humanModelOptions` 变化后直接把第一项的 `sourceValue` 写入 `form.methodType`。
+当前 Vue 片段中，`humanModelOptions` 变化后直接把接口返回第一项的 `sourceValue` 写入 `form.methodType`。这是运行时取值规则，不是固定默认模型声明。
 
 ```js
 this.form.methodType = newVal && newVal[0]?.sourceValue || ''
 ```
 
-因此不要在技能里写死模型名、模型 ID 或默认模型；默认值以服务端返回顺序为准。
+因此不要在技能里写死、展示或向用户承诺模型名、模型 ID、可用模型清单或默认模型；实际可选项和默认选中值只以服务端返回为准。
 
 ## 已确认的数字人参数规则
 
-- `methodType`：数字人模型标识，来自接口返回的 `sourceValue`。
+- `methodType`：数字人模型接口值，来自获取模型列表接口返回的 `sourceValue`；仅用于请求参数生成与校验。
 - `req_key`：默认 `jimeng_realman_avatar_picture_omni_v15`。
 - `prompt`：生成视频提示词，非必填。
 - `image_url`：人像图片，仅部分模型需要。
@@ -113,22 +118,22 @@ this.form.methodType = newVal && newVal[0]?.sourceValue || ''
 - `output_resolution`：渲染质量，当前前端选项值是 `720` / `1080`，展示文案是 `720p` / `1080p`。
 - `pe_fast_mode`：前端根据 `output_resolution === '720'` 自动切换；720 为 `true`，1080 为 `false`。
 
-## 前端已确认的显隐规则
+## 前端已确认的 sourceValue/methodType 显隐规则
 
-- `methodType === '0'`：OmniHuman1.5，显示 `prompt`、`image_url`、`output_resolution`。
-- `methodType === '1'`：HeyGem，显示 `video_url`。
+- `methodType === '0'`：显示 `prompt`、`image_url`、`output_resolution`。
+- `methodType === '1'`：显示 `video_url`。
 - 其他字段按前端现有规则默认处理，不要自行扩展。
 
-## 完整 methodType 白名单
+## 生成 sourceValue/methodType 内部规则
 
-数字人当前完整可用模型只有以下两个 `methodType`：
+以下仅是前端已确认的 `sourceValue/methodType` 参数分支，用于获取模型列表接口返回对应值后生成和校验 payload；不要把它表述为当前可用模型清单或默认模型：
 
-| methodType | 模型 | 必填素材 | 可见字段 |
-| --- | --- | --- | --- |
-| `0` | OmniHuman1.5 | `image_url`、`audio_url` | `prompt`、`image_url`、`audio_url`、`output_resolution` |
-| `1` | HeyGem | `video_url`、`audio_url` | `video_url`、`audio_url` |
+| methodType/sourceValue | 必填素材 | 可见字段 |
+| --- | --- | --- |
+| `0` | `image_url`、`audio_url` | `prompt`、`image_url`、`audio_url`、`output_resolution` |
+| `1` | `video_url`、`audio_url` | `video_url`、`audio_url` |
 
-不要接受或编造 `2`、`3` 等其他数字人 `methodType`。如果服务端未来返回新值，需要先补充前端规则和本技能文档后再使用。
+如果获取模型列表接口返回了本文未覆盖的 `sourceValue/methodType`，不要自行编造参数规则；需要先补充前端规则和本技能文档后再使用。
 
 ## 前端已确认的默认值与重置
 
@@ -162,6 +167,7 @@ this.form.methodType = newVal && newVal[0]?.sourceValue || ''
 
 必须按前端规则校验：
 
+- 当前 `methodType` 必须能在最新 `HUMAN_MODEL` 接口返回中找到，且该项 `hiddenState === '0'`；如果接口返回 `methodType=1` 且 `hiddenState=1`，必须停止并提示该数字人模型已停用，不能继续费用预估或提交任务。
 - `methodType === '0'` 且缺少 `image_url`：停止，提示用户上传人像图片。
 - `methodType === '1'` 且缺少 `video_url`：停止，提示用户上传人像视频。
 - 缺少 `audio_url`：停止，提示用户上传参考音频。
@@ -225,7 +231,7 @@ this.form.methodType = newVal && newVal[0]?.sourceValue || ''
 说明：
 
 - `type` 对应数字人模块类型。
-- `methodType` 对应当前选中的数字人模型。
+- `methodType` 对应当前选中项的接口 `sourceValue`。
 - `parameter` 需要传当前表单的完整参数序列化结果。
 - `parameter` 里应包含本次表单的 `req_key`、`methodType`、素材 URL、`duration`、`output_resolution`、`pe_fast_mode` 等字段。
 
@@ -267,7 +273,7 @@ this.form.methodType = newVal && newVal[0]?.sourceValue || ''
 说明：
 
 - `type`：数字人模块类型，当前前端数字人页使用 `12`。
-- `methodType`：当前选中的数字人模型。
+- `methodType`：当前选中项的接口 `sourceValue`。
 - `parameter`：`submitData` 的完整 JSON 字符串。
 
 ### 生成前额外校验

@@ -3,7 +3,7 @@ name: deepsop-genvis
 description: |
   DeepSOP AI 图片与视频生成技能。用于调用 AI Artist API 创建图片或视频任务、上传参考图片/视频/音频、预估费用、轮询结果，并按 Vue 前端规则根据接口返回的 sourceValue/methodType 校验 generationType、ratio、resolution、duration、参考素材数量、搜索开关、音频开关等参数约束。
 
-  本技能不写死模型名称清单和默认模型。模型列表、模型名、展示顺序和默认模型全部从服务端 consumeSource/list 获取；默认模型取对应类型中 sourceValue != "auto" 且 hiddenState == "0" 的接口返回顺序第一个。用户选中模型后，只使用该模型的 sourceValue/methodType 触发本地参数规则。
+  本技能不维护、声明或向用户展示模型名称清单、可用模型清单、展示顺序或默认模型。模型列表与默认选中值全部来自服务端 consumeSource/list；methodType 规则仅用于根据接口返回模型的 sourceValue 生成/校验请求参数，不代表本技能内置了哪些模型或默认使用哪个模型。
 
 ---
 
@@ -31,29 +31,29 @@ DEEPSOP_API_KEY=sk-your_api_key_here
 ## 必须遵守
 
 - OPClaw 项目运行时使用项目设置里的 `DEEPSOP_API_KEY`；非 OPClaw 运行时，让用户授权后设置共享 `DEEPSOP_API_KEY`。
-- 模型列表、模型名称、模型顺序、默认模型全部来自 `consumeSource/list`。
+- 模型列表、模型名称、模型顺序、默认模型只来自 `consumeSource/list`；不要在对用户回复中枚举或承诺本地文档里的模型清单/默认模型。
 - 未指定模型时，先按 prompt 判断图片或视频，再取对应类型下 `sourceValue != "auto"` 且 `hiddenState == "0"` 的接口返回顺序第一个。
-- 指定模型时，优先传接口返回的 `sourceValue/methodType`，例如 `--model 10`。脚本保留友好别名只是兼容旧调用，不作为技能文档依据。
-- 用户明确提到 `V3.1FB`、`V3.1 FB`、`FB视频`、`FB 视频` 或“FB模型”时，必须显式传 `--model 3`（等价于 `sourceValue/methodType=3`），不要走默认视频模型。
-- 选中模型或切换模型后，只根据 `methodType` 触发本地规则：默认值、可见字段、字段选项、必填校验、payload 组装。
+- 指定模型时，仅使用获取模型列表接口返回的 `sourceValue/methodType`；脚本保留友好别名只是兼容旧调用，不作为技能文档依据，也不要主动向用户推荐。
+- 用户明确指定某个模型名/别名（例如文本里出现 V3.1FB）并要求生成时，先用获取模型列表接口在对应媒介类型里确认该名称/`sourceValue` 的最新状态；如果接口显示启用，就按该接口返回项提交，不要因为本地同 `sourceValue` 的图片模型、旧别名或旧缓存显示停用而拦截。
+- 选中模型或切换模型后，只根据接口返回的 `sourceValue`（写入 `methodType`）触发本地规则：参数默认值、可见字段、字段选项、必填校验、payload 组装。
 - 任务失败时，不要自动切换模型重试。必须反馈实际使用的 `methodType`、状态和失败原因。
-- 只有脚本本次执行的 stderr 明确返回 `hiddenState=1` / `当前已停用` 时，才允许告诉用户模型已停用；如果脚本实际使用了默认模型，只能说明“未显式指定模型，按接口默认顺序选择了该模型”，禁止推断或编造某个模型已停用。
+- 只有脚本本次执行的 stderr 明确返回 `hiddenState=1` / `当前已停用` 时，才允许告诉用户该接口返回项已停用；如果脚本实际使用的是接口返回的第一项，只能说明“未显式指定模型，按接口返回顺序选择了本次 `sourceValue`”，禁止推断或编造某个模型已停用。
+- 用户只是在问模型列表、所有模型（包括停用）、某个模型的参数/选项/分辨率/时长/支持素材/状态排查时，只回答查询结果或本地 methodType/sourceValue 参数规则；不要创建、预估或继续执行生成任务，除非用户再次明确要求“生成/提交/开始做”。
 - 用户给本地参考图/视频/音频时，先上传成可访问 URL，再放入对应参数。
 
 ## 快速命令
 
 ```bash
-# 查看接口当前启用模型
+# 内部调试：读取接口当前返回的模型列表，不用于向用户展示固定模型清单
 python3 scripts/generate_image.py --list-models
 
-# 图片/视频默认模型都由接口返回顺序决定
+# 不指定模型时，由接口返回值决定本次实际使用的 sourceValue
 python3 scripts/generate_image.py "一只可爱的猫"
 python3 scripts/generate_image.py "生成一段城市夜景延时视频"
 
-# 指定 methodType/sourceValue
+# 指定接口返回的 sourceValue/methodType
 python3 scripts/generate_image.py "产品宣传图 4 种风格" --model 10 --n 4 --ratiocination high
 python3 scripts/generate_image.py "城市夜景延时短片" --model 20 --ratio "16:9" --resolution "1080p" --duration 10
-python3 scripts/generate_image.py "企业宣传短片，16:9 横屏" --model 3 --ratio "16:9" --resolution "1080p"
 
 # 调试 payload，不提交任务
 python3 scripts/generate_image.py "测试" --model 15 --dry-run --json-output
@@ -73,12 +73,13 @@ python3 scripts/generate_image.py "x" --poll <task_id> --max-wait 120 --json-out
 - 视频：生成类型、时长、比例/分辨率、是否生成声音。
 - 参考/编辑/续写视频：必须问素材 URL 或本地文件路径。
 - 多镜头：确认单镜头、智能分镜或自定义分镜；自定义分镜必须有每个镜头的描述和时长。
+- 如果用户请求是“查看/列出/告诉我/有什么参数/支持什么分辨率/所有模型列表/包括停用模型”等信息查询，即使查询结果发现某个先前提到的模型可用，也必须停在回答信息查询，不要自动恢复或发起之前的生成任务。
 
-用户说“随便/快速来一个”时，可以按接口默认模型和脚本默认参数直接生成，并在结果里说明实际使用的 `methodType` 和默认参数。
+用户说“随便/快速来一个”时，可以按接口返回值和脚本默认参数直接生成；结果里只说明本次实际使用的 `methodType/sourceValue` 和关键参数，不宣称存在固定默认模型。
 
-## 图片 methodType 规则
+## 图片 methodType/sourceValue 内部规则
 
-切换图片模型后触发前端默认逻辑：
+以下规则仅用于处理获取模型列表接口返回的 `sourceValue`，并在切换图片模型后触发前端参数逻辑；不要把这些编号解释成面向用户的模型清单：
 
 - `quality`: methodType `1/10/11` 默认 `1K`，其他默认 `2K`。
 - `size`: methodType `2/8/9/10/11` 默认 `auto`，其他默认 `1:1`。
@@ -105,9 +106,9 @@ python3 scripts/generate_image.py "x" --poll <task_id> --max-wait 120 --json-out
 | --- | --- | --- | --- |
 | 参考图 | JPEG/JPG/PNG/WEBP | `image` | methodType `6/7` 使用更高图片尺寸限制；methodType `10/11` 单张 50MB |
 
-## 视频 methodType 规则
+## 视频 methodType/sourceValue 内部规则
 
-切换视频模型后触发前端默认逻辑：
+以下规则仅用于处理获取模型列表接口返回的 `sourceValue`，并在切换视频模型后触发前端参数逻辑；不要把这些编号解释成面向用户的模型清单：
 
 - 基础重置：`resolution=720p`、`ratio=16:9`、`duration=10`、`generateAudio=true`、`shotType=single`、`mode=pro`。
 - methodType `3/4/5/6/11/12` 默认 `duration=8`。
@@ -166,6 +167,6 @@ python3 scripts/generate_image.py "x" --poll <task_id> --max-wait 120 --json-out
 
 ## 参考文件
 
-- `scripts/generate_image.py`: 可执行脚本与本地 methodType 规则矩阵。
+- `scripts/generate_image.py`: 可执行脚本与本地 sourceValue/methodType 参数规则矩阵。
 - `references/api.md`: API 端点、请求格式、素材字段映射。
 - `references/chat-integration.md` / `references/feishu-integration.md`: 对话和飞书集成说明。

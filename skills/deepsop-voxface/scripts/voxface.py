@@ -162,19 +162,58 @@ def print_json(data):
     print(json.dumps(data, ensure_ascii=False, indent=2))
 
 
-def list_models():
+def fetch_human_models():
     payload = {"sourceTypeList": ["IMAGE_PROCESS", "IMAGE_MODEL", "VIDEO_MODEL", "HUMAN_MODEL"]}
     result = request_json("post", MODEL_LIST_URL, json_body=payload, timeout=30)
     if result.get("code") != 200:
-        print(f"[ERROR] 获取模型失败：{result.get('msg', '未知错误')}", file=sys.stderr)
+        print(f"[ERROR] ???????{result.get('msg', '????')}", file=sys.stderr)
         return None
 
     rows = result.get("rows", [])
-    human = [item for item in rows if item.get("sourceType") == "HUMAN_MODEL" and item.get("hiddenState") == "0"]
+    return [item for item in rows if item.get("sourceType") == "HUMAN_MODEL"]
+
+
+def list_models(include_disabled: bool = False):
+    human_rows = fetch_human_models()
+    if human_rows is None:
+        return None
+
+    human = [
+        item for item in human_rows
+        if include_disabled or str(item.get("hiddenState")) == "0"
+    ]
     for item in human:
-        print(f"[{item.get('sourceValue')}] {item.get('sourceName')} - {item.get('sourceDescription', '')}")
+        status = "ON" if str(item.get("hiddenState")) == "0" else f"OFF(hiddenState={item.get('hiddenState')})"
+        print(f"[{item.get('sourceValue')}] {status} {item.get('sourceName')} - {item.get('sourceDescription', '')}")
     return human
 
+
+def check_human_model_available(method_type: str):
+    """Validate selected HUMAN_MODEL sourceValue against the live API response."""
+    human_rows = fetch_human_models()
+    if human_rows is None:
+        return False
+
+    method_type = str(method_type)
+    for item in human_rows:
+        if str(item.get("sourceValue")) != method_type:
+            continue
+        hidden_state = str(item.get("hiddenState"))
+        if hidden_state != "0":
+            print(
+                f"[ERROR] HUMAN_MODEL sourceValue={method_type} ({item.get('sourceName')}) "
+                f"is disabled (hiddenState={hidden_state}); refusing to estimate or submit.",
+                file=sys.stderr,
+            )
+            return False
+        return True
+
+    print(
+        f"[ERROR] HUMAN_MODEL sourceValue={method_type} was not found in the live model list; "
+        f"refusing to estimate or submit.",
+        file=sys.stderr,
+    )
+    return False
 
 def estimate_cost(task_type: str, method_type: str, parameter: dict):
     payload = {"type": task_type, "methodType": method_type, "parameter": json.dumps(parameter, ensure_ascii=False)}
@@ -414,6 +453,8 @@ def main():
     parser.add_argument("--interval", type=int, default=5)
     parser.add_argument("--max-wait", type=int, default=1200)
     parser.add_argument("--json-output", action="store_true")
+    parser.add_argument("--include-disabled", action="store_true",
+                        help="??????? hiddenState != 0 ? HUMAN_MODEL????????????")
 
     parser.add_argument("--text")
     parser.add_argument("--voice-text")
@@ -437,7 +478,7 @@ def main():
         sys.exit(1)
 
     if args.list_models:
-        rows = list_models()
+        rows = list_models(include_disabled=args.include_disabled)
         sys.exit(0 if rows is not None else 1)
 
     if args.list_preset_voices:

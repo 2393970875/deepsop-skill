@@ -20,6 +20,7 @@ import argparse
 import os
 import base64
 import getpass
+import re
 from pathlib import Path
 
 # Configuration
@@ -29,6 +30,25 @@ FILE_UPLOAD_URL = f"{API_PREFIX.rstrip('/')}/system/fileUpload/upload"
 ESTIMATE_COST_URL = f"{BASE_URL}/estimate/cost"
 MODEL_LIST_URL = f"{BASE_URL}/consumeSource/list?pageNum=1&pageSize=999"
 RECHARGE_URL = "https://ai.deepsop.com/"
+
+_MODEL_NAME_TOKEN_RE = re.compile(r"[a-z0-9]+", re.IGNORECASE)
+
+def _normalize_model_name(value):
+    """Normalize API/local model names for loose matching without exposing them as rules."""
+    if value is None:
+        return ""
+    return "".join(_MODEL_NAME_TOKEN_RE.findall(str(value).lower()))
+
+def _model_name_matches(row, local_key):
+    """Return True when a server row appears to be the same named model as local_key."""
+    needle_values = [local_key]
+    cfg = MODEL_CONFIGS.get(local_key, {}) if "MODEL_CONFIGS" in globals() else {}
+    needle_values.extend([cfg.get("source_name"), cfg.get("description")])
+    haystack_values = [row.get("sourceName"), row.get("sourceDescription"), row.get("sourceKey")]
+    needles = [n for n in (_normalize_model_name(v) for v in needle_values) if n]
+    haystack = " ".join(_normalize_model_name(v) for v in haystack_values if v)
+    return any(n and n in haystack for n in needles)
+
 
 # In-process cache for the model list (TTL seconds). Models can be toggled
 # on/off server-side at any time, so explicit availability checks bypass the
@@ -413,21 +433,36 @@ def check_model_available(model_key):
         print(f"[warn] 无法实时确认 {model_key} 启用状态（模型列表为空），跳过停用校验", file=sys.stderr)
         return True
 
-    for row in rows:
-        if row.get("sourceType") == want_type and str(row.get("sourceValue")) == want_value:
-            hidden = str(row.get("hiddenState"))
-            if hidden == "1":
-                print(
-                    f"模型 {model_key} ({row.get('sourceName')}) 当前已停用 "
-                    f"(hiddenState=1)，拒绝提交任务。可访问 {RECHARGE_URL} 查看最新可用模型。",
-                    file=sys.stderr,
-                )
-                return False
-            return True
+    matching_value_rows = [
+        row for row in rows
+        if row.get("sourceType") == want_type and str(row.get("sourceValue")) == want_value
+    ]
+    named_rows = [row for row in matching_value_rows if _model_name_matches(row, model_key)]
+    rows_to_check = named_rows or matching_value_rows
+
+    for row in rows_to_check:
+        hidden = str(row.get("hiddenState"))
+        if hidden == "1":
+            print(
+                f"API row {row.get('sourceName')} (sourceType={want_type}, "
+                f"sourceValue={want_value}) has hiddenState=1; refusing to submit. "
+                f"Refresh the model list before retrying.",
+                file=sys.stderr,
+            )
+            return False
+        if not named_rows and matching_value_rows:
+            print(
+                f"[warn] sourceValue={want_value} in {want_type} matched API row "
+                f"{row.get('sourceName')} with a different local name; continuing by "
+                f"API sourceValue and not by local alias status.",
+                file=sys.stderr,
+            )
+        return True
 
     print(
-        f"模型 {model_key} (sourceType={want_type}, sourceValue={want_value}) "
-        f"不在服务端模型列表中，可能已下线，拒绝提交任务。",
+        f"API {want_type} list does not contain sourceValue={want_value}; "
+        f"do not infer disabled status from a local model in another media type. "
+        f"Submission stopped.",
         file=sys.stderr,
     )
     return False
