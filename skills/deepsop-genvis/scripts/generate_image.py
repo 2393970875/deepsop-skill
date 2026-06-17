@@ -2708,6 +2708,10 @@ if __name__ == "__main__":
                         help="[视频] 多音频参考 URL，逗号分隔 (methodType 17/18/20/21)")
     parser.add_argument("--audio-path-list", default=None,
                         help="[视频] 多音频本地路径，逗号分隔，自动上传 (methodType 17/18/20/21)")
+    parser.add_argument("--image-url-list", default=None,
+                        help="[视频] 多参考图片 URL，逗号分隔，直接提交为 imageUrlList")
+    parser.add_argument("--video-url-list", default=None,
+                        help="[视频] 多参考视频 URL，逗号分隔，直接提交为 videoUrlList")
     parser.add_argument("--first-clip-url", default=None,
                         help="[视频] 续写/编辑/参考视频 URL (methodType 10/14/19 等)")
     parser.add_argument("--audio-setting", default=None, choices=["auto", "origin"],
@@ -2825,6 +2829,8 @@ if __name__ == "__main__":
             duration_switch=args.duration_switch,
             audio_url_list=[u.strip() for u in args.audio_url_list.split(",") if u.strip()] if args.audio_url_list else None,
             audio_path_list=[p.strip() for p in args.audio_path_list.split(",") if p.strip()] if args.audio_path_list else None,
+            image_url_list=[u.strip() for u in args.image_url_list.split(",") if u.strip()] if args.image_url_list else None,
+            video_url_list=[u.strip() for u in args.video_url_list.split(",") if u.strip()] if args.video_url_list else None,
             web_search=args.web_search,
             first_clip_url=args.first_clip_url,
             audio_setting=args.audio_setting,

@@ -41,6 +41,8 @@ DEEPSOP_API_KEY=sk-your_api_key_here
 - 单次用户生成请求只能提交用户指定的那一个模型任务；除非用户明确要求多个方案/多个版本/备用模型，否则不要创建“版本1/版本2”、备用结果或补偿性重做任务。
 - 用户没有指定数量时，图片默认只生成 1 张（`--n 1` 或省略 `--n`），视频默认只生成 1 个；用户明确要求多张/多个且所选模型支持时，单次任务使用一次 `--n <数量>`，不要拆成多次生成或额外补做备用结果。
 - OPClaw/Windows 正常生成时走快速路径：不要先执行 `--help`、`--list-models`、读取/检查脚本源码，除非用户正在询问模型/参数/状态排查；不要使用 `~` 作为 workdir，不要用 `cd ... && ...`，不要用 `uv run` / `uv add` / `uv pip`。直接用已安装技能的绝对路径调用系统 Python，例如 `python C:\Users\Administrator\.openclaw\skills\deepsop-genvis\scripts\generate_image.py "<prompt>" --json-output`。
+- 用户要求“以上/上文/刚才生成的图片作为参考图”生成视频时，直接复用对话中最近的图片 HTTP/HTTPS URL；不要下载、不要重新上传、不要调用图片分析工具、不要写临时 Python 脚本。对于 V3.1FB / methodType `3` 这类支持 `REFERENCE` 的视频模型，把这些 URL 作为逗号分隔值传给 `--image-url-list`，并显式传 `--generation-type REFERENCE`。
+- 指定 DeepSop·V3.1FB 且使用上文两张网络图片参考生成视频时，标准快速命令形态是：`python C:\Users\Administrator\.openclaw\skills\deepsop-genvis\scripts\generate_image.py "<视频提示词>" --model V3.1FB --generation-type REFERENCE --image-url-list "<url1>,<url2>" --json-output`。只需提交任务并轮询结果，不要再查列表、读源码或做 dry-run。
 - 生成结果返回 `SUCCESS` 后，直接把本次结果 URL 作为最终回复内容返回；不要再调用 `image`/视觉分析工具去“查看效果、描述画质、分析图片”，除非用户明确要求分析、评价、描述或看图。最终回复中保留图片/视频 URL 或 Markdown 媒体链接，客户端会据此渲染预览卡片。
 - 正常生成必须带 `--json-output`，确保客户端能从 `url` / `urls` / `outputUrl(s)` / `mediaUrl(s)` / `imageUrl(s)` / `ossUrlList` 字段提取全部图片或视频结果。不要只用自然语言说“生成成功”。
 - 只有脚本本次执行的 stderr 明确返回 `hiddenState=1` / `当前已停用` 时，才允许告诉用户该接口返回项已停用；如果脚本实际使用的是接口返回的第一项，只能说明“未显式指定模型，按接口返回顺序选择了本次 `sourceValue`”，禁止推断或编造某个模型已停用。
@@ -60,6 +62,7 @@ python3 scripts/generate_image.py "生成一段城市夜景延时视频"
 # 指定接口返回的 sourceValue/methodType
 python3 scripts/generate_image.py "产品宣传图 4 种风格" --model 10 --n 4 --ratiocination high
 python3 scripts/generate_image.py "城市夜景延时短片" --model 20 --ratio "16:9" --resolution "1080p" --duration 10
+python3 scripts/generate_image.py "让上文两张图中的人物在樱花树下轻微转身，镜头缓慢推进" --model V3.1FB --generation-type REFERENCE --image-url-list "https://example.com/a.png,https://example.com/b.png" --json-output
 
 # 调试 payload，不提交任务
 python3 scripts/generate_image.py "测试" --model 15 --dry-run --json-output
