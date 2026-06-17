@@ -57,6 +57,14 @@ description: 数字人生成与参考音频技能。用于调用 deepsop / AI Ar
 
 `deepsop-synth-clone` 的查询音色、创建音色、克隆音色合成能力已经并入本技能；新的音色相关调用优先使用 `deepsop-voxface/scripts/voxface.py`。
 
+## OPClaw/Windows 快速执行规则
+
+- 用户没有指定数量时，数字人视频默认只生成 1 个；除非用户明确要求多个版本且当前模型/接口支持，否则不要创建备用版本或补偿性重做任务。
+- 正常生成时不要先执行 `--help`、`--list-models`、读取/检查脚本源码，除非用户正在询问模型/参数/状态排查；不要使用 `~` 作为 workdir，不要用 `cd ... && ...`，不要用 `uv run` / `uv add` / `uv pip`。
+- 直接用已安装技能的绝对路径调用系统 Python，例如 `python C:\Users\Administrator\.openclaw\skills\deepsop-voxface\scripts\voxface.py --create ... --json-output`。如果需要轮询已提交任务，使用同一脚本的 `--poll TASK_ID --json-output`。
+- 生成结果返回 `SUCCESS` 后，直接把本次视频/音频 URL 作为最终回复内容返回；不要再调用图片、视频或媒体分析工具去“查看效果、描述画质、分析内容”，除非用户明确要求分析、评价、描述或看视频。
+- 正常生成或轮询结果必须使用 `--json-output`，确保客户端能从 `url` / `urls` / `outputUrl(s)` / `mediaUrl(s)` / `videoUrl(s)` / `ossUrlList` 字段提取全部素材结果。不要只用自然语言说“生成成功”。
+
 ## 生成流程
 
 1. 先确认用户要的是数字人任务，而不是普通图片/视频生成。
