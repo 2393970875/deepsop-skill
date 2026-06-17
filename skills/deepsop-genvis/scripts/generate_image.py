@@ -848,7 +848,7 @@ def send_feishu_message(prompt, result, media_type="image"):
 # source_name / description mirror the API metadata for traceability.
 
 # Note: per-model extra_params intentionally carry ONLY the fields each model
-# actually accepts (cross-referenced with VIDEO_FIELD_SUPPORT / IMAGE_FIELD_SUPPORT).
+# actually accepts (cross-referenced with methodType field support).
 # Target constraints (targetMaxSize / targetMinLength / targetMaxLength) are
 # populated by `_apply_restriction()` at runtime and should NOT be duplicated here.
 
@@ -862,86 +862,83 @@ def send_feishu_message(prompt, result, media_type="image"):
 #   imageSearch     → 3.1Nano2-Evo (mt=8)
 #   ratiocination   → Image2 (mt=10)
 #   n               → Image2 (mt=10)  [图片生成数量 1-10]
-IMAGE_FIELD_SUPPORT = {
-    "webSearch":     {"S5.0L", "3.1Nano2-Evo"},
-    "imageSearch":   {"3.1Nano2-Evo"},
-    "ratiocination": {"Image2"},
-    "n":             {"Image2"},
+IMAGE_FIELD_SUPPORT_BY_MT = {
+    "webSearch":     {"4", "8"},
+    "imageSearch":   {"8"},
+    "ratiocination": {"10"},
+    "n":             {"10"},
     # Image2 Beta-Evo (mt=11) does NOT submit `quality` (frontend noField.quality=['11']).
     # Models listed here may submit `quality`; others are stripped before POST.
-    "quality": {"N2", "S5.0L", "W2.7", "W2.7Pro", "3.1Nano2-Evo", "Nano2-Beta-Evo",
-                "Image2", "S4.5", "N1", "N2-147", "N2Pro-147"},
+    "quality": {"0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10"},
 }
 
-# Video-side: each key = optional field; value = set of model keys that accept it.
+# Video-side: each key = optional field; value = set of methodType values that accept it.
 # Fields NOT listed here (methodType, text, size, duration, generationType,
 # imageUrlList, firstImageUrl, targetMax*) are considered universal/contextual
 # and pass through unfiltered.
-VIDEO_FIELD_SUPPORT = {
+VIDEO_FIELD_SUPPORT_BY_MT = {
     # Negative prompt: V3.1 Fast/Pro + Wan series (mt 5,6,7,8,9,14,15,16)
-    "negativePrompt": {"V3.1Fast", "V3.1Pro", "W2.6t", "W2.6i", "W2.6r",
-                       "W2.7t", "W2.7i", "W2.7r"},
+    "negativePrompt": {"5", "6", "7", "8", "9", "14", "15", "16"},
     # Audio toggle: S1.5Pro, V3.1 Fast/Pro, klingV3Omni, Seedance2.0 family
-    "generateAudio": {"S1.5Pro", "V3.1Fast", "V3.1Pro", "klingV3Omni",
-                      "S2.0", "S2.0Fast", "S2.0Evo", "S2.0FastEvo"},
+    "generateAudio": {"2", "5", "6", "10", "17", "18", "20", "21"},
     # English enhancement: V3.1 series (mt 3,4,5,6)
-    "enhancePrompt": {"V3.1FB", "V3.1PB", "V3.1Fast", "V3.1Pro"},
+    "enhancePrompt": {"3", "4", "5", "6"},
     # Smart rewrite: Wan series (mt 7,8,9,14,15,16)
-    "promptExtend": {"W2.6t", "W2.6i", "W2.6r", "W2.7t", "W2.7i", "W2.7r"},
+    "promptExtend": {"7", "8", "9", "14", "15", "16"},
     # Generation count / people / resize: V3.1 Fast/Pro (mt 5,6)
-    "n": {"V3.1Fast", "V3.1Pro"},
-    "personGeneration": {"V3.1Fast", "V3.1Pro"},
-    "resizeMode": {"V3.1Fast", "V3.1Pro"},
+    "n": {"5", "6"},
+    "personGeneration": {"5", "6"},
+    "resizeMode": {"5", "6"},
     # Shot mode: Wan2.6 + klingV3Omni  (mt 7,8,9,10)
-    "shotType": {"W2.6t", "W2.6i", "W2.6r", "klingV3Omni"},
+    "shotType": {"7", "8", "9", "10"},
     # Duration switch (manual/intelligent): S1.5Pro, Seedance2.0 family
-    "durationSwitch": {"S1.5Pro", "S2.0", "S2.0Fast", "S2.0Evo", "S2.0FastEvo"},
+    "durationSwitch": {"2", "17", "18", "20", "21"},
     # Web search toggle: Seedance2.0 family
-    "webSearch": {"S2.0", "S2.0Fast", "S2.0Evo", "S2.0FastEvo"},
+    "webSearch": {"17", "18", "20", "21"},
     # klingV3Omni exclusives (mt 10)
-    "mode": {"klingV3Omni"},
-    "multiShot": {"klingV3Omni"},
-    "multiPrompt": {"klingV3Omni"},
-    "keepOriginalSound": {"klingV3Omni"},
-    "elementList": {"klingV3Omni"},
-    "videoList": {"klingV3Omni"},
+    "mode": {"10"},
+    "multiShot": {"10"},
+    "multiPrompt": {"10"},
+    "keepOriginalSound": {"10"},
+    "elementList": {"10"},
+    "videoList": {"10"},
     # Continuation / reference clip: klingV3Omni + W2.7i + HappyHorse  (mt 10,14,19)
-    "firstClipUrl": {"klingV3Omni", "W2.7i", "HappyHorse"},
+    "firstClipUrl": {"10", "14", "19"},
     # Audio control mode (auto / origin): HappyHorse only, EDIT generationType  (mt 19)
-    "audioSetting": {"HappyHorse"},
+    "audioSetting": {"19"},
     # Reference-video list: W2.6r / W2.7r / Seedance2.0 family
-    "videoUrlList": {"W2.6r", "W2.7r", "S2.0", "S2.0Fast", "S2.0Evo", "S2.0FastEvo"},
+    "videoUrlList": {"9", "16", "17", "18", "20", "21"},
     # Audio URL (single): Wan text/image/W2.7 series  (mt 7,8,14,15,16).
     # NOTE: Seedance2.0 family uses audioUrlList instead.
-    "audioUrl": {"W2.6t", "W2.6i", "W2.7t", "W2.7i", "W2.7r"},
+    "audioUrl": {"7", "8", "14", "15", "16"},
     # Audio URL list (multi): Seedance2.0 family
-    "audioUrlList": {"S2.0", "S2.0Fast", "S2.0Evo", "S2.0FastEvo"},
-    # lastImageUrl: NOT supported by W2.6i (mt=8) or Sora2 variants. All other
-    # active video models support it.
-    # NOTE: HappyHorse (mt=19) does NOT support lastImageUrl.
-    "lastImageUrl": {"S1.5Pro", "V3.1FB", "V3.1PB", "V3.1Fast", "V3.1Pro",
-                     "W2.6t", "W2.6r", "klingV3Omni",
-                     "W2.7t", "W2.7i", "W2.7r",
-                     "S2.0", "S2.0Fast", "S2.0Evo", "S2.0FastEvo"},
-    # ratio: W2.6i (mt=8) and W2.7i (mt=14) derive ratio from the first frame.
-    "ratio": {"Sora2-BetaMax", "Sora2-147", "Sora2Pro-147", "Sora2Pro-Evolink",
-              "S1.5Pro", "V3.1FB", "V3.1PB", "V3.1Fast", "V3.1Pro",
-              "W2.6t", "W2.6r", "klingV3Omni",
-              "W2.7t", "W2.7r",
-              "S2.0", "S2.0Fast", "S2.0Evo", "S2.0FastEvo", "HappyHorse"},
-    # resolution: models exposed by frontend matchVideoQualityOptions.
-    "resolution": {"Sora2-BetaMax", "Sora2-147", "Sora2Pro-147", "Sora2Pro-Evolink",
-                   "S1.5Pro", "V3.1FB", "V3.1PB", "V3.1Fast", "V3.1Pro",
-                   "W2.6t", "W2.6i", "W2.6r", "klingV3Omni",
-                   "W2.7t", "W2.7i", "W2.7r",
-                   "S2.0", "S2.0Fast", "S2.0Evo", "S2.0FastEvo", "HappyHorse"},
+    "audioUrlList": {"17", "18", "20", "21"},
 }
 
 
-def _filter_by_whitelist(parameter, model, support_matrix):
-    """Drop keys from `parameter` that the whitelist says this model doesn't accept."""
-    for field, allowed_models in support_matrix.items():
-        if field in parameter and model not in allowed_models:
+VIDEO_FIELD_BLOCK_BY_MT = {
+    # Sora2 BetaMax/Sora2/Sora2 Pro, Wan i2v, HappyHorse do not accept tail frame.
+    "lastImageUrl": {"auto", "1", "8", "11", "12", "19"},
+    # Wan i2v derives ratio from first frame.
+    "ratio": {"8", "14"},
+}
+
+
+def _filter_by_whitelist(parameter, key, support_matrix):
+    """Drop keys from `parameter` that the whitelist says this key doesn't accept."""
+    key = str(key)
+    for field, allowed_keys in support_matrix.items():
+        if field in parameter and key not in allowed_keys:
+            parameter.pop(field, None)
+    return parameter
+
+
+def _filter_video_fields(parameter, method_type):
+    """Mirror frontend handleVideoParameterVisibility using methodType."""
+    mt = str(method_type)
+    _filter_by_whitelist(parameter, mt, VIDEO_FIELD_SUPPORT_BY_MT)
+    for field, blocked_mts in VIDEO_FIELD_BLOCK_BY_MT.items():
+        if field in parameter and mt in blocked_mts:
             parameter.pop(field, None)
     return parameter
 
@@ -951,114 +948,113 @@ def _filter_by_whitelist(parameter, model, support_matrix):
 # Values not listed will be auto-replaced with a safe fallback + warning.
 # ---------------------------------------------------------------------------
 
-# generationType whitelist per model (matchGenerationTypeOptions)
-VIDEO_GENERATION_TYPES = {
-    "Sora2-BetaMax": ["TEXT", "FIRST&LAST"],
-    "S1.5Pro":     ["TEXT", "FIRST&LAST"],
-    "V3.1FB":      ["TEXT", "FIRST&LAST", "REFERENCE"],
-    "V3.1PB":      ["TEXT", "FIRST&LAST"],
-    "V3.1Fast":    ["TEXT", "FIRST&LAST"],
-    "V3.1Pro":     ["TEXT", "FIRST&LAST"],
-    "Sora2-147":   ["TEXT", "FIRST&LAST"],
-    "Sora2Pro-147": ["TEXT", "FIRST&LAST"],
-    "Sora2Pro-Evolink": ["TEXT", "FIRST&LAST", "REFERENCE"],
-    "W2.6t":       ["TEXT"],
-    "W2.6i":       ["FIRST&LAST"],
-    "W2.6r":       ["REFERENCE"],
-    "klingV3Omni": ["TEXT", "FIRST&LAST", "REFERENCE", "EDIT", "FEATURE"],
-    "W2.7i":       ["FIRST&LAST", "CONTINUATION"],
-    "W2.7t":       ["TEXT"],
-    "W2.7r":       ["REFERENCE"],
-    "S2.0":        ["TEXT", "FIRST&LAST", "REFERENCE"],
-    "S2.0Fast":    ["TEXT", "FIRST&LAST", "REFERENCE"],
-    "S2.0Evo":     ["TEXT", "FIRST&LAST", "REFERENCE"],
-    "S2.0FastEvo": ["TEXT", "FIRST&LAST", "REFERENCE"],
-    "HappyHorse":  ["TEXT", "FIRST&LAST", "REFERENCE", "EDIT"],
+# generationType whitelist by methodType (frontend matchGenerationTypeOptions).
+VIDEO_GENERATION_TYPES_BY_MT = {
+    "1": ["TEXT", "FIRST&LAST"],
+    "2": ["TEXT", "FIRST&LAST"],
+    "3": ["TEXT", "FIRST&LAST", "REFERENCE"],
+    "4": ["TEXT", "FIRST&LAST"],
+    "5": ["TEXT", "FIRST&LAST"],
+    "6": ["TEXT", "FIRST&LAST"],
+    "7": ["TEXT"],
+    "8": ["FIRST&LAST"],
+    "9": ["REFERENCE"],
+    "10": ["TEXT", "FIRST&LAST", "REFERENCE", "EDIT", "FEATURE"],
+    "11": ["TEXT", "FIRST&LAST"],
+    "12": ["TEXT", "FIRST&LAST"],
+    "13": ["TEXT", "FIRST&LAST", "REFERENCE"],
+    "14": ["FIRST&LAST", "CONTINUATION"],
+    "15": ["TEXT"],
+    "16": ["REFERENCE"],
+    "19": ["TEXT", "FIRST&LAST", "REFERENCE", "EDIT"],
 }
+VIDEO_GENERATION_TYPES_DEFAULT = ["TEXT", "FIRST&LAST", "REFERENCE"]
 
-# ratio whitelist per model (matchVideoRatioOptions). W2.6i / W2.7i derive from
-# the first frame so ratio is not submitted at all (handled by VIDEO_FIELD_SUPPORT).
-VIDEO_RATIOS = {
-    "Sora2-BetaMax": ["16:9", "9:16"],
-    "S1.5Pro":     ["1:1", "3:4", "4:3", "16:9", "9:16", "21:9", "adaptive"],
-    "V3.1FB":      ["16:9", "9:16", "adaptive"],
-    "V3.1PB":      ["16:9", "9:16", "adaptive"],
-    "V3.1Fast":    ["16:9", "9:16", "adaptive"],
-    "V3.1Pro":     ["16:9", "9:16", "adaptive"],
-    "Sora2-147":   ["adaptive", "1:1", "3:4", "4:3", "7:4", "4:7", "16:9", "9:16", "21:9"],
-    "Sora2Pro-147": ["16:9", "9:16", "7:4", "4:7"],
-    "Sora2Pro-Evolink": ["adaptive", "1:1", "3:4", "4:3", "7:4", "4:7", "16:9", "9:16", "21:9"],
-    "W2.6t":       ["1:1", "3:4", "4:3", "16:9", "9:16"],
-    "W2.6r":       ["1:1", "3:4", "4:3", "16:9", "9:16"],
-    "klingV3Omni": ["1:1", "16:9", "9:16"],
-    "W2.7t":       ["1:1", "3:4", "4:3", "16:9", "9:16"],
-    "W2.7r":       ["1:1", "3:4", "4:3", "16:9", "9:16"],
-    "S2.0":        ["adaptive", "1:1", "3:4", "4:3", "16:9", "9:16", "21:9"],
-    "S2.0Fast":    ["adaptive", "1:1", "3:4", "4:3", "16:9", "9:16", "21:9"],
-    "S2.0Evo":     ["adaptive", "1:1", "3:4", "4:3", "16:9", "9:16", "21:9"],
-    "S2.0FastEvo": ["adaptive", "1:1", "3:4", "4:3", "16:9", "9:16", "21:9"],
-    "HappyHorse":  ["1:1", "3:4", "4:3", "5:4", "4:5", "16:9", "9:16", "21:9", "9:21"],
+# ratio whitelist by methodType (frontend matchVideoRatioOptions).
+VIDEO_RATIOS_BY_MT = {
+    "auto": ["1:1", "4:3", "3:4", "7:4", "4:7", "16:9", "9:16", "21:9"],
+    "1": ["16:9", "9:16"],
+    "2": ["adaptive", "1:1", "4:3", "3:4", "16:9", "9:16", "21:9"],
+    "3": ["adaptive", "16:9", "9:16"],
+    "4": ["adaptive", "16:9", "9:16"],
+    "5": ["adaptive", "16:9", "9:16"],
+    "6": ["adaptive", "16:9", "9:16"],
+    "7": ["1:1", "4:3", "3:4", "16:9", "9:16"],
+    "9": ["1:1", "4:3", "3:4", "16:9", "9:16"],
+    "10": ["1:1", "16:9", "9:16"],
+    "12": ["16:9", "9:16", "7:4", "4:7"],
+    "15": ["1:1", "4:3", "3:4", "16:9", "9:16"],
+    "16": ["1:1", "4:3", "3:4", "16:9", "9:16"],
+    "17": ["adaptive", "1:1", "4:3", "3:4", "16:9", "9:16", "21:9"],
+    "18": ["adaptive", "1:1", "4:3", "3:4", "16:9", "9:16", "21:9"],
+    "19": ["1:1", "4:3", "3:4", "5:4", "4:5", "16:9", "9:16", "21:9", "9:21"],
+    "20": ["adaptive", "1:1", "4:3", "3:4", "16:9", "9:16", "21:9"],
+    "21": ["adaptive", "1:1", "4:3", "3:4", "16:9", "9:16", "21:9"],
 }
+VIDEO_RATIOS_DEFAULT = ["adaptive", "1:1", "4:3", "3:4", "7:4", "4:7", "16:9", "9:16", "21:9"]
 
-# resolution whitelist per model (frontend matchVideoQualityOptions).
-VIDEO_RESOLUTIONS = {
-    "Sora2-BetaMax": ["720p"],
-    "S1.5Pro":     ["480p", "720p", "1080p"],
-    "V3.1FB":      ["720p"],
-    "V3.1PB":      ["720p"],
-    "V3.1Fast":    ["720p", "1080p", "4K"],
-    "V3.1Pro":     ["720p", "1080p", "4K"],
-    "Sora2-147":   ["720p"],
-    "Sora2Pro-147": ["720p", "2K"],
-    "Sora2Pro-Evolink": ["720p", "2K"],
-    "W2.6t":       ["720p", "1080p"],
-    "W2.6i":       ["720p", "1080p"],
-    "W2.6r":       ["720p", "1080p"],
-    "klingV3Omni": ["720p", "1080p"],
-    "W2.7i":       ["720p", "1080p"],
-    "W2.7t":       ["720p", "1080p"],
-    "W2.7r":       ["720p", "1080p"],
-    "S2.0":        ["480p", "720p", "1080p"],
-    "S2.0Fast":    ["480p", "720p"],
-    "S2.0Evo":     ["480p", "720p", "1080p"],
-    "S2.0FastEvo": ["480p", "720p"],
-    "HappyHorse":  ["720p", "1080p"],
+# resolution whitelist by methodType (frontend matchVideoQualityOptions + latest rule update).
+VIDEO_RESOLUTIONS_BY_MT = {
+    "1": ["720p"],
+    "2": ["480p", "720p", "1080p"],
+    "3": ["720p"],
+    "4": ["720p"],
+    "5": ["720p", "1080p", "4K"],
+    "6": ["720p", "1080p", "4K"],
+    "7": ["720p", "1080p"],
+    "8": ["720p", "1080p"],
+    "9": ["720p", "1080p"],
+    "10": ["720p", "1080p"],
+    "11": ["720p"],
+    "12": ["720p", "2K"],
+    "14": ["720p", "1080p"],
+    "15": ["720p", "1080p"],
+    "16": ["720p", "1080p"],
+    "17": ["480p", "720p", "1080p"],
+    "18": ["480p", "720p"],
+    "19": ["720p", "1080p"],
+    "20": ["480p", "720p", "1080p"],
+    "21": ["480p", "720p"],
 }
+VIDEO_RESOLUTIONS_DEFAULT = ["480p", "720p", "1080p", "2K", "4K"]
 
-# Image quality whitelist (matchImageQualityOptions, active models only).
+# Image quality whitelist by methodType (matchImageQualityOptions).
 # `Image2-Beta-Evo` (mt=11) intentionally absent: the frontend hides quality for it
-# and the field is stripped via IMAGE_FIELD_SUPPORT["quality"] before POST.
-IMAGE_QUALITIES = {
-    "N2":             ["1K", "2K", "4K"],
-    "S5.0L":          ["2K", "3K"],
-    "W2.7":           ["1K", "2K"],
-    "W2.7Pro":        ["1K", "2K"],
-    "3.1Nano2-Evo":   ["1K", "2K", "4K"],
-    "Nano2-Beta-Evo": ["1K", "2K", "4K"],
-    "Image2":         ["1K", "2K", "4K"],
-    "S4.5":           ["2K", "4K"],
-    "N1":             ["1K"],
-    "Nano1Pro-147":   ["1K", "2K", "4K"],
-    "Nano2-147":      ["1K", "2K", "4K"],
+# and the field is stripped via IMAGE_FIELD_SUPPORT_BY_MT["quality"] before POST.
+IMAGE_QUALITIES_BY_MT = {
+    "0": ["2K", "4K"],
+    "1": ["1K"],
+    "2": ["1K", "2K", "4K"],
+    "3": ["1K", "2K", "4K"],
+    "4": ["2K", "3K"],
+    "5": ["1K", "2K", "4K"],
+    "6": ["1K", "2K"],
+    "7": ["1K", "2K"],
+    "8": ["1K", "2K", "4K"],
+    "9": ["1K", "2K", "4K"],
+    "10": ["1K", "2K", "4K"],
+    "11": ["1K", "2K", "4K"],
 }
+IMAGE_QUALITIES_DEFAULT = ["1K", "2K", "3K", "4K"]
 
 # Image ratio/size exclusions (matchImageRatioOptions excludedRatios).
 # Values listed are NOT allowed; empty set means any ratio allowed.
 # Note: only relevant when the user passes a ratio-style size (e.g. "16:9");
 # pixel-size strings like "2048x2048" / "2048*2048" pass through unchecked.
-IMAGE_SIZE_EXCLUDED = {
-    "N2":              ["1:2", "2:1", "1:3", "3:1", "1:4", "4:1", "1:8", "8:1", "9:21"],
-    "S5.0L":           ["auto"],
-    "W2.7":            ["auto", "9:21", "21:9"],
-    "W2.7Pro":         ["auto", "9:21", "21:9"],
-    "3.1Nano2-Evo":    ["1:2", "2:1", "1:3", "3:1", "9:21"],
-    "Nano2-Beta-Evo":  ["1:2", "2:1", "1:3", "3:1", "9:21"],
-    "Image2":          ["1:4", "4:1", "1:8", "8:1"],
-    "Image2-Beta-Evo": ["1:4", "4:1", "1:8", "8:1", "4:5", "5:4"],
-    "S4.5":            ["auto"],
-    "N1":              ["1:2", "2:1", "1:3", "3:1", "1:4", "4:1", "1:8", "8:1", "4:5", "5:4", "9:21", "21:9"],
-    "Nano1Pro-147":    ["auto", "1:2", "2:1", "1:3", "3:1", "1:4", "4:1", "1:8", "8:1", "9:21"],
-    "Nano2-147":       ["auto", "1:2", "2:1", "1:3", "3:1", "1:4", "4:1", "1:8", "8:1", "9:21"],
+IMAGE_SIZE_EXCLUDED_BY_MT = {
+    "auto": ["auto"],
+    "0": ["auto"],
+    "1": ["1:2", "2:1", "1:3", "3:1", "1:4", "4:1", "1:8", "8:1", "4:5", "5:4", "9:21", "21:9"],
+    "2": ["1:2", "2:1", "1:3", "3:1", "1:4", "4:1", "1:8", "8:1", "9:21"],
+    "3": ["auto", "1:2", "2:1", "1:3", "3:1", "1:4", "4:1", "1:8", "8:1", "9:21"],
+    "4": ["auto"],
+    "5": ["auto", "1:2", "2:1", "1:3", "3:1", "1:4", "4:1", "1:8", "8:1", "9:21"],
+    "6": ["auto", "9:21", "21:9"],
+    "7": ["auto", "9:21", "21:9"],
+    "8": ["1:2", "2:1", "1:3", "3:1", "9:21"],
+    "9": ["1:2", "2:1", "1:3", "3:1", "9:21"],
+    "10": ["1:4", "4:1", "1:8", "8:1"],
+    "11": ["1:4", "4:1", "1:8", "8:1", "4:5", "5:4"],
 }
 
 
@@ -1076,45 +1072,49 @@ def _coerce_value(current, allowed, fallback, label, model):
 
 
 # ---------------------------------------------------------------------------
-# Per-model restrictions (sourced from frontend `Restrictions` mixin).
+# Per-methodType restrictions (sourced from frontend `Restrictions` mixin).
 # - textLength / negativeTextLength → prompt length caps (chars)
 # - targetMaxSize / targetMinLength / targetMaxLength → reference-image
 #   constraints that MUST be forwarded to the API via the `targetMax*` fields.
 # ---------------------------------------------------------------------------
-VIDEO_RESTRICTIONS = {
-    "Sora2-BetaMax": {"textLength": 2500, "targetMaxSize": 10, "targetMinLength": 300, "targetMaxLength": 6000},
-    "S1.5Pro":     {"textLength": 500,  "targetMaxSize": 30, "targetMinLength": 300, "targetMaxLength": 6000},
-    "V3.1FB":      {"textLength": 1000, "negativeTextLength": 250, "targetMaxSize": 10, "targetMinLength": 300, "targetMaxLength": 6000},
-    "V3.1PB":      {"textLength": 1000, "negativeTextLength": 250, "targetMaxSize": 10, "targetMinLength": 300, "targetMaxLength": 6000},
-    "V3.1Fast":    {"textLength": 1000, "negativeTextLength": 250, "targetMaxSize": 10, "targetMinLength": 300, "targetMaxLength": 6000},
-    "V3.1Pro":     {"textLength": 1000, "negativeTextLength": 250, "targetMaxSize": 10, "targetMinLength": 300, "targetMaxLength": 6000},
-    "W2.6t":       {"textLength": 750,  "negativeTextLength": 250, "targetMaxSize": 10, "targetMinLength": 360, "targetMaxLength": 2000},
-    "W2.6i":       {"textLength": 750,  "negativeTextLength": 250, "targetMaxSize": 10, "targetMinLength": 360, "targetMaxLength": 2000},
-    "W2.6r":       {"textLength": 750,  "negativeTextLength": 250, "targetMaxSize": 10, "targetMinLength": 240, "targetMaxLength": 5000},
-    "klingV3Omni": {"textLength": 1250, "targetMaxSize": 10, "targetMinLength": 300},
-    "Sora2-147":   {"textLength": 2500, "targetMaxSize": 10, "targetMinLength": 300, "targetMaxLength": 6000},
-    "Sora2Pro-147": {"textLength": 2500, "targetMaxSize": 10, "targetMinLength": 300, "targetMaxLength": 6000},
-    "Sora2Pro-Evolink": {"textLength": 2500, "targetMaxSize": 10, "targetMinLength": 300, "targetMaxLength": 6000},
-    "W2.7i":       {"textLength": 2500, "negativeTextLength": 250, "targetMaxSize": 20, "targetMinLength": 240, "targetMaxLength": 8000},
-    "W2.7t":       {"textLength": 2500, "negativeTextLength": 250, "targetMaxSize": 20, "targetMinLength": 240, "targetMaxLength": 8000},
-    "W2.7r":       {"textLength": 2500, "negativeTextLength": 250, "targetMaxSize": 10, "targetMinLength": 240, "targetMaxLength": 5000},
-    "S2.0":        {"textLength": 1000, "targetMaxSize": 30, "targetMinLength": 300, "targetMaxLength": 6000},
-    "S2.0Fast":    {"textLength": 1000, "targetMaxSize": 30, "targetMinLength": 300, "targetMaxLength": 6000},
-    "S2.0Evo":     {"textLength": 1000, "targetMaxSize": 30, "targetMinLength": 300, "targetMaxLength": 6000},
-    "S2.0FastEvo": {"textLength": 1000, "targetMaxSize": 30, "targetMinLength": 300, "targetMaxLength": 6000},
-    "HappyHorse":  {"textLength": 2500, "targetMaxSize": 20, "targetMinLength": 400, "targetMaxLength": 6000},
+VIDEO_RESTRICTIONS_BY_MT = {
+    "1": {"textLength": 2500, "targetMaxSize": 10, "targetMinLength": 300, "targetMaxLength": 6000},
+    "2": {"textLength": 500, "targetMaxSize": 30, "targetMinLength": 300, "targetMaxLength": 6000},
+    "3": {"textLength": 1000, "negativeTextLength": 250, "targetMaxSize": 10, "targetMinLength": 300, "targetMaxLength": 6000},
+    "4": {"textLength": 1000, "negativeTextLength": 250, "targetMaxSize": 10, "targetMinLength": 300, "targetMaxLength": 6000},
+    "5": {"textLength": 1000, "negativeTextLength": 250, "targetMaxSize": 10, "targetMinLength": 300, "targetMaxLength": 6000},
+    "6": {"textLength": 1000, "negativeTextLength": 250, "targetMaxSize": 10, "targetMinLength": 300, "targetMaxLength": 6000},
+    "7": {"textLength": 750, "negativeTextLength": 250, "targetMaxSize": 10, "targetMinLength": 360, "targetMaxLength": 2000},
+    "8": {"textLength": 750, "negativeTextLength": 250, "targetMaxSize": 10, "targetMinLength": 360, "targetMaxLength": 2000},
+    "9": {"textLength": 750, "negativeTextLength": 250, "targetMaxSize": 10, "targetMinLength": 240, "targetMaxLength": 5000},
+    "10": {"textLength": 1250, "targetMaxSize": 10, "targetMinLength": 300},
+    "11": {"textLength": 2500, "targetMaxSize": 10, "targetMinLength": 300, "targetMaxLength": 6000},
+    "12": {"textLength": 2500, "targetMaxSize": 10, "targetMinLength": 300, "targetMaxLength": 6000},
+    "13": {"textLength": 2500, "targetMaxSize": 10, "targetMinLength": 300, "targetMaxLength": 6000},
+    "14": {"textLength": 2500, "negativeTextLength": 250, "targetMaxSize": 20, "targetMinLength": 240, "targetMaxLength": 8000},
+    "15": {"textLength": 2500, "negativeTextLength": 250, "targetMaxSize": 20, "targetMinLength": 240, "targetMaxLength": 8000},
+    "16": {"textLength": 2500, "negativeTextLength": 250, "targetMaxSize": 10, "targetMinLength": 240, "targetMaxLength": 5000},
+    "17": {"textLength": 1000, "targetMaxSize": 30, "targetMinLength": 300, "targetMaxLength": 6000},
+    "18": {"textLength": 1000, "targetMaxSize": 30, "targetMinLength": 300, "targetMaxLength": 6000},
+    "19": {"textLength": 2500, "targetMaxSize": 20, "targetMinLength": 400, "targetMaxLength": 6000},
+    "20": {"textLength": 1000, "targetMaxSize": 30, "targetMinLength": 300, "targetMaxLength": 6000},
+    "21": {"textLength": 1000, "targetMaxSize": 30, "targetMinLength": 300, "targetMaxLength": 6000},
 }
 
-IMAGE_RESTRICTIONS = {
-    "N2":              {"textLength": 1000, "targetMaxSize": 10, "targetMaxLength": 6000},
-    "S5.0L":           {"textLength": 300,  "targetMaxSize": 10, "targetMaxLength": 6000},
-    "W2.7":            {"textLength": 2500, "targetMaxSize": 20, "targetMaxLength": 8000, "targetMinLength": 240},
-    "W2.7Pro":         {"textLength": 2500, "targetMaxSize": 20, "targetMaxLength": 8000, "targetMinLength": 240},
-    "3.1Nano2-Evo":    {"textLength": 1000, "targetMaxSize": 20, "targetMaxLength": 6000},
-    "Nano2-Beta-Evo":  {"textLength": 1000, "targetMaxSize": 10, "targetMaxLength": 6000},
+IMAGE_RESTRICTIONS_BY_MT = {
+    "0":  {"textLength": 300,   "targetMaxSize": 10, "targetMaxLength": 6000},
+    "1":  {"textLength": 1000,  "targetMaxSize": 10, "targetMaxLength": 6000},
+    "2":  {"textLength": 1000,  "targetMaxSize": 10, "targetMaxLength": 6000},
+    "3":  {"textLength": 1000,  "targetMaxSize": 10, "targetMaxLength": 6000},
+    "4":  {"textLength": 300,   "targetMaxSize": 10, "targetMaxLength": 6000},
+    "5":  {"textLength": 1000,  "targetMaxSize": 10, "targetMaxLength": 6000},
+    "6":  {"textLength": 2500,  "targetMaxSize": 20, "targetMaxLength": 8000, "targetMinLength": 240},
+    "7":  {"textLength": 2500,  "targetMaxSize": 20, "targetMaxLength": 8000, "targetMinLength": 240},
+    "8":  {"textLength": 1000,  "targetMaxSize": 20, "targetMaxLength": 6000},
+    "9":  {"textLength": 1000,  "targetMaxSize": 10, "targetMaxLength": 6000},
     # GPT Image2 series: large prompt window, no max/min length constraint on refs.
-    "Image2":          {"textLength": 16000, "targetMaxSize": 50},
-    "Image2-Beta-Evo": {"textLength": 16000, "targetMaxSize": 50},
+    "10": {"textLength": 16000, "targetMaxSize": 50},
+    "11": {"textLength": 16000, "targetMaxSize": 50},
 }
 
 # Render-quality (ratiocination) whitelist for Image2 (imageRenderQualityList).
@@ -1786,13 +1786,17 @@ def create_video_task(prompt, model=None, ratio=None, resolution=None,
         print(f"不支持的视频模型：{model}", file=sys.stderr)
         return None
     model = resolved
+    config = MODEL_CONFIGS[model]
+    method_type = str(config["methodType"])
+    config = MODEL_CONFIGS[model]
+    method_type = str(config["methodType"])
 
     # Prompt requirement (mirrors frontend handleVerifyParams):
     # - W2.6i / W2.7i (image-to-video) can omit prompt
     # - klingV3Omni with shotType='customize' uses per-shot prompts, not top-level
     # - all other video models require a non-empty prompt
-    _image_to_video = model in {"W2.6i", "W2.7i"}
-    _kling_customize = (model == "klingV3Omni" and shot_type == "customize")
+    _image_to_video = method_type in {"8", "14"}
+    _kling_customize = (method_type == "10" and shot_type == "customize")
     if not _image_to_video and not _kling_customize:
         if not prompt or not str(prompt).strip():
             print(f"模型 {model} 必须提供非空的生成提示词 (prompt)", file=sys.stderr)
@@ -1803,17 +1807,14 @@ def create_video_task(prompt, model=None, ratio=None, resolution=None,
     if not DRY_RUN and not check_model_available(model):
         return None
 
-    # Apply per-model length caps (truncate with warning, match frontend maxlength)
-    restriction = VIDEO_RESTRICTIONS.get(model, {})
+    # Apply per-methodType length caps (truncate with warning, match frontend maxlength)
+    restriction = VIDEO_RESTRICTIONS_BY_MT.get(method_type, {})
     prompt = _check_text_length(prompt, restriction.get("textLength"), "prompt", model)
     if negative_prompt is not None:
         negative_prompt = _check_text_length(
             negative_prompt, restriction.get("negativeTextLength"),
             "negativePrompt", model,
         )
-
-    config = MODEL_CONFIGS[model]
-    method_type = config["methodType"]
 
     # Defaults follow the frontend pattern: BASE_DEFAULTS + handleMethodTypeChange
     # + 'methodType' switch reset block. No model-specific default_ratio /
@@ -1827,20 +1828,18 @@ def create_video_task(prompt, model=None, ratio=None, resolution=None,
     effective_resolution = resolution or base_resolution
     effective_duration = duration or base_duration
 
-    # Validate ratio / resolution / generationType against per-model whitelists.
-    if model in VIDEO_RATIOS:
-        effective_ratio = _coerce_value(
-            effective_ratio, VIDEO_RATIOS[model], base_ratio, "ratio", model,
-        )
-    if model in VIDEO_RESOLUTIONS:
-        effective_resolution = _coerce_value(
-            effective_resolution, VIDEO_RESOLUTIONS[model], base_resolution,
-            "resolution", model,
-        )
-    if generation_type is not None and model in VIDEO_GENERATION_TYPES:
+    # Validate ratio / resolution / generationType against methodType whitelists.
+    allowed_ratios = VIDEO_RATIOS_BY_MT.get(method_type, VIDEO_RATIOS_DEFAULT)
+    allowed_resolutions = VIDEO_RESOLUTIONS_BY_MT.get(method_type, VIDEO_RESOLUTIONS_DEFAULT)
+    allowed_generation_types = VIDEO_GENERATION_TYPES_BY_MT.get(method_type, VIDEO_GENERATION_TYPES_DEFAULT)
+    effective_ratio = _coerce_value(effective_ratio, allowed_ratios, base_ratio, "ratio", model)
+    effective_resolution = _coerce_value(
+        effective_resolution, allowed_resolutions, base_resolution, "resolution", model,
+    )
+    if generation_type is not None:
         generation_type = _coerce_value(
-            generation_type, VIDEO_GENERATION_TYPES[model],
-            VIDEO_GENERATION_TYPES[model][0], "generationType", model,
+            generation_type, allowed_generation_types,
+            allowed_generation_types[0], "generationType", model,
         )
 
     # Start from frontend-equivalent base defaults, then layer any model-level
@@ -1876,8 +1875,8 @@ def create_video_task(prompt, model=None, ratio=None, resolution=None,
     })
 
     # --- Duration rules (aligned with frontend `matchVideoDurationInfo`) ---
-    # V3.1FB (mt=3), V3.1PB (mt=4): fixed 8 seconds
-    if model in ["V3.1FB", "V3.1PB"]:
+    # V3.1 Lite (mt=3/4): fixed 8 seconds
+    if method_type in {"3", "4"}:
         if effective_duration != 8:
             print(f"{model} 时长固定为 8 秒，当前 {effective_duration} 秒，自动调整为 8 秒")
             effective_duration = 8
@@ -1885,47 +1884,43 @@ def create_video_task(prompt, model=None, ratio=None, resolution=None,
         parameter["size"] = effective_ratio
 
     # V3.1 Fast/Pro (mt=5/6): 4 or 8 seconds
-    if model in {"V3.1Fast", "V3.1Pro"}:
+    if method_type in {"5", "6"}:
         if effective_duration not in [4, 8]:
             print(f"{model} 时长必须是 4 或 8 秒，当前 {effective_duration} 秒，自动调整为 8 秒")
             effective_duration = 8
             parameter["duration"] = effective_duration
         parameter["size"] = effective_ratio
 
-    # WAN2.6 / WAN2.7 series & klingV3Omni: size + duration rules
-    # Size format (per frontend): only W2.6t (mt=7) and W2.6r (mt=9) use '*'-separated pixels;
-    # W2.6i, W2.7*, klingV3Omni all submit size = ratio string.
-    wan_text_models = {"W2.6t", "W2.7t"}
-    wan_image_models = {"W2.6i", "W2.7i"}
-    wan_ref_models = {"W2.6r", "W2.7r"}
-    wan_models = wan_text_models | wan_image_models | wan_ref_models
-    pixel_size_models = {"W2.6t", "W2.6r"}  # only these use '1280*720' form
-
-    seedance2_models = {"S2.0", "S2.0Fast", "S2.0Evo", "S2.0FastEvo"}
+    # WAN / kling / Seedance family groupings by methodType.
+    wan_image_mts = {"8", "14"}
+    wan_ref_mts = {"9", "16"}
+    wan_mts = {"7", "8", "9", "14", "15", "16"}
+    pixel_size_mts = {"7", "9"}  # only Wan2.6 t2v/r2v use '1280*720' form
+    seedance2_mts = {"17", "18", "20", "21"}
 
     # S1.5Pro (mt=2): duration 4-12s (frontend matchVideoDurationInfo)
-    if model == "S1.5Pro":
+    if method_type == "2":
         if effective_duration < 4 or effective_duration > 12:
             print(f"{model} 时长必须是 4-12 秒，当前 {effective_duration} 秒，自动调整为 10 秒",
                   file=sys.stderr)
             effective_duration = 10
             parameter["duration"] = effective_duration
 
-    if model == "Sora2-BetaMax":
+    if method_type == "1":
         if effective_duration < 10 or effective_duration > 15:
             print(f"{model} 时长必须是 10-15 秒，当前 {effective_duration} 秒，自动调整为 10 秒",
                   file=sys.stderr)
             effective_duration = 10
             parameter["duration"] = effective_duration
 
-    if model in {"Sora2-147", "Sora2Pro-147", "Sora2Pro-Evolink"}:
+    if method_type in {"11", "12", "13"}:
         if effective_duration < 4 or effective_duration > 12:
             print(f"{model} 时长必须是 4-12 秒，当前 {effective_duration} 秒，自动调整为 8 秒",
                   file=sys.stderr)
             effective_duration = 8
             parameter["duration"] = effective_duration
 
-    if model == "HappyHorse":
+    if method_type == "19":
         # HappyHorse: duration 3-15s; EDIT mode derives duration from edit clip,
         # but we still keep a sane default in payload.
         if effective_duration < 3 or effective_duration > 15:
@@ -1936,7 +1931,7 @@ def create_video_task(prompt, model=None, ratio=None, resolution=None,
         # Submit ratio string as size (no pixel form)
         parameter["size"] = effective_ratio
 
-    if model in seedance2_models:
+    if method_type in seedance2_mts:
         # Seedance2.0 / Seedance2.0 Fast: duration 4-15s (frontend matchVideoDurationInfo)
         if effective_duration < 4 or effective_duration > 15:
             print(f"{model} 时长必须是 4-15 秒，当前 {effective_duration} 秒，自动调整为 10 秒",
@@ -1946,11 +1941,11 @@ def create_video_task(prompt, model=None, ratio=None, resolution=None,
         # Size as ratio string (not pixel-serialized)
         parameter["size"] = effective_ratio
 
-    if model in wan_models or model == "klingV3Omni":
+    if method_type in wan_mts or method_type == "10":
         # Duration range
-        if model == "W2.6r":
+        if method_type == "9":
             min_d, max_d, default_d = 3, 10, 10
-        elif model == "W2.7r" and video_url_list:
+        elif method_type == "16" and video_url_list:
             # W2.7r with reference video(s): 3-10s (frontend videoUrlList?.length)
             min_d, max_d, default_d = 3, 10, 10
         else:
@@ -1962,17 +1957,17 @@ def create_video_task(prompt, model=None, ratio=None, resolution=None,
             parameter["duration"] = effective_duration
 
         # Size serialization
-        if model in pixel_size_models:
+        if method_type in pixel_size_mts:
             parameter["size"] = pixel_size.replace("x", "*")  # e.g., "1280*720"
         else:
             parameter["size"] = effective_ratio  # e.g., "16:9"
 
     # Image-to-video: auto-switch generationType based on first_image_url
-    if model in wan_image_models and generation_type is None:
+    if method_type in wan_image_mts and generation_type is None:
         parameter["generationType"] = "FIRST&LAST"
 
     # Reference-to-video: force REFERENCE generationType (W2.6r / W2.7r)
-    if model in wan_ref_models:
+    if method_type in wan_ref_mts:
         parameter["generationType"] = "REFERENCE"
 
     # Apply optional overrides
@@ -2012,7 +2007,7 @@ def create_video_task(prompt, model=None, ratio=None, resolution=None,
     if multi_shot is not None:
         parameter["multiShot"] = multi_shot
     if n is not None:
-        if model in VIDEO_FIELD_SUPPORT.get("n", set()):
+        if method_type in VIDEO_FIELD_SUPPORT_BY_MT.get("n", set()):
             parameter["n"] = n
     if person_generation is not None:
         parameter["personGeneration"] = person_generation
@@ -2032,7 +2027,7 @@ def create_video_task(prompt, model=None, ratio=None, resolution=None,
         parameter["audioSetting"] = audio_setting
 
     # klingV3Omni customize shotType requires multiPrompt
-    if model == "klingV3Omni" and parameter.get("shotType") == "customize" \
+    if method_type == "10" and parameter.get("shotType") == "customize" \
             and not parameter.get("multiPrompt"):
         print(
             "klingV3Omni shotType='customize' 需要传入 multi_prompt（分镜列表），"
@@ -2045,7 +2040,7 @@ def create_video_task(prompt, model=None, ratio=None, resolution=None,
     #   - firstClipUrl + keep_original_sound are packed into a `videoList` array
     #     whose `refer_type` depends on generationType (base for EDIT, feature
     #     for FEATURE). generateAudio is disabled when a reference clip is given.
-    if model == "klingV3Omni":
+    if method_type == "10":
         if parameter.get("shotType") == "multi":
             parameter["shotType"] = "intelligence"
 
@@ -2070,14 +2065,14 @@ def create_video_task(prompt, model=None, ratio=None, resolution=None,
     _apply_restriction(parameter, restriction)
 
     # Strip fields this model does not accept (mirrors frontend visibility rules)
-    _filter_by_whitelist(parameter, model, VIDEO_FIELD_SUPPORT)
+    _filter_video_fields(parameter, method_type)
 
     # HappyHorse generationType-conditional visibility (frontend handleMatchVisibility):
     #   - audioSetting: only visible when generationType === 'EDIT'
     #   - firstClipUrl: only visible when generationType in ('CONTINUATION','EDIT','FEATURE')
     #     (HappyHorse only supports EDIT among these)
     #   - ratio / duration: hidden in EDIT mode (derived from edit clip)
-    if model == "HappyHorse":
+    if method_type == "19":
         gen_type = parameter.get("generationType")
         if gen_type != "EDIT":
             parameter.pop("audioSetting", None)
@@ -2097,11 +2092,11 @@ def create_video_task(prompt, model=None, ratio=None, resolution=None,
 
     if parameter.get("lastImageUrl") and not parameter.get("firstImageUrl"):
         raise GenerationTaskCreationError(_creation_failure_message(model, "已传尾帧图片时必须同时提供首帧图片", "视频任务"))
-    if model in {"W2.6i", "W2.7i", "HappyHorse"} and gen_type == "FIRST&LAST" and not parameter.get("firstImageUrl"):
+    if method_type in {"8", "14", "19"} and gen_type == "FIRST&LAST" and not parameter.get("firstImageUrl"):
         raise GenerationTaskCreationError(_creation_failure_message(model, "FIRST&LAST 模式必须提供首帧图片", "视频任务"))
-    if model == "W2.7i" and gen_type == "CONTINUATION" and not parameter.get("firstClipUrl"):
+    if method_type == "14" and gen_type == "CONTINUATION" and not parameter.get("firstClipUrl"):
         raise GenerationTaskCreationError(_creation_failure_message(model, "CONTINUATION 模式必须提供续写视频 firstClipUrl", "视频任务"))
-    if model == "klingV3Omni":
+    if method_type == "10":
         if gen_type == "FIRST&LAST" and not parameter.get("firstImageUrl") and element_count == 0:
             raise GenerationTaskCreationError(_creation_failure_message(model, "FIRST&LAST 模式必须提供首帧图片或参考主体", "视频任务"))
         if gen_type == "REFERENCE" and image_count + element_count == 0:
@@ -2112,13 +2107,13 @@ def create_video_task(prompt, model=None, ratio=None, resolution=None,
             bad_shot = any(not item.get("duration") or not item.get("prompt") for item in (parameter.get("multiPrompt") or []))
             if bad_shot:
                 raise GenerationTaskCreationError(_creation_failure_message(model, "自定义分镜必须填写每个镜头的描述和非零时长", "视频任务"))
-    if model in {"W2.6r", "W2.7r"} and (image_count + video_count == 0 or image_count + video_count > 5):
+    if method_type in {"9", "16"} and (image_count + video_count == 0 or image_count + video_count > 5):
         raise GenerationTaskCreationError(_creation_failure_message(model, "参考图片+参考视频总数必须为 1-5", "视频任务"))
-    if model in {"V3.1FB", "V3.1PB", "V3.1Fast", "V3.1Pro", "HappyHorse"} and gen_type == "REFERENCE" and image_count == 0:
+    if method_type in {"3", "4", "5", "6", "19"} and gen_type == "REFERENCE" and image_count == 0:
         raise GenerationTaskCreationError(_creation_failure_message(model, "REFERENCE 模式必须至少提供一张参考图片", "视频任务"))
-    if model == "HappyHorse" and gen_type == "EDIT" and not parameter.get("firstClipUrl"):
+    if method_type == "19" and gen_type == "EDIT" and not parameter.get("firstClipUrl"):
         raise GenerationTaskCreationError(_creation_failure_message(model, "EDIT 模式必须提供编辑视频 firstClipUrl", "视频任务"))
-    if model in seedance2_models and audio_list_count > 0 and image_count + video_count == 0:
+    if method_type in seedance2_mts and audio_list_count > 0 and image_count + video_count == 0:
         raise GenerationTaskCreationError(_creation_failure_message(model, "使用参考音频时必须至少提供一张参考图片或一个参考视频", "视频任务"))
 
     payload = {
@@ -2339,6 +2334,8 @@ def create_generation_task(prompt, quality=None, size=None, model=None,
         print(f"不支持的模型：{model}，可用模型：{list(MODEL_CONFIGS.keys())}", file=sys.stderr)
         return None
     model = resolved
+    config = MODEL_CONFIGS[model]
+    method_type = str(config["methodType"])
 
     # Image generation always requires a non-empty prompt (frontend: required rule)
     if not prompt or not str(prompt).strip():
@@ -2350,12 +2347,9 @@ def create_generation_task(prompt, quality=None, size=None, model=None,
     if not DRY_RUN and not check_model_available(model):
         return None
 
-    # Apply per-model prompt length cap
-    image_restriction = IMAGE_RESTRICTIONS.get(model, {})
+    # Apply per-methodType prompt length cap
+    image_restriction = IMAGE_RESTRICTIONS_BY_MT.get(method_type, {})
     prompt = _check_text_length(prompt, image_restriction.get("textLength"), "prompt", model)
-
-    config = MODEL_CONFIGS[model]
-    method_type = config["methodType"]
 
     # Defaults follow the frontend pattern: BASE_DEFAULTS + handleMethodTypeChange.
     # No model-specific default_quality / default_size overrides.
@@ -2368,17 +2362,17 @@ def create_generation_task(prompt, quality=None, size=None, model=None,
     if size is None:
         size = base_size
 
-    # Validate quality against per-model whitelist (matchImageQualityOptions)
-    if model in IMAGE_QUALITIES:
-        quality = _coerce_value(
-            quality, IMAGE_QUALITIES[model], base_quality, "quality", model,
-        )
+    # Validate quality against methodType whitelist (matchImageQualityOptions)
+    quality = _coerce_value(
+        quality, IMAGE_QUALITIES_BY_MT.get(method_type, IMAGE_QUALITIES_DEFAULT),
+        base_quality, "quality", model,
+    )
 
     # Validate ratio-style size (e.g. "16:9"); pixel sizes contain 'x' or '*'.
     is_pixel_size = ("x" in str(size) and any(c.isdigit() for c in str(size).split("x")[0])) \
                     or ("*" in str(size) and any(c.isdigit() for c in str(size).split("*")[0]))
-    if not is_pixel_size and model in IMAGE_SIZE_EXCLUDED:
-        excluded = IMAGE_SIZE_EXCLUDED[model]
+    if not is_pixel_size:
+        excluded = IMAGE_SIZE_EXCLUDED_BY_MT.get(method_type, [])
         if size in excluded:
             print(
                 f"{model} 不支持 size={size!r}（被排除：{excluded}），"
@@ -2437,14 +2431,14 @@ def create_generation_task(prompt, quality=None, size=None, model=None,
                     file=sys.stderr,
                 )
                 n_int = max(1, min(10, n_int))
-            if model in IMAGE_FIELD_SUPPORT.get("n", set()):
+            if method_type in IMAGE_FIELD_SUPPORT_BY_MT.get("n", set()):
                 parameter["n"] = n_int
 
-    # Overwrite targetMaxSize / targetMinLength / targetMaxLength per model
+    # Overwrite targetMaxSize / targetMinLength / targetMaxLength per methodType
     _apply_restriction(parameter, image_restriction)
 
-    # Strip image fields this model does not accept (mirrors frontend rules)
-    _filter_by_whitelist(parameter, model, IMAGE_FIELD_SUPPORT)
+    # Strip image fields this methodType does not accept (mirrors frontend rules)
+    _filter_by_whitelist(parameter, method_type, IMAGE_FIELD_SUPPORT_BY_MT)
 
     payload = {
         "type": config["type"],
