@@ -208,6 +208,8 @@ def _emit_cli_result(result, args, markdown_label=""):
             "url": url,
             "message": message,
         }
+        if isinstance(result, dict) and result.get("urls"):
+            payload["urls"] = result["urls"]
         if isinstance(result, dict) and result.get("local_path"):
             payload["local_path"] = result["local_path"]
         print(json.dumps(payload, ensure_ascii=False), flush=True)
