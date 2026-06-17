@@ -125,14 +125,14 @@ python3 scripts/generate_image.py "x" --poll <task_id> --max-wait 120 --json-out
 | --- | --- | --- | --- | --- | --- |
 | `1` | `TEXT/FIRST&LAST` | `16:9/9:16` | `720p` | `10-15s` | 首尾帧模式用 `firstImageUrl` |
 | `2` | `TEXT/FIRST&LAST` | `adaptive/1:1/4:3/3:4/16:9/9:16/21:9` | `480p/720p/1080p` | `4-12s` | 支持 `durationSwitch` |
-| `3` | `TEXT/FIRST&LAST/REFERENCE` | `adaptive/16:9/9:16` | `720p/1080p/4K` | 固定 `8s` | `REFERENCE` 至少一张参考图 |
-| `4` | `TEXT/FIRST&LAST` | `adaptive/16:9/9:16` | `720p/1080p/4K` | 固定 `8s` | 默认首尾帧 |
+| `3` | `TEXT/FIRST&LAST/REFERENCE` | `adaptive/16:9/9:16` | `720p` | 固定 `8s` | `REFERENCE` 至少一张参考图 |
+| `4` | `TEXT/FIRST&LAST` | `adaptive/16:9/9:16` | `720p` | 固定 `8s` | 默认首尾帧 |
 | `5` | `TEXT/FIRST&LAST` | `adaptive/16:9/9:16` | `720p/1080p/4K` | `4s/8s` | 支持 `n=1-4`、`personGeneration`、`resizeMode` |
 | `6` | `TEXT/FIRST&LAST` | `adaptive/16:9/9:16` | `720p/1080p/4K` | `4s/8s` | 同 `5` 的时长规则 |
 | `7` | `TEXT` | `1:1/4:3/3:4/16:9/9:16` | `720p/1080p` | `3-15s` | `size` 提交为 `W*H`，支持 `negativePrompt/promptExtend/shotType` |
 | `8` | `FIRST&LAST` | 由首帧决定，不提交 ratio | `720p/1080p` | `3-15s` | 必须传首帧；不支持尾帧 |
 | `9` | `REFERENCE` | `1:1/4:3/3:4/16:9/9:16` | `720p/1080p` | `3-10s` | 参考图片+参考视频总数 `1-5`，`size` 提交为 `W*H` |
-| `10` | `TEXT/FIRST&LAST/REFERENCE/EDIT/FEATURE` | `1:1/16:9/9:16`，部分模式隐藏 | 无 | `3-15s` | 支持 `shotType=single/multi/customize`、`mode`、`keepOriginalSound`；`EDIT/FEATURE` 需要视频 |
+| `10` | `TEXT/FIRST&LAST/REFERENCE/EDIT/FEATURE` | `1:1/16:9/9:16`，部分模式隐藏 | `720p/1080p` | `3-15s` | 支持 `shotType=single/multi/customize`、`mode`、`keepOriginalSound`；`EDIT/FEATURE` 需要视频 |
 | `11` | `TEXT/FIRST&LAST` | `adaptive/1:1/4:3/3:4/7:4/4:7/16:9/9:16/21:9` | `720p` | `4-12s` | 默认 `8s` |
 | `12` | `TEXT/FIRST&LAST` | `16:9/9:16/7:4/4:7` | `720p/2K` | `4-12s` | 默认 `8s` |
 | `13` | `TEXT/FIRST&LAST/REFERENCE` | `adaptive/1:1/4:3/3:4/7:4/4:7/16:9/9:16/21:9` | `720p/2K` | `4-12s` | `REFERENCE` 可用参考图 |

@@ -929,10 +929,10 @@ VIDEO_FIELD_SUPPORT = {
               "W2.6t", "W2.6r", "klingV3Omni",
               "W2.7t", "W2.7r",
               "S2.0", "S2.0Fast", "S2.0Evo", "S2.0FastEvo", "HappyHorse"},
-    # resolution: klingV3Omni (mt=10) does not expose a resolution selector.
+    # resolution: models exposed by frontend matchVideoQualityOptions.
     "resolution": {"Sora2-BetaMax", "Sora2-147", "Sora2Pro-147", "Sora2Pro-Evolink",
                    "S1.5Pro", "V3.1FB", "V3.1PB", "V3.1Fast", "V3.1Pro",
-                   "W2.6t", "W2.6i", "W2.6r",
+                   "W2.6t", "W2.6i", "W2.6r", "klingV3Omni",
                    "W2.7t", "W2.7i", "W2.7r",
                    "S2.0", "S2.0Fast", "S2.0Evo", "S2.0FastEvo", "HappyHorse"},
 }
@@ -1000,13 +1000,12 @@ VIDEO_RATIOS = {
     "HappyHorse":  ["1:1", "3:4", "4:3", "5:4", "4:5", "16:9", "9:16", "21:9", "9:21"],
 }
 
-# resolution whitelist per model (matchVideoQualityOptions). klingV3Omni does
-# not submit a resolution at all (handled by VIDEO_FIELD_SUPPORT).
+# resolution whitelist per model (frontend matchVideoQualityOptions).
 VIDEO_RESOLUTIONS = {
     "Sora2-BetaMax": ["720p"],
     "S1.5Pro":     ["480p", "720p", "1080p"],
-    "V3.1FB":      ["720p", "1080p", "4K"],
-    "V3.1PB":      ["720p", "1080p", "4K"],
+    "V3.1FB":      ["720p"],
+    "V3.1PB":      ["720p"],
     "V3.1Fast":    ["720p", "1080p", "4K"],
     "V3.1Pro":     ["720p", "1080p", "4K"],
     "Sora2-147":   ["720p"],
@@ -1015,6 +1014,7 @@ VIDEO_RESOLUTIONS = {
     "W2.6t":       ["720p", "1080p"],
     "W2.6i":       ["720p", "1080p"],
     "W2.6r":       ["720p", "1080p"],
+    "klingV3Omni": ["720p", "1080p"],
     "W2.7i":       ["720p", "1080p"],
     "W2.7t":       ["720p", "1080p"],
     "W2.7r":       ["720p", "1080p"],
