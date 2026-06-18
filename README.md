@@ -35,8 +35,8 @@ DeepSOP Skills 旨在为 AI Agent 提供丰富的功能扩展能力，涵盖：
 **功能描述**：调用 AI Artist API 异步生成图片或视频，自动轮询直到任务完成。
 
 **核心特性**：
-- 支持 6 种图片模型（3.1Nano2-Evo、S5.0L、N2、W2.7、W2.7Pro、Nano2-Beta-Evo）
-- 支持 11 种视频模型（V3.1FB、S1.5Pro、V3.1PB、V3.1Fast、W2.6t/i/r、klingV3Omni、W2.7t/i/r）
+- 图片模型列表来自服务端 `consumeSource/list` 的 `IMAGE_MODEL` 返回结果
+- 视频模型列表来自服务端 `consumeSource/list` 的 `VIDEO_MODEL` 返回结果
 - 自动推断模型类型（根据提示词关键词判断图片或视频）
 - 支持参考图/视频上传，自动转换为可访问 URL
 - 支持飞书通知、Markdown 输出、本地下载等多种输出方式
@@ -51,11 +51,11 @@ DeepSOP Skills 旨在为 AI Agent 提供丰富的功能扩展能力，涵盖：
 # 设置 API Key
 export DEEPSOP_API_KEY="sk-your_api_key_here"
 
-# 生成图片（默认 3.1Nano2-Evo）
+# 生成图片（未指定模型时使用 IMAGE_MODEL 列表第一个可用模型）
 python3 scripts/generate_image.py "一匹狼"
 
-# 生成视频（默认 V3.1FB）
-python3 scripts/generate_image.py "现代轻奢吊灯" --model V3.1FB
+# 生成视频（未指定模型时使用 VIDEO_MODEL 列表第一个可用模型）
+python3 scripts/generate_image.py "现代轻奢吊灯"
 
 # 查看可用模型
 python3 scripts/generate_image.py --list-models

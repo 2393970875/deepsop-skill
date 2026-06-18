@@ -3,7 +3,7 @@ name: deepsop-genvis
 description: |
   DeepSOP AI 图片与视频生成技能。用于调用 AI Artist API 创建图片或视频任务、上传参考图片/视频/音频、预估费用、轮询结果，并按 Vue 前端规则根据接口返回的 sourceValue/methodType 校验 generationType、ratio、resolution、duration、参考素材数量、搜索开关、音频开关等参数约束。
 
-  本技能不维护、声明或向用户展示模型名称清单、可用模型清单、展示顺序或默认模型。模型列表与默认选中值全部来自服务端 consumeSource/list；methodType 规则仅用于根据接口返回模型的 sourceValue 生成/校验请求参数，不代表本技能内置了哪些模型或默认使用哪个模型。
+  本技能不维护、声明或向用户展示模型名称清单、可用模型清单、展示顺序或固定默认模型。模型列表与默认选中值全部来自服务端 consumeSource/list；生成图片默认取 IMAGE_MODEL 列表第一个可用模型，生成视频默认取 VIDEO_MODEL 列表第一个可用模型。methodType 规则仅用于根据接口返回模型的 sourceValue 生成/校验请求参数，不代表本技能内置了哪些模型、当前可用哪些模型或固定默认使用哪个模型。
 
 ---
 
@@ -31,8 +31,9 @@ DEEPSOP_API_KEY=sk-your_api_key_here
 ## 必须遵守
 
 - OPClaw 项目运行时使用项目设置里的 `DEEPSOP_API_KEY`；非 OPClaw 运行时，让用户授权后设置共享 `DEEPSOP_API_KEY`。
-- 模型列表、模型名称、模型顺序、默认模型只来自 `consumeSource/list`；不要在对用户回复中枚举或承诺本地文档里的模型清单/默认模型。
-- 未指定模型时，先按 prompt 判断图片或视频，再取对应类型下 `sourceValue != "auto"` 且 `hiddenState == "0"` 的接口返回顺序第一个。
+- 模型列表、模型名称、模型顺序、默认模型只来自 `consumeSource/list`；不要在对用户回复中枚举或承诺本地文档、README、脚本常量、示例命令里的模型清单/默认模型。
+- 未指定模型时，先按 prompt 判断图片或视频；生成图片取 `IMAGE_MODEL` 列表中 `sourceValue != "auto"` 且 `hiddenState == "0"` 的接口返回顺序第一个，生成视频取 `VIDEO_MODEL` 列表中 `sourceValue != "auto"` 且 `hiddenState == "0"` 的接口返回顺序第一个。不得在技能里说明或暗示图片/视频固定默认是某个模型。
+- 每次发起费用预估、提交任务、只提交任务前，都必须以本次 `consumeSource/list` 返回结果为准校验当前请求的模型仍存在且 `hiddenState == "0"`；如果列表不存在该 `sourceValue` 或 `hiddenState != "0"`，必须停止并反馈实际状态，不得继续提交。
 - 指定模型时，仅使用获取模型列表接口返回的 `sourceValue/methodType`；脚本保留友好别名只是兼容旧调用，不作为技能文档依据，也不要主动向用户推荐。
 - 用户明确指定某个模型名/别名（例如文本里出现 V3.1FB）并要求生成时，先用获取模型列表接口在对应媒介类型里确认该名称/`sourceValue` 的最新状态；如果接口显示启用，就按该接口返回项提交，不要因为本地同 `sourceValue` 的图片模型、旧别名或旧缓存显示停用而拦截。
 - 用户显式指定模型时，模型选择优先于时长、比例、分辨率、生成类型等偏好参数。若该模型不支持用户给出的参数（例如指定 V3.1FB 但要求 5 秒，而接口/前端规则固定为 8 秒），只能按该模型规则校正参数并在回复中明确说明，或停止并请用户确认；严禁为了满足参数偏好自动改用其他模型。
@@ -40,9 +41,9 @@ DEEPSOP_API_KEY=sk-your_api_key_here
 - 任务失败时，不要自动切换模型重试。必须反馈实际使用的 `methodType`、状态和失败原因。
 - 单次用户生成请求只能提交用户指定的那一个模型任务；除非用户明确要求多个方案/多个版本/备用模型，否则不要创建“版本1/版本2”、备用结果或补偿性重做任务。
 - 用户没有指定数量时，图片默认只生成 1 张（`--n 1` 或省略 `--n`），视频默认只生成 1 个；用户明确要求多张/多个且所选模型支持时，单次任务使用一次 `--n <数量>`，不要拆成多次生成或额外补做备用结果。
-- OPClaw/Windows 正常生成时走快速路径：不要先执行 `--help`、`--list-models`、读取/检查脚本源码，除非用户正在询问模型/参数/状态排查；不要使用 `~` 作为 workdir，不要用 `cd ... && ...`，不要用 `uv run` / `uv add` / `uv pip`。直接用已安装技能的绝对路径调用系统 Python，例如 `python C:\Users\Administrator\.openclaw\skills\deepsop-genvis\scripts\generate_image.py "<prompt>" --json-output`。
+- OPClaw/Windows 正常生成时走快速路径：不要先执行 `--help`、读取/检查脚本源码，除非用户正在询问模型/参数/状态排查；不要使用 `~` 作为 workdir，不要用 `cd ... && ...`，不要用 `uv run` / `uv add` / `uv pip`。直接用已安装技能的绝对路径调用系统 Python，例如 `python C:\Users\Administrator\.openclaw\skills\deepsop-genvis\scripts\generate_image.py "<prompt>" --json-output`。模型可用性必须由脚本/接口在提交前实时校验，不得靠技能描述或示例命令判断。
 - 用户要求“以上/上文/刚才生成的图片作为参考图”生成视频时，直接复用对话中最近的图片 HTTP/HTTPS URL；不要下载、不要重新上传、不要调用图片分析工具、不要写临时 Python 脚本。对于 V3.1FB / methodType `3` 这类支持 `REFERENCE` 的视频模型，把这些 URL 作为逗号分隔值传给 `--image-url-list`，并显式传 `--generation-type REFERENCE`。
-- 指定 DeepSop·V3.1FB 且使用上文两张网络图片参考生成视频时，标准快速命令形态是：`python C:\Users\Administrator\.openclaw\skills\deepsop-genvis\scripts\generate_image.py "<视频提示词>" --model V3.1FB --generation-type REFERENCE --image-url-list "<url1>,<url2>" --json-output`。只需提交任务并轮询结果，不要再查列表、读源码或做 dry-run。
+- 指定某个视频模型且使用上文网络图片参考生成视频时，命令形态是：`python C:\Users\Administrator\.openclaw\skills\deepsop-genvis\scripts\generate_image.py "<视频提示词>" --model "<接口返回的sourceValue或用户明确指定的模型别名>" --generation-type REFERENCE --image-url-list "<url1>,<url2>" --json-output`。只需提交任务并轮询结果；提交前必须由脚本/接口按最新模型列表确认该模型 `hiddenState == "0"`，不要读源码或做 dry-run。
 - 生成结果返回 `SUCCESS` 后，直接把本次结果 URL 作为最终回复内容返回；不要再调用 `image`/视觉分析工具去“查看效果、描述画质、分析图片”，除非用户明确要求分析、评价、描述或看图。最终回复中保留图片/视频 URL 或 Markdown 媒体链接，客户端会据此渲染预览卡片。
 - 正常生成必须带 `--json-output`，确保客户端能从 `url` / `urls` / `outputUrl(s)` / `mediaUrl(s)` / `imageUrl(s)` / `ossUrlList` 字段提取全部图片或视频结果。不要只用自然语言说“生成成功”。
 - 只有脚本本次执行的 stderr 明确返回 `hiddenState=1` / `当前已停用` 时，才允许告诉用户该接口返回项已停用；如果脚本实际使用的是接口返回的第一项，只能说明“未显式指定模型，按接口返回顺序选择了本次 `sourceValue`”，禁止推断或编造某个模型已停用。

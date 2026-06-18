@@ -74,8 +74,8 @@ DEEPSOP_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxx
 |---|---|---|---|
 | 1 | Step 1.5 数字员工可用性 | `GET` | `/ai/presetEmployee/list` |
 | 1.1 | Step 1.5.1① 签约套餐列表 | `GET` | `/ai/setting/list?packageType=3` |
-| 1.2 | Step 1.5.1② 人民币→K币汇率 | `GET` | `/system/config/configKey/CNY_TO_KCOIN` |
-| 1.3 | Step 1.5.1③ K币余额查询 | `GET` | `/ai/vip/balance?userId={userId}` |
+| 1.2 | Step 1.5.1② 人民币→算力汇率 | `GET` | `/system/config/configKey/CNY_TO_KCOIN` |
+| 1.3 | Step 1.5.1③ 算力余额查询 | `GET` | `/ai/vip/balance?userId={userId}` |
 | 1.4 | Step 1.5.1④ 提交签约（扣K币） | `POST` | `/ai/order/purchaseIndependentPackageByKToken` |
 | 2 | Step 3 提交任务 | `POST` | `/ai/presetEmployee/submitTask` |
 | 3 | Step 3 前置 A-0 外呼实例 | `GET` | `/ai/outBound/describeInstance` |
@@ -240,7 +240,7 @@ DEEPSOP_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxx
       purchaseMonths,        // 1 | 3 | 6 | 12
       actualPrice,           // 人民币实价（元）
       discountRate,          // 折扣率，100 = 无折扣
-      giftKToken             // 赠送 K 币数量
+      giftKToken             // 赠送 算力数量
     }
   ]
 }
@@ -250,11 +250,11 @@ DEEPSOP_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxx
 
 **② 展示套餐让用户选择**
 
-先获取人民币→K币汇率：
+先获取人民币→算力汇率：
 接口：`GET https://ai.deepsop.com/prod-api/system/config/configKey/CNY_TO_KCOIN`
 响应 `msg` 即为汇率（记为 `rate`）。
 
-每个套餐的**应付 K 币**计算公式：
+每个套餐的**应付 算力**计算公式：
 ```
 priceKCoin = actualPrice × (discountRate / 100) × rate
 ```
@@ -262,7 +262,7 @@ priceKCoin = actualPrice × (discountRate / 100) × rate
 向用户展示（格式示例）：
 ```
 数字员工「{name}」尚未开通，请选择签约套餐（回复序号）：
-1. {description}（{purchaseMonths}个月） — {priceKCoin} K币{折扣率≠100 时追加"（{discountRate/10}折）"}{giftKToken>0 时追加"，赠送 {giftKToken} K币"}
+1. {description}（{purchaseMonths}个月） — {priceKCoin} 算力{折扣率≠100 时追加"（{discountRate/10}折）"}{giftKToken>0 时追加"，赠送 {giftKToken} 算力"}
 2. ...
 
 回复「取消」放弃签约。
@@ -271,30 +271,30 @@ priceKCoin = actualPrice × (discountRate / 100) × rate
 **等待用户回复序号**。用户选"取消"或无响应 → 终止任务并回复：
 > 已取消签约，任务终止。
 
-**③ K 币余额校验**
+**③ 算力余额校验**
 
 接口：`GET https://ai.deepsop.com/prod-api/ai/vip/balance?userId={userId}`
 请求头：`x-api-key: $DEEPSOP_API_KEY`
 
-其中 `userId` 取自 Step 3 前置 B `/ai/user/profile` 返回的 `data.userId`（若此前未调用则先调用获取）。响应 `data` 即为当前 K 币余额。
+其中 `userId` 取自 Step 3 前置 B `/ai/user/profile` 返回的 `data.userId`（若此前未调用则先调用获取）。响应 `data` 即为当前 算力余额。
 
 > 🔒 **强制实时查询规则（极其重要，避免使用缓存余额）：**
 > - 每次进入本步骤 ③ 都**必须**重新调用一次 `/ai/vip/balance` 接口，**严禁**复用本会话中任何先前一次查询到的 `balance` 值。
-> - 典型踩坑场景：一次任务里有多个员工需要连续签约（例如先给 AiWa 签约扣了 K 币，紧接着又要给 Frank 签约）；或同一员工首次提示余额不足、用户充值后让你重试 —— 此时上一轮的 `balance` 已经过时，**必须**重新发请求拿最新值，**不得**沿用记忆里的旧数字做判断或在话术中展示。
+> - 典型踩坑场景：一次任务里有多个员工需要连续签约（例如先给 AiWa 签约扣了 算力，紧接着又要给 Frank 签约）；或同一员工首次提示余额不足、用户充值后让你重试 —— 此时上一轮的 `balance` 已经过时，**必须**重新发请求拿最新值，**不得**沿用记忆里的旧数字做判断或在话术中展示。
 > - 同样地，在 ④ 提交签约扣款成功之后，如果还有下一个员工要走签约流程，回到本步骤 ③ 时也**必须**重新查询余额，不得用「旧余额 - priceKCoin」自行推算。
 > - 用户口头告知"我已经充值了/余额已经够了"也**不能**作为跳过本接口的理由，必须以接口实时返回为准。
 
 取余额 `balance`（**本次接口调用的最新返回值**），与所选套餐的 `priceKCoin` 比较：
 
 - **`balance < priceKCoin` → 余额不足，终止任务**，回复：
-  > ❌ 余额不足，签约失败。当前余额：**{balance} K币**，所需：**{priceKCoin} K币**。
-  > 请前往 https://ai.deepsop.com 登录后充值 K 币，充值完成后重新下达任务。
+  > ❌ 余额不足，签约失败。当前余额：**{balance} 算力**，所需：**{priceKCoin} 算力**。
+  > 请前往 https://ai.deepsop.com 登录后充值 算力，充值完成后重新下达任务。
 
   **不要**尝试任何充值接口，直接终止流程。
 
 - **`balance ≥ priceKCoin` → 进入 ④**
 
-**④ 提交签约（扣 K 币）**
+**④ 提交签约（扣 算力）**
 
 接口：`POST https://ai.deepsop.com/prod-api/ai/order/purchaseIndependentPackageByKToken`
 请求头：`x-api-key: $DEEPSOP_API_KEY`
@@ -307,12 +307,12 @@ priceKCoin = actualPrice × (discountRate / 100) × rate
 ```
 
 - 成功 → 回复：
-  > ✅ 「{name}」签约成功！套餐：{description}，扣除 {priceKCoin} K币。
+  > ✅ 「{name}」签约成功！套餐：{description}，扣除 {priceKCoin} 算力。
 - 失败（含后端返回余额不足错误码）→ 按"余额不足"文案回复并终止。
 
 **⑤ 回到 Step 1.5 重新拉取 `/ai/presetEmployee/list` 校验**，该员工状态正常后继续剩余流程。
 
-> ⚠️ 如果剩余 employeeList 中还有其他员工需要走签约流程，回到 Step 1.5.1 处理下一个员工时，**步骤 ③ 必须重新调用 `/ai/vip/balance` 拉取最新余额**（因为本员工的 ④ 已经扣过 K 币，旧余额已失效）。**禁止**用「上一员工查到的 balance − 上一员工 priceKCoin」自行推算结果作为下一员工的余额判断依据。
+> ⚠️ 如果剩余 employeeList 中还有其他员工需要走签约流程，回到 Step 1.5.1 处理下一个员工时，**步骤 ③ 必须重新调用 `/ai/vip/balance` 拉取最新余额**（因为本员工的 ④ 已经扣过 算力，旧余额已失效）。**禁止**用「上一员工查到的 balance − 上一员工 priceKCoin」自行推算结果作为下一员工的余额判断依据。
 
 ---
 

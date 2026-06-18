@@ -11,11 +11,12 @@ description: 数字人生成与参考音频技能。用于调用 deepsop / AI Ar
 
 - 模型列表来自现有前端接口返回值，按 `sourceTypeList: ['IMAGE_PROCESS', 'IMAGE_MODEL', 'VIDEO_MODEL', 'HUMAN_MODEL']` 取数。
 - 数字人可用模型只使用 `HUMAN_MODEL` 分类；展示时过滤 `hiddenState !== '0'` 的项。
+- 未指定数字人模型时，生成数字人默认取 `HUMAN_MODEL` 列表中 `sourceValue != "auto"` 且 `hiddenState === '0'` 的接口返回顺序第一个；不得在技能里说明或暗示数字人固定默认是某个模型。
 - 用户选择模型后，前端只依据接口返回的 `sourceValue`（写入 `methodType`）触发本地参数规则；这些规则不代表技能内置模型清单。
-- 费用预估、创建任务、只提交任务前，都必须重新读取 `HUMAN_MODEL` 列表并确认当前 `methodType/sourceValue` 的 `hiddenState === '0'`；如果接口返回 `hiddenState !== '0'` 或列表中不存在该值，必须停止，不得下任务。
+- 费用预估、创建任务、只提交任务前，都必须重新读取 `HUMAN_MODEL` 列表并确认当前 `methodType/sourceValue` 存在且 `hiddenState === '0'`；如果接口返回 `hiddenState !== '0'` 或列表中不存在该值，必须停止，不得下任务。模型是否可用只以本次模型列表接口返回为准，不得受技能描述、README、脚本常量或旧示例影响。
 - 用户只是在查询数字人模型列表、状态、参数、分辨率、素材限制或音色列表时，只返回查询信息；不要因为查询结果发现某个模型/音色可用而自动创建、预估或继续生成任务。
 - 提交生成前会先做费用预估，调用 `/ai/estimate/cost`。
-- 默认表单里的 `req_key` 是 `jimeng_realman_avatar_picture_omni_v15`。
+- 表单参数里的 `req_key` 按前端当前规则填充；它不是模型列表、模型名称或默认模型声明。
 - 数字人创建任务通过 `/ai/AiArtistRecord` 提交。
 - 数字人任务结果轮询与 `deepsop-genvis` 保持同一套逻辑和接口。
 - 参考音频既可以由预设音色合成，也可以由克隆音色合成。
@@ -61,14 +62,14 @@ description: 数字人生成与参考音频技能。用于调用 deepsop / AI Ar
 
 - 用户没有指定数量时，数字人视频默认只生成 1 个；除非用户明确要求多个版本且当前模型/接口支持，否则不要创建备用版本或补偿性重做任务。
 - 正常生成时不要先执行 `--help`、`--list-models`、读取/检查脚本源码，除非用户正在询问模型/参数/状态排查；不要使用 `~` 作为 workdir，不要用 `cd ... && ...`，不要用 `uv run` / `uv add` / `uv pip`。
-- 直接用已安装技能的绝对路径调用系统 Python，例如 `python C:\Users\Administrator\.openclaw\skills\deepsop-voxface\scripts\voxface.py --create ... --json-output`。如果需要轮询已提交任务，使用同一脚本的 `--poll TASK_ID --json-output`。
+- 直接用已安装技能的绝对路径调用系统 Python，例如 `python C:\Users\Administrator\.openclaw\skills\deepsop-voxface\scripts\voxface.py --create ... --json-output`。如果需要轮询已提交任务，使用同一脚本的 `--poll TASK_ID --json-output`。模型可用性必须由脚本/接口在预估和提交前实时校验，不得靠技能描述或示例命令判断。
 - 生成结果返回 `SUCCESS` 后，直接把本次视频/音频 URL 作为最终回复内容返回；不要再调用图片、视频或媒体分析工具去“查看效果、描述画质、分析内容”，除非用户明确要求分析、评价、描述或看视频。
 - 正常生成或轮询结果必须使用 `--json-output`，确保客户端能从 `url` / `urls` / `outputUrl(s)` / `mediaUrl(s)` / `videoUrl(s)` / `ossUrlList` 字段提取全部素材结果。不要只用自然语言说“生成成功”。
 
 ## 生成流程
 
 1. 先确认用户要的是数字人任务，而不是普通图片/视频生成。
-2. 读取数字人模型列表，优先使用 `HUMAN_MODEL`。
+2. 读取数字人模型列表，只使用 `HUMAN_MODEL`；未指定模型时取接口返回顺序第一个可用项。
 3. 根据所选模型校验参数可见性。
 4. 在预估和提交前都重新校验所选 `HUMAN_MODEL sourceValue` 是否仍为 `hiddenState === '0'`。
 5. 在提交前调用 `/ai/estimate/cost` 预估费用。
@@ -106,18 +107,18 @@ description: 数字人生成与参考音频技能。用于调用 deepsop / AI Ar
 
 ### 默认选中值
 
-当前 Vue 片段中，`humanModelOptions` 变化后直接把接口返回第一项的 `sourceValue` 写入 `form.methodType`。这是运行时取值规则，不是固定默认模型声明。
+当前 Vue 片段中，`humanModelOptions` 变化后直接把接口返回第一项的 `sourceValue` 写入 `form.methodType`。这是运行时取值规则，不是固定默认模型声明；第一项必须来自本次接口返回且为 `hiddenState === '0'` 的可用 `HUMAN_MODEL`。
 
 ```js
 this.form.methodType = newVal && newVal[0]?.sourceValue || ''
 ```
 
-因此不要在技能里写死、展示或向用户承诺模型名、模型 ID、可用模型清单或默认模型；实际可选项和默认选中值只以服务端返回为准。
+因此不要在技能里写死、展示或向用户承诺模型名、模型 ID、可用模型清单或默认模型；实际可选项和默认选中值只以服务端返回为准。生成数字人的默认模型就是 `HUMAN_MODEL` 列表第一个可用模型，而不是技能文档中的任何固定名称。
 
 ## 已确认的数字人参数规则
 
 - `methodType`：数字人模型接口值，来自获取模型列表接口返回的 `sourceValue`；仅用于请求参数生成与校验。
-- `req_key`：默认 `jimeng_realman_avatar_picture_omni_v15`。
+- `req_key`：按前端当前表单规则填充；不要把它解释成模型名或默认模型。
 - `prompt`：生成视频提示词，非必填。
 - `image_url`：人像图片，仅部分模型需要。
 - `video_url`：人像视频，仅部分模型需要。

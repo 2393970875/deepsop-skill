@@ -58,8 +58,8 @@ DEEPSOP_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxx
 |---|---|---|---|
 | 1 | Step 1.5 数字员工可用性 | `GET` | `/ai/presetEmployee/list` |
 | 1.1 | Step 1.5.1① 签约套餐列表 | `GET` | `/ai/setting/list?packageType=3` |
-| 1.2 | Step 1.5.1② 人民币→K币汇率 | `GET` | `/system/config/configKey/CNY_TO_KCOIN` |
-| 1.3 | Step 1.5.1③ K币余额查询 | `GET` | `/ai/vip/balance?userId={userId}` |
+| 1.2 | Step 1.5.1② 人民币→算力汇率 | `GET` | `/system/config/configKey/CNY_TO_KCOIN` |
+| 1.3 | Step 1.5.1③ 算力余额查询 | `GET` | `/ai/vip/balance?userId={userId}` |
 | 1.4 | Step 1.5.1④ 提交签约（扣K币） | `POST` | `/ai/order/purchaseIndependentPackageByKToken` |
 | 1.5 | Step 1.5.1③ 用户 Profile（取 userId） | `GET` | `/ai/user/profile` |
 | 2 | Step 3 提交任务 | `POST` | `/ai/presetEmployee/submitTask` |
@@ -149,11 +149,11 @@ DEEPSOP_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxx
 
 **② 展示套餐**
 
-获取人民币→K币汇率：
+获取人民币→算力汇率：
 接口：`GET https://ai.deepsop.com/prod-api/system/config/configKey/CNY_TO_KCOIN`
 响应 `msg` 即为汇率（`rate`）。
 
-应付 K 币计算：
+应付 算力计算：
 ```
 priceKCoin = actualPrice × (discountRate / 100) × rate
 ```
@@ -161,7 +161,7 @@ priceKCoin = actualPrice × (discountRate / 100) × rate
 向用户展示并等待用户回复序号。用户「取消」→ 终止：
 > 已取消签约，任务终止。
 
-**③ K 币余额校验**
+**③ 算力余额校验**
 
 > 🔒 **强制实时查询规则：每次进入本步骤都必须重新调用 `/ai/vip/balance`，严禁复用先前查询到的 balance 值。**
 
@@ -172,7 +172,7 @@ priceKCoin = actualPrice × (discountRate / 100) × rate
 响应 `data` 即为余额。
 
 - `balance < priceKCoin` → 终止：
-  > ❌ 余额不足，签约失败。当前余额：**{balance} K币**，所需：**{priceKCoin} K币**。
+  > ❌ 余额不足，签约失败。当前余额：**{balance} 算力**，所需：**{priceKCoin} 算力**。
   > 请前往 https://ai.deepsop.com 充值后重新下达任务。
 
 - `balance ≥ priceKCoin` → 进入 ④
@@ -244,21 +244,21 @@ priceKCoin = actualPrice × (discountRate / 100) × rate
 3. SELF_ONLY — 仅自己可见
 ```
 
-**E-3：AI 视频生成模型（默认）**
+**E-3：AI 视频生成模型（接口默认）**
 
-`param.methodType` **默认固定为 `"3"`**（Veo3.1 Fast Lite），无需用户选择。如需查看全部模型，可调：
+`param.methodType` 不在技能中固定。未指定模型时，必须调用模型列表接口，取 `VIDEO_MODEL` 中 `sourceValue != "auto"` 且 `hiddenState == "0"` 的接口返回顺序第一个作为本次默认模型。模型是否可用只以本次接口返回为准，不得受技能描述、参数表、旧示例或脚本常量影响。如需查看全部模型，可调：
 
 接口：`POST https://ai.deepsop.com/prod-api/ai/consumeSource/list?pageNum=1&pageSize=999`
 请求体：`{"sourceTypeList":["VIDEO_MODEL"],"hiddenState":"0"}`
 
-默认 methodType=`"3"` 下其他视频参数默认：
+选定 `methodType` 后，其他视频参数按下方 methodType 约束表和前端规则校正：
 - `resolution`: `720p`，`ratio`: `16:9`，`duration`: `8`（methodType=3 唯一允许值）
 - `generationType`: `"FIRST&LAST"`，`shotType`: `"single"`，`mode`: `"pro"`
 - `keepOriginalSound`: `"yes"`，`personGeneration`: `"allow_adult"`，`resizeMode`: `"pad"`
 - `n`: `1`，`generateAudio`: `true`
 - `enhancePrompt` / `promptExtend` / `multiShot`: `false`，`durationSwitch`: `"1"`
 
-> 若用户切换其他模型（Veo3.1 Pro / Sora2 Pro / kling-v3-omni 等），先调 `consumeSource/list` 拿 `sourceValue`，再据此 methodType 去下方「methodType → 取值约束表」校正各依赖字段，**不得**沿用默认值。
+> 不论用户是否指定模型，发起费用预估或任务提交前都必须重新以 `consumeSource/list` 校验当前 `sourceValue/methodType` 仍存在且 `hiddenState == "0"`；否则停止并反馈状态。
 
 **E-4：视频生成提示词确认（必问，禁止跳过）**
 
@@ -348,11 +348,11 @@ x-api-key: $DEEPSOP_API_KEY
 - `upperLimitTarget`：固定 10
 - `content`：来自 Step 1 的 `tiktokContent`（E-4 确认后的最终值）
 - `staffId`：固定为空字符串 `""`
-- `param`：嵌套对象，**有且仅有以下 27 个键**，必须按官方默认模板的键集构建（`text` 取自 E-4 确认后的最终提示词；`methodType` 默认 `"3"`）。**注意：当前 methodType 下 UI 不显的字段也必须传默认值，禁止裁剪 key**：
+- `param`：嵌套对象，**有且仅有以下 27 个键**，必须按官方模板的键集构建（`text` 取自 E-4 确认后的最终提示词；`methodType` 来自本次模型列表接口选中的 `sourceValue`）。**注意：当前 methodType 下 UI 不显的字段也必须传默认值，禁止裁剪 key**：
 
   | 字段 | 默认值 | 类型 | 说明 |
   |---|---|---|---|
-  | `methodType` | `"3"` | string | 视频生成模型，默认 Veo3.1 Fast Lite |
+  | `methodType` | 本次选中 `sourceValue` | string | 视频生成模型；未指定时取 `VIDEO_MODEL` 列表第一个可用模型 |
   | `multiShot` | `false` | boolean | 是否多镜头（仅 methodType=`"10"` 实际生效） |
   | `generationType` | `"FIRST&LAST"` | string | 生成类型；可选值受 methodType 约束 |
   | `text` | E-4 提示词 | string | 视频生成提示词，与 `Toby.content` 相同 |
@@ -422,7 +422,7 @@ x-api-key: $DEEPSOP_API_KEY
 | `"auto"` | Auto | `FIRST&LAST` | `720p` | `16:9`,`9:16` | 由模型自动决定 (键保留默认 `8`) | `single` |
 | `"1"` | Sora2 BetaMax | `TEXT`,`FIRST&LAST` | `720p` | `16:9`,`9:16` | step=5, 10–15, 默认 `10` | `single` |
 | `"2"` | Seedance1.5 Pro | `TEXT`,`FIRST&LAST` | `480p`,`720p`,`1080p` | `adaptive`,`1:1`,`3:4`,`4:3`,`16:9`,`9:16`,`21:9` | step=1, 4–12, 默认 `4` | `single` |
-| `"3"`（**默认**） | Veo3.1 Fast Lite | `TEXT`,`FIRST&LAST`,`REFERENCE` | `720p`,`1080p`,`4K` | `adaptive`,`16:9`,`9:16` | step=1, 8–8, 默认 `8`（**唯一允许 8**） | `single` |
+| `"3"` | Veo3.1 Fast Lite | `TEXT`,`FIRST&LAST`,`REFERENCE` | `720p`,`1080p`,`4K` | `adaptive`,`16:9`,`9:16` | step=1, 8–8, 默认 `8`（**唯一允许 8**） | `single` |
 | `"4"` | Veo3.1 Pro Lite | `TEXT`,`FIRST&LAST` | `720p`,`1080p`,`4K` | `adaptive`,`16:9`,`9:16` | step=1, 8–8, 默认 `8` | `single` |
 | `"5"` | Veo3.1 Fast | `TEXT`,`FIRST&LAST` | `720p`,`1080p`,`4K` | `adaptive`,`16:9`,`9:16` | step=2, 4–8, 默认 `4` | `single` |
 | `"6"` | Veo3.1 Pro | `TEXT`,`FIRST&LAST` | `720p`,`1080p`,`4K` | `adaptive`,`16:9`,`9:16` | step=2, 4–8, 默认 `4` | `single` |
@@ -447,7 +447,7 @@ x-api-key: $DEEPSOP_API_KEY
 >    - `generationType ∈ {REFERENCE, EDIT, FEATURE}` → `imageUrlList` ≥ 1 项
 >    - `generationType ∈ {CONTINUATION, EDIT, FEATURE}` → `firstClipUrl` 必填（仅 methodType ∈ {10,14} 支持）
 >    - `shotType="customize"` → `multiPrompt` ≥ 1 项；`text` 可留空
-> 5. 默认 methodType=`"3"` 下，合法 `param` 默认快照：`generationType="FIRST&LAST"`、`resolution="720p"`、`ratio="16:9"`、`duration=8`、`shotType="single"`、`enhancePrompt=false`，其他依赖字段保持空值（`null` 或 `[]`）。
+> 5. 当本次接口选中的 methodType=`"3"` 时，合法 `param` 快照：`generationType="FIRST&LAST"`、`resolution="720p"`、`ratio="16:9"`、`duration=8`、`shotType="single"`、`enhancePrompt=false`，其他依赖字段保持空值（`null` 或 `[]`）。
 
 **Toby 任务请求体示例：**
 ```json

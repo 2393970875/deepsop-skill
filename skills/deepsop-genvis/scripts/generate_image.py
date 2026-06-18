@@ -300,14 +300,14 @@ def estimate_generation_cost(payload):
         sufficient_balance = data.get("sufficientBalance")
 
         if estimated_cost is not None:
-            _progress(f"预估费用：{estimated_cost} K币")
+            _progress(f"预估费用：{estimated_cost} 算力")
 
         if sufficient_balance is True:
             _progress("余额充足，正在创建任务")
             return True
 
         if sufficient_balance is False:
-            _LAST_ESTIMATE_FAILURE_REASON = f"余额不足，无法提交创建任务。请前往 {RECHARGE_URL} 充值 K 币后重试。"
+            _LAST_ESTIMATE_FAILURE_REASON = f"余额不足，无法提交创建任务。请前往 {RECHARGE_URL} 充值 算力后重试。"
             print(_LAST_ESTIMATE_FAILURE_REASON, file=sys.stderr)
             return False
 

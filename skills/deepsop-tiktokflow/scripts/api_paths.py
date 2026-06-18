@@ -31,9 +31,9 @@ API_PATHS: Final[dict[str, str]] = {
     "preset_employee_list":            "/ai/presetEmployee/list",
     # 1.1：签约套餐列表
     "signup_package_list":             "/ai/setting/list?packageType=3",
-    # 1.2：人民币→K币汇率
+    # 1.2：人民币→算力汇率
     "kcoin_rate_config":               "/system/config/configKey/CNY_TO_KCOIN",
-    # 1.3：K币余额查询
+    # 1.3：算力余额查询
     "kcoin_balance":                   "/ai/vip/balance",
     # 1.4：提交签约（扣K币）
     "purchase_package_by_ktoken":      "/ai/order/purchaseIndependentPackageByKToken",

@@ -35,7 +35,7 @@ X-Api-Key: <api_key>
 }
 ```
 
-当 `sufficientBalance` 为 `false` 时，表示余额不足，不应继续提交创建任务，需要提醒用户先充值 K 币。
+当 `sufficientBalance` 为 `false` 时，表示余额不足，不应继续提交创建任务，需要提醒用户先充值 算力。
 
 ### 2. 创建生成任务
 
