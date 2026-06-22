@@ -986,6 +986,7 @@ SCRIPT_BODY_EOF
 - 必须**排除**所有地理位置词（省、市、区、县、镇、国家、大洲、城市/地区名），它们不属于关键词。
 - 必须**排除**已写入 employeeNumberRange* / storeNumberRange* / industryList 等其他字段的纯量词、人数、家数。
 - 提取后为每个核心名词补全中文同义词与对应英文翻译，最终用英文逗号 `,` 拼接（如"眼镜店" → "眼镜店,optical shop,眼镜零售,eyewear store"）；同义词去重，禁止保留分隔符前后空格。
+- `keywordList` 是 AiWa 必填项。若无法从用户指令中识别出至少 1 个非空关键词，**不得提交任务**，必须先向用户追问要挖取的客户类型 / 行业 / 产品关键词。
 
 【行业推断规则（industryList）】
 - 根据 keywordList 的核心业务语义推断 1~3 个一级行业标签，用英文逗号 `,` 拼接（如：服装、数码、家居、餐饮、美妆、医疗、教育、汽车、建材、机械、化工、能源、金融、物流、农业、零售、家纺）。
@@ -1428,10 +1429,10 @@ curl -s -H "x-api-key: $DEEPSOP_API_KEY" 'https://ai.deepsop.com/prod-api/ai/use
    其中 `variableLabel` = 占位符名（不含 `${}`），`variableAttribute` = 匹配到的 code。
 
 **AiWa 参数构建规则：**
-- `totalTarget`：定额模式下填 Step 1 的 totalTarget，周期模式下为 null
+- `totalTarget`：当前 Step 3 提交流程固定为定额模式，必须填大于 0 的整数；优先使用 Step 1 从用户指令提取的 totalTarget，若用户未给出数量，必须先调用字典接口获取任务目标默认值并填入，仍无法取得默认值时不得提交任务，需向用户追问目标数量。
 - `incrementalTarget`：必填，固定填 5000（不可为 null）
 - `upperLimitTarget`：固定填 5000
-- `keywordList`：Step 2 的 keywordList **必须用 `.split(",")` 拆分成数组**（绝不可保留为逗号字符串）
+- `keywordList`：Step 2 的 keywordList **必须用 `.split(",")` 拆分成数组**（绝不可保留为逗号字符串），并且清洗空白后必须至少包含 1 个非空关键词；若为空，必须回到 Step 2 重新分析或向用户追问，禁止提交 `[]`。
 - `continent`：Step 2 的 continent，**无则填 `null`，不得填 `""`**
 - `country`：Step 2 的 country，**无则填 `null`，不得填 `""`**
 - `countryCodeList`：Step 2 的 countryCodeList **必须用 `.split(",")` 拆分成数组**，无则填 `[]`（**不得填 `""` 或 `null`**）

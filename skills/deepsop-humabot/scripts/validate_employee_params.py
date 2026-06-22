@@ -312,14 +312,25 @@ def validate_aiwa(p: dict, errors: list) -> None:
             "改为整数 5000",
         )
 
-    # totalTarget：定额模式整数，周期模式 null（这里按整数或 None 任一通过）
+    # totalTarget：当前提交流程固定为定额任务，必须是正整数。
     tt = p.get("totalTarget", "<missing>")
-    if tt != "<missing>" and tt is not None and not (isinstance(tt, int) and not isinstance(tt, bool)):
+    if tt == "<missing>":
+        pass
+    elif not (isinstance(tt, int) and not isinstance(tt, bool)):
         err(
             errors,
             f"{base}.totalTarget",
             "WRONG_TYPE",
-            f"AiWa.totalTarget 必须是整数或 null，当前为 {tt!r}",
+            f"AiWa.totalTarget 必须是正整数，当前为 {tt!r}",
+            "任务目标数量必填；请从用户指令或字典接口默认值获取后再提交",
+        )
+    elif tt <= 0:
+        err(
+            errors,
+            f"{base}.totalTarget",
+            "EMPTY",
+            f"AiWa.totalTarget 必须是大于 0 的任务目标数量，当前为 {tt!r}",
+            "任务目标数量必填；请从用户指令或字典接口默认值获取后再提交",
         )
 
     # 数组类字段
@@ -334,6 +345,18 @@ def validate_aiwa(p: dict, errors: list) -> None:
                 "WRONG_TYPE",
                 f"AiWa.{k} 必须是数组，当前为 {type(v).__name__}（值 {v!r}）",
                 "若来源是逗号字符串，必须先 .split(',') 拆分成数组；空时填 [] 而不是 \"\"",
+            )
+
+    kw = p.get("keywordList")
+    if isinstance(kw, list):
+        normalized_kw = [item.strip() for item in kw if isinstance(item, str) and item.strip()]
+        if not normalized_kw:
+            err(
+                errors,
+                f"{base}.keywordList",
+                "EMPTY",
+                "AiWa.keywordList 必须包含至少 1 个非空关键词，当前为空或仅包含空字符串",
+                "关键字必填；请重新执行 Step 2 关键词提取，无法识别时向用户追问，不得提交空数组",
             )
 
     # continent / country：null 或非空字符串，禁止 ""
