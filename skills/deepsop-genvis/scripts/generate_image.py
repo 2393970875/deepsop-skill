@@ -161,6 +161,7 @@ FEISHU_WEBHOOK_URL = os.environ.get("FEISHU_WEBHOOK_URL")
 # submission. Set via the CLI `--dry-run` flag or programmatically.
 DRY_RUN = False
 _LAST_ESTIMATE_FAILURE_REASON = None
+_LAST_ESTIMATED_COST = None
 
 
 class GenerationTaskCreationError(Exception):
@@ -212,6 +213,12 @@ def _emit_cli_result(result, args, markdown_label=""):
             payload["urls"] = result["urls"]
         if isinstance(result, dict) and result.get("local_path"):
             payload["local_path"] = result["local_path"]
+        estimated_cost = (result or {}).get("estimatedCost") if isinstance(result, dict) else None
+        if estimated_cost is None:
+            estimated_cost = _LAST_ESTIMATED_COST
+        if estimated_cost is not None:
+            payload["estimatedCost"] = estimated_cost
+            payload["costUnit"] = "算力"
         print(json.dumps(payload, ensure_ascii=False), flush=True)
         return
 
@@ -283,8 +290,9 @@ def get_headers():
 
 
 def estimate_generation_cost(payload):
-    global _LAST_ESTIMATE_FAILURE_REASON
+    global _LAST_ESTIMATE_FAILURE_REASON, _LAST_ESTIMATED_COST
     _LAST_ESTIMATE_FAILURE_REASON = None
+    _LAST_ESTIMATED_COST = None
     try:
         response = requests.post(ESTIMATE_COST_URL, json=payload, headers=get_headers(), timeout=30)
         response.raise_for_status()
@@ -300,6 +308,7 @@ def estimate_generation_cost(payload):
         sufficient_balance = data.get("sufficientBalance")
 
         if estimated_cost is not None:
+            _LAST_ESTIMATED_COST = estimated_cost
             _progress(f"预估费用：{estimated_cost} 算力")
 
         if sufficient_balance is True:
