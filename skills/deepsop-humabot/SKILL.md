@@ -952,12 +952,13 @@ SCRIPT_BODY_EOF
 用以下 prompt 对同一用户指令做第二轮分析，严格返回 JSON。**该 prompt 的 JSON 字段名、结构、取值类型不得改写**——下游 `validate_employee_params.py` 与 `addressObjList` 的 `type=1/0` 构建逻辑都依赖此契约。
 
 ```
-根据【指令】描述，Json格式返回数据，其中所有数值部分一律以字符串输出（如 "50"，禁止输出数字 50），未提及的字段一律返回空字符串 ""（数组类字段除外，按字段说明处理）。
+根据【指令】描述，Json格式返回数据，其中数值部分用字符串输出；未提及的字段一律返回空字符串 ""。
 
 【全局原则】
-1. 只识别描述中明确出现的信息，禁止过度解读、补全、推断未提及的内容；不确定时一律返回空字符串。
+1. 只识别用户输入内容中明确出现的信息，禁止过度解读、补全、联想或臆造未出现的信息；不确定时一律返回空字符串。
 2. 输出必须是合法 JSON，且除 JSON 外不得出现任何说明文字、Markdown 代码块标记、注释。
 3. 字段顺序、键名、类型必须严格与下方"规则"完全一致。
+4. 涉及七大洲、国家、排除七大洲、排除国家、详细地址时，必须先识别明确出现的包含/排除地域，再从临时删除这些内容后的剩余文本中二次识别国家层级以下的详细地址。
 
 【数值区间通用规则（员工/门店等所有 RangeStart / RangeEnd 字段统一适用）】
 - 仅当描述中明确出现"<对象>X<量词><比较词>"形态时才提取，三种比较词分别处理：
@@ -968,24 +969,32 @@ SCRIPT_BODY_EOF
 - 未出现比较词或仅出现单一具体数字（如"员工50人"无以上/以下/左右）→ Start/End 均为 ""。
 - 描述中"找X家门店""开发X个客户""挖掘X家"等是**任务目标数量**，**不**写入 storeNumberRange* / employeeNumberRange*；任务目标已在 Step 1 的 totalTarget 处理，本步骤不重复提取。
 
-【国家 vs 七大洲互斥规则】
-- 如果描述中提到任何具体国家（如"中国"、"英国"、"美国"），则 continent 必须为 ""，仅在 country / countryCodeList 中输出。
-- 仅当描述中只提到大洲（如"亚洲眼镜店"）而未提到任何国家时，才在 continent 输出对应大洲名，country / countryCodeList 留空（country = ""，countryCodeList = ""）。
-- 七大洲取值集合限定为：亚洲、欧洲、非洲、北美洲、南美洲、大洋洲、南极洲。
+【国家、七大洲、地域别名与排除规则】
+- `continent` 为后端兼容字段，本轮分析始终返回 ""；七大洲、地域别名、地域术语、政策概念都必须直接展开到 `country` / `countryCodeList` 或 `excludeCountry` / `excludeCountryCodeList`，不得输出"欧洲国家""北美洲国家""欧美国家""一带一路"等泛称。
+- 仅当用户原文明确出现国家、国家简称、国家别称、七大洲名称、明确地域别名、明确地域术语或政策概念时，才识别 `country`。
+- 七大洲、地域别名、地域术语、政策概念由识别模型直接列出该范围内的具体国家和 ISO 3166-1 alpha-2 代码，不依赖接口数据二次展开。
+- 地域别名规则：欧美=欧洲国家加北美洲国家；美洲=北美洲国家加南美洲国家；北美=北美洲国家；南美=南美洲国家。
+- "本国" 按中国处理；"海外" 不是国家，不填 `country`。
+- 仅当用户原文明确出现排除含义时，才识别 `excludeCountry`。排除含义包括"排除/不要/不含/剔除/去掉/除了/非/不找/无需/不包括"等与地域同时出现的表达。
+- 若出现排除七大洲、排除地域别名、排除地域术语或排除政策概念，必须直接列出该范围内具体排除国家和对应 ISO 代码。
+- 从中国视角理解，用户输入"海外"表示排除中国，`excludeCountry` 返回"中国"；用户说"非本国"也表示排除中国。未明确出现排除含义则返回空字符串。
 
-【地址提取规则（addressObjList）】
-- 第一步：识别并**排除**所有出现在公司名称、品牌名、企业全称、组织机构名、店铺名中的地理位置——例：【巨龙光学（福建）有限公司】中的"福建"、【XX上海分公司】中的"上海"、【杭州佬大食品】中的"杭州"，均不参与提取。
-- 第二步：在剩余描述里提取明确出现的、国家层级之下的地理位置；中国地址按"一级（省/直辖市/自治区）→二级（市）→三级（区/县/镇）"拆分，**多级用英文逗号 `,` 拼接到同一字符串**（如"浙江宁波鄞州区" → "浙江,宁波,鄞州区"）。
-- 第三步：非中国地址（英文国家/地区下的地理位置）一律以英文原文整段输出，不做层级拆分（如"London, UK" → "London, UK"）。
-- 多个互不归属的地址：用英文分号 `;` 分隔多组（如"浙江宁波;广东深圳" → "浙江,宁波;广东,深圳"；"London, UK; Paris, France" → "London, UK; Paris, France"）。下游会按 `;` 切分为多个对象，再按是否含中文拆分到 `type=1`（结构化省市县）或 `type=0`（自由文本 address）。
-- 如排除公司名后**无其他地理位置**，返回 ""（下游会构造占位 `type=1` 空对象，禁止你输出任何编造地址）。
+【地址提取规则（addressObjList / detailedAddress）】
+- 在 `country` / `excludeCountry` 识别完成后，先从原文中临时删除这些已识别内容（含对应七大洲、国家、排除七大洲、排除国家、地域别名、地域术语、政策概念原文），再从剩余文本中二次提取国家层级以下的详细地址。
+- 优先识别并排除所有出现在公司名称、品牌名称、企业全称、组织机构名称、店铺名中的地理位置，如【巨龙光学（福建）有限公司】中的"福建"、【XX上海分公司】中的"上海"。
+- 排除后，从剩余描述中提取国家层级之下的所有地理位置。提取时，按【省/直辖市/自治区】、【市/地级市/自治州/地区】、【县/区/县级市】三个层级识别。
+- 中国直辖市北京、上海、天津、重庆作为一级地址；其下区县作为二级地址。浙江省义乌市这类县级市应归入三级地址：浙江省义乌市输出"浙江省,,义乌市"，浙江省金华市义乌市输出"浙江省,金华市,义乌市"。
+- 仅提及"杭州"且能确定为杭州市时，输出",杭州市"；"我要找杭州关于环保的公司"输出",杭州市"。
+- `addressObjList` 输出格式为"一级地址,二级地址,三级地址"，若无某级地址则保留逗号占位以保持层级对应。例如仅提及"金华市"输出",金华市"；"浙江省杭州市"输出"浙江省,杭州市"；"浙江省杭州市余杭区"输出"浙江省,杭州市,余杭区"。
+- 如果不能非常确定该地址属于一级/二级/三级，`addressObjList` 必须返回空字符串，改由 `detailedAddress` 返回原文中剩余的详细地址信息。
+- 若 `addressObjList` 已经非常确定并成功输出，`detailedAddress` 返回空字符串；若没有任何有效详细地址，二者都返回空字符串。
 
 【关键词提取规则（keywordList）】
-- 优先识别"客户挖掘"语义片段（包含"找/开发/挖掘/拓展/寻找/获客/开拓/对接"等动词），仅从该片段提取核心名词。
-- 若整段描述无客户挖掘语义（如纯品牌运营/内容生产指令），则从整段提取核心业务名词。
-- 必须**排除**所有地理位置词（省、市、区、县、镇、国家、大洲、城市/地区名），它们不属于关键词。
-- 必须**排除**已写入 employeeNumberRange* / storeNumberRange* / industryList 等其他字段的纯量词、人数、家数。
-- 提取后为每个核心名词补全中文同义词与对应英文翻译，最终用英文逗号 `,` 拼接（如"眼镜店" → "眼镜店,optical shop,眼镜零售,eyewear store"）；同义词去重，禁止保留分隔符前后空格。
+- 首先识别描述中与客户挖掘相关的部分（匹配"找"、"开发"、"挖掘"、"拓展"、"寻找"、"搜索"等关键词）。
+- 做关键词识别时，需要临时从该部分删除所有地址、国家、七大洲、地域别名、地域术语、政策概念信息后再提取关键词；临时删除只影响 `keywordList`，不影响国家、排除国家、详细地址等其他字段识别。
+- 关键词应从剩余文本中提取核心产品词、业务词、目标客户角色词；保留与目标客户类型强相关的词，如采购商、进口商、批发商、经销商。
+- 去除主语性或资料字段词汇，如客户、顾客、用户、联系人、联系方式、邮箱、邮箱地址、信息。地址性词汇不得作为基础词。
+- 然后为每个基础词生成：1 个中文同义词、1 个英文对应词。最终返回格式为基础词,中文同义词,英文对应词，多个基础词之间也用英文逗号分隔。若无法生成同义词或英文词，则用空字符串占位。
 - `keywordList` 是 AiWa 必填项。若无法从用户指令中识别出至少 1 个非空关键词，**不得提交任务**，必须先向用户追问要挖取的客户类型 / 行业 / 产品关键词。
 
 【行业推断规则（industryList）】
@@ -994,10 +1003,13 @@ SCRIPT_BODY_EOF
 
 规则如下（**键名/顺序不可改**）：{
   "keywordList": "按【关键词提取规则】产出的英文逗号分隔字符串。例：眼镜店,optical shop,眼镜零售,eyewear store",
-  "continent": "按【国家 vs 七大洲互斥规则】产出。仅在描述只提到大洲、未提到任何国家时才填；提到国家则必须为 \"\"。例：亚洲",
-  "country": "明确提及的国家，多个用英文逗号分隔。例：中国,英国",
-  "countryCodeList": "对应国家的 ISO 3166-1 alpha-2 代码，顺序与 country 一一对应，多个用英文逗号分隔。例：CN,GB",
-  "addressObjList": "按【地址提取规则】产出的字符串：单个地址内用 `,` 拼接层级，多个不同地址用 `;` 分隔；非中国地址保留英文原文不拆层级；无地址时为 \"\"。例：浙江,宁波;London, UK",
+  "continent": "后端兼容字段，始终返回空字符串 \"\"；七大洲必须展开到 country / countryCodeList。",
+  "country": "按【国家、七大洲、地域别名与排除规则】识别出的包含国家，多个用英文逗号分隔；为空返回 \"\"。",
+  "countryCodeList": "为 country 字段中识别出的所有国家输出对应 ISO 3166-1 alpha-2 代码，多个用英文逗号分隔；country 为空时必须为空字符串。",
+  "excludeCountry": "按【国家、七大洲、地域别名与排除规则】识别出的排除国家，多个用英文逗号分隔；为空返回 \"\"。",
+  "excludeCountryCodeList": "为 excludeCountry 字段中识别出的所有排除国家输出对应 ISO 3166-1 alpha-2 代码，多个用英文逗号分隔；excludeCountry 为空时必须为空字符串。",
+  "addressObjList": "按【地址提取规则】产出的确定层级地址字符串：一级地址,二级地址,三级地址；若无某级地址保留逗号占位；无确定层级地址时为 \"\"。",
+  "detailedAddress": "仅用于承接无法非常确定层级的详细地址。若 addressObjList 已确定并成功输出则返回 \"\"；若详细地址无法确定一级/二级/三级，则返回剩余详细地址信息，同时 addressObjList 返回 \"\"；若没有详细地址也返回 \"\"。",
   "employeeNumberRangeStart": "按【数值区间通用规则】仅在描述明确包含 '员工X人以上/以下/左右/到/至' 时提取最小值；否则为 \"\"。",
   "employeeNumberRangeEnd": "按【数值区间通用规则】仅在描述明确包含 '员工X人以上/以下/左右/到/至' 时提取最大值；否则为 \"\"。",
   "storeNumberRangeStart": "按【数值区间通用规则】仅在描述明确包含 '门店X家以上/以下/左右/到/至' 或 'X家门店以上/以下/左右' 时提取最小值；否则为 \"\"。'找X家门店' 不属于此字段。",
@@ -1006,7 +1018,7 @@ SCRIPT_BODY_EOF
 }
 ```
 
-> 📌 **`addressObjList` 字段升级说明**：本版本约定多个地址使用英文分号 `;` 分隔多组，组内用英文逗号 `,` 分级。下游 AiWa 参数构建规则（见后文「AiWa 参数构建规则」中 `addressObjList` 一节）将该字符串先按 `;` 切多个原子地址，再对每个原子地址按"是否包含中文"决定 `type=1`（中文结构化）或 `type=0`（英文自由文本）；空字符串仍走占位对象。
+> 📌 **`addressObjList` / `detailedAddress` 字段说明**：本版本对齐前端 AiWa 解析逻辑：确定层级的地址只用英文逗号 `,` 表示"一级,二级,三级"，构造 `type=1`；无法确定层级的剩余详细地址放入 `detailedAddress`，构造 `type=0`；两者都为空时仍走占位对象。
 
 ---
 
@@ -1037,7 +1049,7 @@ SCRIPT_BODY_EOF
 > - 例：任务里同时有 AiWa 和 Frank → `employeeParams: { "AiWa": {...}, "Frank": {...} }`，两个员工的参数都是各自独立的对象，不得混合到同一个对象里，也不得只挂一个员工的参数。
 >
 > **每个员工子对象内部参数清单（按员工查阅下文「{员工} 参数构建规则」与「{员工} 结构强约束」获取必填键、固定值、示例）：**
-> - `AiWa`: `totalTarget` / `incrementalTarget` / `upperLimitTarget` / `keywordList` / `continent` / `country` / `countryCodeList` / `addressObjList` / `industryList`（外加可选范围字段 `employeeNumberRangeStart` / `employeeNumberRangeEnd` / `storeNumberRangeStart` / `storeNumberRangeEnd`，仅当 Step 2 提取到值时才放入）。
+> - `AiWa`: `totalTarget` / `incrementalTarget` / `upperLimitTarget` / `keywordList` / `continent` / `country` / `countryCodeList` / `excludeCountry` / `excludeCountryCodeList` / `addressObjList` / `industryList`（外加可选范围字段 `employeeNumberRangeStart` / `employeeNumberRangeEnd` / `storeNumberRangeStart` / `storeNumberRangeEnd`，仅当 Step 2 提取到值时才放入）。
 > - `Frank`: `incrementalTarget` / `upperLimitTarget` / `senderEmail` / `language` / `templateId` / `emailPlanList`（`emailPlanList` 元素含 `delayDay` / `emailSubject` / `emailText` / `loading`）。
 > - `Fran`: `priority` / `scriptId` / `callingNumber` / `agentProfileId` / `minConcurrency` / `ringingDuration` / `incrementalTarget` / `upperLimitTarget`。
 > - `Lisa`: `signName` / `templateCode` / `templateType` / `templateContent` / `incrementalTarget` / `upperLimitTarget` / `qualificationName` / `templateParamList`。
@@ -1436,16 +1448,15 @@ curl -s -H "x-api-key: $DEEPSOP_API_KEY" 'https://ai.deepsop.com/prod-api/ai/use
 - `continent`：Step 2 的 continent，**无则填 `null`，不得填 `""`**
 - `country`：Step 2 的 country，**无则填 `null`，不得填 `""`**
 - `countryCodeList`：Step 2 的 countryCodeList **必须用 `.split(",")` 拆分成数组**，无则填 `[]`（**不得填 `""` 或 `null`**）
-- `addressObjList`：根据 Step 2 的 `addressObjList` 字符串构建数组。**先按英文分号 `;` 切成多个原子地址**，再对每个原子地址按下面规则各自构造一个对象：
-  - **情况 1（整体为空字符串 `""`）**：Step 2 未识别到任何地址。必须填占位 `[{"type":1,"province":"","city":"","county":"","address":""}]`，**不得填 `[]`**。
-  - **情况 2（原子地址包含中文）**：判定为中文结构化地址，按英文逗号 `,` 切分得到层级数组（最多三段：省/市/县），不足三段后续位补 `""`。填 `type=1`、`address=""`：
-    - `"浙江,宁波"` → `{"type":1,"province":"浙江","city":"宁波","county":"","address":""}`
-    - `"浙江,宁波,鄞州区"` → `{"type":1,"province":"浙江","city":"宁波","county":"鄞州区","address":""}`
-    - `"上海"` → `{"type":1,"province":"上海","city":"","county":"","address":""}`
-  - **情况 3（原子地址不含中文 / 为英文自由文本）**：填 `type=0`、`province/city/county=""`、`address` 放原子原文：
-    - `"London, UK"` → `{"type":0,"province":"","city":"","county":"","address":"London, UK"}`
-  - **多个原子地址**：按 `;` 切完后，每个原子单独走情况 2 或情况 3，最终多对象并列在数组里：
-    - `"浙江,宁波;London, UK"` → `[{"type":1,"province":"浙江","city":"宁波","county":"","address":""},{"type":0,"province":"","city":"","county":"","address":"London, UK"}]`
+- `excludeCountry`：Step 2 的 excludeCountry，**无则填 `null`，不得填 `""`**；未识别到排除国家时可省略该键以兼容旧后端，但若 Step 2 非空则必须放入 AiWa。
+- `excludeCountryCodeList`：Step 2 的 excludeCountryCodeList **必须用 `.split(",")` 拆分成数组**，无则填 `[]`；未识别到排除国家时可省略该键以兼容旧后端，但若 Step 2 非空则必须放入 AiWa。
+- `addressObjList`：根据 Step 2 的 `addressObjList` 与 `detailedAddress` 字符串构建数组，逻辑对齐前端 `getAiWaAddressObjList`：
+  - **情况 1（`detailedAddress` 非空）**：说明详细地址无法非常确定层级。必须填自由文本对象 `[{"type":0,"province":"","city":"","county":"","address":"{detailedAddress}"}]`，并且不得同时填 province/city/county。
+  - **情况 2（`detailedAddress` 为空，`addressObjList` 非空）**：按英文逗号 `,` 拆成 `[province, city, county]`，保留空位占位，构造单个 `type=1` 对象。例如：
+    - `"浙江省,,义乌市"` → `{"type":1,"province":"浙江省","city":"","county":"义乌市","address":""}`
+    - `"浙江省,金华市,义乌市"` → `{"type":1,"province":"浙江省","city":"金华市","county":"义乌市","address":""}`
+    - `",杭州市"` → `{"type":1,"province":"","city":"杭州市","county":"","address":""}`
+  - **情况 3（`detailedAddress` 与 `addressObjList` 都为空）**：Step 2 未识别到任何地址。必须填占位 `[{"type":1,"province":"","city":"","county":"","address":""}]`，**不得填 `[]`**。
   - **`type` 取值语义**：`1` = 中文结构化拆分地址（仅填 `province/city/county`）；`0` = 自由文本地址（仅填 `address`）。**禁止两者同时填**（`type=1` 时 `address` 必须为 `""`；`type=0` 时 `province/city/county` 必须全为 `""`），违反 `validate_employee_params.py` 会以 `TYPE_ADDRESS_CONFLICT` 拦截。
 - `industryList`：Step 2 的 industryList **必须用 `.split(",")` 拆分成数组**
 
@@ -1457,7 +1468,7 @@ curl -s -H "x-api-key: $DEEPSOP_API_KEY" 'https://ai.deepsop.com/prod-api/ai/use
 >    - `employeeList`（Step 1 用来分发员工，请求体只关心 `employeeParams` 里的子键）
 >    - `language`（仅在 `employeeParams.Frank` 子对象内部使用，禁止挂到根级或 AiWa 子对象内）
 >    - `totalTarget`（**只能**作为 `employeeParams.AiWa.totalTarget`，**不得**挂到 `collaborationSubmitTaskParam` 根级）
-> 4. AiWa 必填的 9 个键：`totalTarget` / `incrementalTarget` / `upperLimitTarget` / `keywordList` / `continent` / `country` / `countryCodeList` / `addressObjList` / `industryList`，**一个都不能漏**。
+> 4. AiWa 必填的 9 个键：`totalTarget` / `incrementalTarget` / `upperLimitTarget` / `keywordList` / `continent` / `country` / `countryCodeList` / `addressObjList` / `industryList`，**一个都不能漏**。`excludeCountry` / `excludeCountryCodeList` 是排除国家扩展字段，Step 2 提取到非空时必须一并放入 AiWa。
 > 5. `currentModule` 必须在 `collaborationSubmitTaskParam` 内，**值固定为 `"content"`**（任何员工组合下都不得写 `"analysis"`）。
 
 **AiWa 任务请求体示例（仅 AiWa 单独执行 — 直接对照拷贝，不要自由发挥）：**
@@ -1478,6 +1489,8 @@ curl -s -H "x-api-key: $DEEPSOP_API_KEY" 'https://ai.deepsop.com/prod-api/ai/use
         "continent": null,
         "country": null,
         "countryCodeList": [],
+        "excludeCountry": null,
+        "excludeCountryCodeList": [],
         "addressObjList": [{"type": 1, "province": "", "city": "", "county": "", "address": ""}],
         "industryList": ["家纺", "纺织"]
       }
@@ -1506,6 +1519,7 @@ curl -s -H "x-api-key: $DEEPSOP_API_KEY" 'https://ai.deepsop.com/prod-api/ai/use
 >       "continent": "",                         // ❌ 应是 null
 >       "country": "",                           // ❌ 应是 null
 >       "countryCodeList": "",                   // ❌ 应是 []
+>       "excludeCountryCodeList": "",            // ❌ 应是数组 []，若不需要排除国家可省略或填 []
 >       "addressObjList": []                     // ❌ 必须放占位对象
 >     }
 >     // ❌ 缺 employeeParams 包装层

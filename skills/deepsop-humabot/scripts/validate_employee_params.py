@@ -334,7 +334,7 @@ def validate_aiwa(p: dict, errors: list) -> None:
         )
 
     # 数组类字段
-    for k in ("keywordList", "countryCodeList", "addressObjList", "industryList"):
+    for k in ("keywordList", "countryCodeList", "excludeCountryCodeList", "addressObjList", "industryList"):
         v = p.get(k, "<missing>")
         if v == "<missing>":
             continue
@@ -359,8 +359,8 @@ def validate_aiwa(p: dict, errors: list) -> None:
                 "关键字必填；请重新执行 Step 2 关键词提取，无法识别时向用户追问，不得提交空数组",
             )
 
-    # continent / country：null 或非空字符串，禁止 ""
-    for k in ("continent", "country"):
+    # continent / country / excludeCountry：null 或非空字符串，禁止 ""
+    for k in ("continent", "country", "excludeCountry"):
         if k not in p:
             continue
         v = p[k]
