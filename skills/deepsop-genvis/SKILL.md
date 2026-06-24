@@ -46,6 +46,7 @@ DEEPSOP_API_KEY=sk-your_api_key_here
 - 指定某个视频模型且使用上文网络图片参考生成视频时，命令形态是：`python C:\Users\Administrator\.openclaw\skills\deepsop-genvis\scripts\generate_image.py "<视频提示词>" --model "<接口返回的sourceValue或用户明确指定的模型别名>" --generation-type REFERENCE --image-url-list "<url1>,<url2>" --json-output`。只需提交任务并轮询结果；提交前必须由脚本/接口按最新模型列表确认该模型 `hiddenState == "0"`，不要读源码或做 dry-run。
 - 生成结果返回 `SUCCESS` 后，直接把本次结果 URL 作为最终回复内容返回；不要再调用 `image`/视觉分析工具去“查看效果、描述画质、分析图片”，除非用户明确要求分析、评价、描述或看图。最终回复中保留图片/视频 URL 或 Markdown 媒体链接，客户端会据此渲染预览卡片。
 - 正常生成必须带 `--json-output`，确保客户端能从 `url` / `urls` / `outputUrl(s)` / `mediaUrl(s)` / `imageUrl(s)` / `ossUrlList` 字段提取全部图片或视频结果。不要只用自然语言说“生成成功”。
+- 费用字段单位必须按接口语义展示为“算力”。`estimatedCost` 表示消耗算力，不是人民币；生成后详情若展示费用，必须写成 `费用：{estimatedCost} 算力`。如确需展示人民币估算，只能额外按 `1元 = 10算力` 换算并明确标注，不能把算力数值直接标成“元”。
 - 只有脚本本次执行的 stderr 明确返回 `hiddenState=1` / `当前已停用` 时，才允许告诉用户该接口返回项已停用；如果脚本实际使用的是接口返回的第一项，只能说明“未显式指定模型，按接口返回顺序选择了本次 `sourceValue`”，禁止推断或编造某个模型已停用。
 - 用户只是在问模型列表、所有模型（包括停用）、某个模型的参数/选项/分辨率/时长/支持素材/状态排查时，只回答查询结果或本地 methodType/sourceValue 参数规则；不要创建、预估或继续执行生成任务，除非用户再次明确要求“生成/提交/开始做”。
 - 用户给本地参考图/视频/音频时，先上传成可访问 URL，再放入对应参数。
@@ -163,7 +164,8 @@ python3 scripts/generate_image.py "x" --poll <task_id> --max-wait 120 --json-out
 ## 输出契约
 
 - stdout 只输出最终一行结果：默认 URL，`--json-output` 为单行 JSON，`--markdown-output` 为 Markdown 图片链接。
-- stderr 输出进度、费用、任务 ID、警告和失败原因。
+- `--json-output` 成功结果会包含 `estimatedCost` 和 `costUnit: "算力"`；外层详情展示必须使用该单位，不得显示为“元”。
+- stderr 输出进度、费用、任务 ID、警告和失败原因；其中费用单位同样是“算力”。
 - 退出码：`0` 成功，`1` 失败或超时。
 
 ## 错误处理

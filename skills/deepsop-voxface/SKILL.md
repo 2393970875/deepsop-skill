@@ -20,6 +20,7 @@ description: 数字人生成与参考音频技能。用于调用 deepsop / AI Ar
 - 数字人创建任务通过 `/ai/AiArtistRecord` 提交。
 - 数字人任务结果轮询与 `deepsop-genvis` 保持同一套逻辑和接口。
 - 参考音频既可以由预设音色合成，也可以由克隆音色合成。
+- 费用字段单位必须按接口语义展示为“算力”。`estimatedCost` 表示消耗算力，不是人民币；数字人生成后详情若展示费用，必须写成 `费用：{estimatedCost} 算力`。如确需展示人民币估算，只能额外按 `1元 = 10算力` 换算并明确标注，不能把算力数值直接标成“元”。
 
 ## 前置条件：DEEPSOP_API_KEY
 
@@ -246,7 +247,7 @@ this.form.methodType = newVal && newVal[0]?.sourceValue || ''
 
 ### 预估结果
 
-- `estimatedCost`：预估费用。
+- `estimatedCost`：预估消耗算力，单位是“算力”，不是“元”。
 - `sufficientBalance`：余额是否充足。
 
 余额不足时，必须停止后续提交。
