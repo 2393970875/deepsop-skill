@@ -155,7 +155,8 @@ DEEPSOP_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxx
   "executionMode": "判断描述中是否明确提及每日/每天/周期性，如果提及则返回周期性任务，未提及则返回定额任务"
   "totalTarget": "提取描述中提及的数量（无单位纯数字）"
   "employeeList": "首先将描述按逗号、顿号等分隔符拆分成多个子任务，然后为每个子任务匹配对应员工：
-    - 挖掘客户职能（AiWa）：匹配任何包含“找”、“开发”、“行业”、“客户”等与客户挖掘相关的描述，以及没有明确匹配其他职能的单子任务
+    - 最高优先级：如果描述同时包含销售动作（发邮件/打电话/发短信等）和明确客户来源词（客户管理、客户池、已有客户、系统内客户、公司联系人、联系人、地址簿、CRM、从客户管理、从客户池、从已有客户），则这些来源词只表示销售员工的客户来源设置，绝不触发 AiWa；此时 employeeList 只返回对应销售员工（如 Fran），不要包含 AiWa。
+    - 挖掘客户职能（AiWa）：仅匹配明确的新客户挖掘/客户开发需求，如“找N个XX客户”“开发XX行业客户”“挖掘新的XX采购商”“拓展海外XX客户”等。若句子已经明确客户来源为客户管理/客户池/已有客户/地址簿，则“找/挖取/获取/客户/联系人/公司联系人”等词不得作为 AiWa 触发词。
     - 邮件销售职能（Frank）：匹配包含“邮件”、“发邮件”等关键词的描述
     - 电话销售职能（Fran）：匹配包含“电话”、“打电话”、“电话销售”等关键词的描述
     - 短信销售职能（Lisa）：匹配包含“短信”、“发短信”等关键词的描述
@@ -163,7 +164,7 @@ DEEPSOP_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxx
     - 智能SEO优化职能（Sophia）：匹配包含“SEO”、“优化”、“搜索引擎”等关键词的描述
     - AI剪辑师职能（Alex）：匹配包含“剪辑”、“视频剪辑”等关键词的描述
     - 独立站客服职能（Leo）：匹配包含“客服”、“客户服务”、“咨询”等关键词的描述
-    如果拆分后只有一个子任务且没有匹配上员工，则默认匹配挖掘客户职能（AiWa）
+    如果拆分后只有一个子任务且没有匹配上员工，且没有明确客户来源词，才默认匹配挖掘客户职能（AiWa）；若明确客户来源但缺少销售动作，则先追问用户要对这些客户执行邮件、电话还是短信动作，不要默认 AiWa。
     最后汇总所有匹配到的员工名称组成一个,拼接的字符串并返回（去重）",
   "language": "判断描述中是否明确提及国家或地区，若提及了国家或地区但和中国没有关联则返回'英文'其他情况返回'中文'",
 }
@@ -180,6 +181,13 @@ DEEPSOP_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxx
   - **绝不允许**把中文字符串直接塞进请求体（如 `"executionMode": "定额任务"`），会被后端 schema 校验拒绝；也不得写成 `"1"`（带引号字符串）、`true`、`null`。
 
 **员工组合校验：**
+
+0. **客户来源词优先纠偏（防止误关联 AiWa）**：Step 1 解析后必须先检查用户原文。若原文同时满足：
+   - 含销售动作：`打电话` / `电话` / `电话销售` / `发邮件` / `邮件` / `发短信` / `短信` 任一；
+   - 含明确客户来源词：`客户管理` / `客户池` / `已有客户` / `系统内客户` / `公司联系人` / `联系人` / `地址簿` / `CRM` / `从客户管理` / `从客户池` 任一；
+   - 没有明确新客户挖掘数量或新客画像词（如"找 100 个新客户""开发海外采购商""挖掘 XX 行业客户"）；
+
+   则判定为"销售员工 + 既有客户来源"场景：**必须从 `employeeList` 中移除 `AiWa`**，只保留对应销售员工，并进入 Step 1.6 客户来源选择/搜索逻辑。此场景下禁止执行 Step 2 AiWa 画像分析，禁止构造 `employeeParams.AiWa`，也禁止因为 keywordList 为空而补一个空 AiWa。
 
 1. **不支持的员工拦截**：当 `employeeList` 包含 `Jack`、`Leo`、`Sophia`、`Alex` 中的任意一个时，**终止任务**，回复：
    > ⚠️ 数字员工「{员工名}」尚未接入人机协作台，当前支持的员工为：AiWa、Frank、Fran、Lisa。请调整指令后重试。
@@ -321,6 +329,20 @@ priceKCoin = actualPrice × (discountRate / 100) × rate
 本步骤用于在没有 AiWa 协同的销售任务里，由用户直接指定本次销售动作要面向的客户池。所有数据最终写入 `collaborationSubmitTaskParam.sourceSettings` 对象（结构见本步骤末尾「最终装配规则」）。
 
 **触发条件回顾：** `employeeList` 不含 `AiWa`，且至少含 `Frank` / `Fran` / `Lisa` 之一。`employeeList` 含 `AiWa`（无论是否还含销售员工）时，**跳过本步骤**。
+
+**明确客户来源的快速路径（优先于首次提问）：**
+
+若用户原文已经明确说出客户来源和检索对象，例如：
+- "从客户管理挖取 傲寒科技 公司联系人并使用 Fran 打电话"
+- "用客户池里的 XX 公司联系人打电话"
+- "从已有客户里找 XX 公司发邮件"
+- "给地址簿里的 XX 联系人发短信"
+
+则不要再询问"1 上传 xlsx / 2 搜索选择公司"。应按来源直接执行：
+- 含 `客户管理` / `客户池` / `已有客户` / `系统内客户` / `CRM` / `公司联系人`：直接进入「途径 B：搜索选择公司」，从用户原文提取公司名或搜索关键词（如"傲寒科技"），调用 `/ai/customer/customerList` 搜索并让用户确认选择；确认后把选中客户 `id` 写入 `sourceSettings.suppurIds`。
+- 含 `地址簿` / `联系人` 且没有明确公司管理来源：优先进入「途径 B：搜索选择公司」尝试按公司名/联系人关键词搜索；若接口无法定位客户，再提示用户上传地址簿 xlsx 或补充更精确的公司/联系人信息。
+
+此快速路径仍属于"无 AiWa 销售任务"的 Step 1.6：最终请求体 **不得**包含 `employeeParams.AiWa`，`sourceSettings` 必须使用本步骤的 `groupId/stageId/labelId/level/seasGroupIds/addressId/fileList/updateSupport/addressFileList/suppurIds` 结构。
 
 **首次提问：让用户在两种来源中二选一（也可两者并用、累加生效）：**
 
@@ -1035,7 +1057,7 @@ SCRIPT_BODY_EOF
 >   "executionMode":   Number,   // 永远写数字 1（当前阶段一律按定额任务下达；后端枚举：周期性=0、定额=1）
 >   "recentFilter":    Boolean,  // 是否过滤30天内已挖掘/已通话/已发短信/已发邮件的客户，默认 true
 >   "employeeParams":  Object,   // 见下方规约
->   "sourceSettings":  Object | null, // 见下方「员工组合 → sourceSettings 对照表」（含 Fran/Lisa 时为完整对象，否则为 null）
+>   "sourceSettings":  Object | null, // 见下方「员工组合 → sourceSettings 对照表」（AiWa 联合 Fran/Lisa 用联合场景对象；无 AiWa 销售任务用 Step 1.6 客户来源对象；其他为 null）
 >   "taskDescription": String    // 用户最初下达的原始任务描述，原文透传，不要改写/精简/翻译
 > }
 > ```
@@ -1687,6 +1709,7 @@ curl -s -H "x-api-key: $DEEPSOP_API_KEY" 'https://ai.deepsop.com/prod-api/ai/use
 
 > 🔍 **快速判定规则**：
 > - `currentModule` 始终为 `"content"`（无任何例外分支）。
+> - **客户来源词纠偏优先**：若 Step 1「客户来源词优先纠偏」命中，即使初始解析曾出现 AiWa，也必须按"不含 AiWa 且含销售员工"处理，`employeeParams` 不得包含 AiWa，`sourceSettings` 使用 Step 1.6 产出的客户来源对象。
 > - **含 AiWa**：含 `Fran` 或 `Lisa` → `sourceSettings` 为完整对象（含 `cascader` / `aiMining` 等键，见 Fran/Lisa 示例）；其他子组合 → `sourceSettings` 为 `null`。
 > - **不含 AiWa 且含 `Frank`/`Fran`/`Lisa` 任一**：`sourceSettings` **必须**为 Step 1.6 产出的客户来源对象（含 `fileList` / `addressFileList` / `suppurIds` 等键，**不要**带 `cascader` / `aiMining` 等 AiWa 联合场景的旧键），且 `fileList` / `addressFileList` / `suppurIds` 三者至少一个非空。
 > - **既不含 AiWa 也不含 `Frank`/`Fran`/`Lisa`**：`sourceSettings` 为 `null`。
@@ -1715,7 +1738,7 @@ curl -s -H "x-api-key: $DEEPSOP_API_KEY" 'https://ai.deepsop.com/prod-api/ai/use
 - `collaborationSubmitTaskParam.taskDescription`：非空字符串
 - `collaborationSubmitTaskParam.executionMode`：**当前阶段一律硬编码为数字 `1`**（即使 Step 1 识别为周期性任务也写 1；不得写 `0` / `2` / `"1"` / `"定额任务"`）
 - `collaborationSubmitTaskParam.employeeParams`：对象，包含至少一个员工
-- `collaborationSubmitTaskParam.sourceSettings`：取值严格按上文「员工组合 → `currentModule` / `sourceSettings` 对照表」填（**不要在这里推断**）。快速规则：含 `Fran` 或 `Lisa` → 完整对象；不含 `Fran` 也不含 `Lisa` → `null`
+- `collaborationSubmitTaskParam.sourceSettings`：取值严格按上文「员工组合 → `currentModule` / `sourceSettings` 对照表」填（**不要在这里推断**）。快速规则：含 `AiWa` 且含 `Fran` 或 `Lisa` → AiWa 联合场景完整对象；不含 `AiWa` 且含 `Frank`/`Fran`/`Lisa` → Step 1.6 客户来源对象；不含销售员工 → `null`
 - `collaborationSubmitTaskParam.currentModule`：**全局固定为字符串 `"content"`**，无任何例外（不得写 `"analysis"` / `"Content"` / `null`）
 - `completed`：**必传**，布尔字面量 `true`，与 `collaborationSubmitTaskParam` 同级；不得为 `null`、缺省、字符串 `"true"` 或 `false`，否则接口返回 500
 
@@ -1788,7 +1811,7 @@ TASK_BODY_EOF
 - Step 1/2 内部变量（`employeeList` / `language` / 根级 `totalTarget`）泄漏到根或 `collaborationSubmitTaskParam` 层
 - 员工 key 大小写错（`aiwa` / `aiwaParam` / `franParam` 等都会被纠错为 PascalCase）
 - `executionMode` 必须是数字 `1`（拦截 `"1"` / `true` / `"定额任务"` 等）
-- `currentModule` 必须固定为 `"content"`；含 `Fran`/`Lisa` 时 `sourceSettings` 必须是完整对象
+- `currentModule` 必须固定为 `"content"`；含 `AiWa` 且含 `Fran`/`Lisa` 时 `sourceSettings` 必须是 AiWa 联合场景完整对象；不含 `AiWa` 且含销售员工时必须是 Step 1.6 客户来源对象
 - 各员工必填键、固定值（如 AiWa.incrementalTarget=5000、Frank.upperLimitTarget=1000、Fran.priority="Daily"、Lisa.incrementalTarget=100）
 - 数组类字段类型（`keywordList` / `industryList` / `countryCodeList` / `callingNumber` / `templateParamList` / `publishTemplates` / `accountConfigList`）
 - AiWa.addressObjList 占位规则与 `type=0/1` 与 `address` / `province/city/county` 的互斥
@@ -2332,7 +2355,7 @@ python3 ~/.openclaw/workspace/skills/deepsop-humabot/scripts/format_emails.py "$
 - POST 接口返回非 200：展示错误信息，提示检查参数或稍后重试
 - AiWa GET 接口 data 为空：提示任务可能仍在执行，给出 taskId 供用户告知「再查一次」
 - Frank 邮件统计/列表接口异常：提示邮件任务可能仍在发送中，给出 taskId 供用户告知「再查Frank结果」
-- Frank / Fran / Lisa 单独出现（未与 AiWa 搭配）：终止任务，提示用户补充客户挖掘需求
+- Frank / Fran / Lisa 单独出现（未与 AiWa 搭配）：必须进入 Step 1.6 客户来源选择；若用户明确给出"客户管理/客户池/已有客户/公司联系人/地址簿"等来源，走快速路径搜索或收集客户来源，不得要求补充 AiWa 客户挖掘需求
 - Fran 外呼实例并发数为 0：终止任务，提示用户联系管理员开通并发资源
 - Fran 号码池为空：终止任务，提示用户联系管理员开通外呼号码
 - Frank 邮箱未绑定：终止任务，提示用户登录 https://ai.deepsop.com 前往「邮件配置」绑定邮箱

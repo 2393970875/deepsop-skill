@@ -230,16 +230,24 @@ def validate_employee_params_dict(cstp: dict, errors: list) -> dict | None:
 
 def validate_source_settings(cstp: dict, ep: dict, errors: list) -> None:
     employees = set(ep.keys()) & VALID_EMPLOYEES
-    needs_full = bool(employees & {"Fran", "Lisa"})
+    has_aiwa = "AiWa" in employees
+    has_sales = bool(employees & {"Frank", "Fran", "Lisa"})
+    needs_full = has_aiwa and bool(employees & {"Fran", "Lisa"})
+    needs_source_selection = (not has_aiwa) and has_sales
     ss = cstp.get("sourceSettings")
 
-    if needs_full:
+    if needs_full or needs_source_selection:
         if not isinstance(ss, dict):
+            scenario = (
+                "含 AiWa 且含 Fran/Lisa 时 sourceSettings 必须是 AiWa 联合场景完整对象"
+                if needs_full
+                else "无 AiWa 销售任务时 sourceSettings 必须是 Step 1.6 客户来源对象"
+            )
             err(
                 errors,
                 "...sourceSettings",
                 "WRONG_VALUE",
-                f"含 Fran 或 Lisa 时 sourceSettings 必须是完整对象（不能为 null），当前为 {ss!r}",
+                f"{scenario}（不能为 null），当前为 {ss!r}",
                 "按 SKILL.md 「员工组合 → currentModule / sourceSettings 对照表」填完整对象",
             )
             return
@@ -276,6 +284,44 @@ def validate_source_settings(cstp: dict, ep: dict, errors: list) -> None:
                 if "fileName" in item:
                     err(errors, f"{ip}.fileName", "EXTRA_KEY",
                         f"{arr_key} 元素不得包含 fileName 键，上传响应的 fileName 应重命名为 name 后装配")
+
+        if needs_source_selection:
+            file_list = ss.get("fileList")
+            address_file_list = ss.get("addressFileList")
+            suppur_ids = ss.get("suppurIds")
+            for arr_key, arr_value in (
+                ("fileList", file_list),
+                ("addressFileList", address_file_list),
+                ("suppurIds", suppur_ids),
+            ):
+                if not isinstance(arr_value, list):
+                    err(
+                        errors,
+                        f"...sourceSettings.{arr_key}",
+                        "WRONG_TYPE",
+                        f"无 AiWa 销售任务的 sourceSettings.{arr_key} 必须是数组",
+                    )
+            if (
+                isinstance(file_list, list)
+                and isinstance(address_file_list, list)
+                and isinstance(suppur_ids, list)
+                and not (file_list or address_file_list or suppur_ids)
+            ):
+                err(
+                    errors,
+                    "...sourceSettings",
+                    "EMPTY_SOURCE",
+                    "无 AiWa 销售任务必须指定客户来源：fileList / addressFileList / suppurIds 三者至少一个非空",
+                    "进入 Step 1.6 上传 xlsx 或搜索选择公司，将客户来源写入 sourceSettings",
+                )
+    elif ss is not None:
+        err(
+            errors,
+            "...sourceSettings",
+            "WRONG_VALUE",
+            f"不含销售客户来源场景时 sourceSettings 必须为 null，当前为 {ss!r}",
+            "仅 AiWa 或 AiWa+Frank 时填 null；无 AiWa 销售任务需进入 Step 1.6 指定客户来源",
+        )
 
 
 # ── AiWa ────────────────────────────────────────────────────────────────────
