@@ -1,72 +1,50 @@
-# WUJIE 微前端 Shadow DOM 文件上传指南
+# WUJIE Shadow DOM 文件上传指南
 
 ## 背景
 
-微信视频号后台 (`channels.weixin.qq.com`) 使用 **WUJIE 微前端框架**。主要内容区域以 `<wujie-app>` 自定义标签挂载，其内部 DOM 在 **Shadow DOM** 中渲染。
+微信视频号后台 (`channels.weixin.qq.com`) 使用 WUJIE 微前端框架。主要发布表单挂载在 `<wujie-app>` 自定义标签下，内部 DOM 在 Shadow DOM 中渲染。
 
 这意味着：
-- `document.querySelector()` 无法访问内部元素
-- 必须使用 CDP 协议并设置 `pierce: true` 才能穿透 Shadow DOM
-- 常规 Playwright `setInputFiles()` 在 CDP 模式下也无法直接工作
 
-## 文件上传方式对比
+- 普通 `document.querySelector('input[type="file"]')` 常常找不到真实上传控件。
+- CDP 查询需要设置 `pierce: true` 才能穿透 Shadow DOM。
+- 大视频不要用 base64 注入，应该直接把本地绝对路径交给 `DOM.setFileInputFiles`。
 
-| 方式 | 适用场景 | 限制 |
-| --- | --- | --- |
-| **`DOM.setFileInputFiles`** ✅ 最佳 | 大文件（> 2MB） | 需要 CDP 连接 + 知道节点 ID |
-| **base64 + evaluate** | 小文件（< 2MB） | 12MB 视频 base64 后约 16MB，evaluate 传输易超时 |
-| **Playwright setInputFiles** | 非 Shadow DOM 场景 | WUJIE Shadow DOM 下不可用 |
+## 推荐方案
 
-## 推荐方案：DOM.setFileInputFiles
-
-### 步骤
-
-1. 通过 CDP WebSocket 连接到目标页面
-2. 发送 `DOM.getDocument` 获取根节点 ID
-3. 发送 `DOM.querySelector` 获取 `<wujie-app>` 节点
-4. 发送 `DOM.describeNode (pierce: true)` 获取 Shadow Root
-5. 发送 `DOM.querySelector` 在 Shadow Root 中找到 `input[type="file"]`
-6. 发送 `DOM.setFileInputFiles` 设置本地文件路径
-
-### CDP 消息序列
+使用 CDP `DOM.setFileInputFiles`。
 
 ```json
-{"id":1, "method":"DOM.getDocument", "params":{"depth":0, "pierce":true}}
-
-{"id":2, "method":"DOM.querySelector", "params":{"nodeId":1, "selector":"wujie-app"}}
-
-{"id":3, "method":"DOM.describeNode", "params":{"nodeId":<wujie-id>, "depth":1, "pierce":true}}
-
-{"id":4, "method":"DOM.querySelector", "params":{"nodeId":<shadow-root-id>, "selector":"input[type=\"file\"]"}}
-
-{"id":5, "method":"DOM.setFileInputFiles", "params":{"nodeId":<file-input-id>, "files":["C:/path/to/video.mp4"]}}
+{"id":1,"method":"DOM.getDocument","params":{"depth":0,"pierce":true}}
+{"id":2,"method":"DOM.querySelector","params":{"nodeId":1,"selector":"wujie-app"}}
+{"id":3,"method":"DOM.describeNode","params":{"nodeId":2,"depth":1,"pierce":true}}
+{"id":4,"method":"DOM.querySelector","params":{"nodeId":3,"selector":"input[type=\"file\"]"}}
+{"id":5,"method":"DOM.setFileInputFiles","params":{"nodeId":4,"files":["C:/path/to/video.mp4"]}}
 ```
 
-### 文件路径格式
+仓库脚本已经封装了这些步骤：
 
-- **必须使用绝对路径**
-- Windows 用正斜杠：`C:/Users/Administrator/.../video.mp4`
-- 路径中不要用反斜杠（`\`），CDP 协议需要 POSIX 风格的路径
-
-## base64 方案（备选）
-
-仅当 `DOM.setFileInputFiles` 不可用时使用，且**只适合小文件**。
-
-```javascript
-// 构造 File 对象
-const response = await fetch(`data:video/mp4;base64,${BASE64_DATA}`);
-const blob = await response.blob();
-const file = new File([blob], 'video.mp4', { type: 'video/mp4' });
-
-// 使用 DataTransfer 触发上传
-const dt = new DataTransfer();
-dt.items.add(file);
-const input = shadow.querySelector('input[type="file"]');
-input.files = dt.files;
-input.dispatchEvent(new Event('change', { bubbles: true }));
+```powershell
+node skills/deepsop-wechatvideo/scripts/cdp-upload.js "C:/path/to/video.mp4"
 ```
 
-## 已知问题
+## 路径要求
 
-- `DOM.setFileInputFiles` 成功后不会自动触发 React/Vue 的 onChange 事件——但视频号的上传逻辑监听的是 `change` 事件或文件属性变化，`setFileInputFiles` 内部会触发该事件
-- 如果上传后页面没有反应，可以主动派发一个 `change` 或 `input` 事件
+- 必须使用绝对路径。
+- Windows 路径建议转成正斜杠，例如 `C:/Users/Administrator/Desktop/video.mp4`。
+- 不要传 `~`、相对路径或 URL。
+- 文件必须位于本机，浏览器进程能够读取。
+
+## 失败处理
+
+| 问题 | 常见原因 | 处理 |
+| --- | --- | --- |
+| 找不到视频号 tab | 未打开平台页或 CDP 端口不同 | 先用 OPClaw 浏览器打开 `https://channels.weixin.qq.com`，必要时传 `--port` |
+| 找不到 `wujie-app` | 发布页尚未加载完成 | 等待页面稳定后重试 |
+| 找不到 file input | 平台 UI 变更或上传区未出现 | 检查是否在 `/platform/post/create`，重新获取 snapshot |
+| 上传后无预览 | 页面仍在处理或未触发事件 | 等待数秒；必要时重新注入或手动检查页面 |
+| 登录页反复出现 | Cookie 失效或未授权 | 回到根地址让用户扫码登录 |
+
+## 备用方案
+
+仅当文件很小且 CDP 上传不可用时，才考虑 base64 + `DataTransfer` 注入。普通视频发布不推荐该方式，因为体积大、慢且容易超时。

@@ -1,70 +1,51 @@
 # 微信视频号发布 Skill
 
-通过 OpenClaw 内置浏览器 + CDP 协议，自动发布视频到微信视频号。基于 WUJIE 微前端 Shadow DOM 操作，无需第三方 CLI 工具。
+通过 OPClaw 内置浏览器打开微信视频号平台，让用户先完成微信扫码登录/授权，然后自动进入发布页完成视频上传、表单填写和发布。
 
-## ✨ 功能概览
+## 使用方式
 
-| 功能 | 说明 |
-| --- | --- |
-| 📤 视频上传 | 通过 CDP `DOM.setFileInputFiles` 将本地 MP4 上传到视频号 |
-| 📝 描述填写 | 自动填写视频描述 + 话题标签 |
-| 🏷️ 短标题设置 | 设置短标题以获得更多流量推荐 |
-| 🚀 一键发布 | 点击发表，自动提交 |
+直接对 OPClaw 说出需求，例如：
 
-## 🚀 使用流程
+- “把桌面上的 `新品介绍.mp4` 发布到微信视频号，标题叫新品介绍，话题 #新品 #门店”
+- “把这个文件夹里最新的视频发到视频号”
+- “登录视频号并帮我发布这条视频，发布前让我确认”
 
-直接对 OpenClaw 说出需求，例如：
+OPClaw 会先打开 `https://channels.weixin.qq.com`，等待你在浏览器中扫码登录或确认授权。授权完成后，它会继续进入发布页并执行自动化发布流程。
 
-- "把桌面上『视频号的视频』文件夹里的视频发到我的视频号"
-- "发布一个视频到视频号"
-- "从本地发个视频到一路向北7387"
+## 自动化流程
 
-OpenClaw 会自动执行完整的发布流程。
+1. 启动或复用 OPClaw 内置浏览器。
+2. 打开 `https://channels.weixin.qq.com`。
+3. 等待用户扫码登录/授权。
+4. 进入 `https://channels.weixin.qq.com/platform/post/create`。
+5. 通过 CDP `DOM.setFileInputFiles` 上传本地视频。
+6. 填写描述、话题和短标题。
+7. 按用户要求直接发表，或停在发布页等待确认。
+8. 验证是否跳转到视频管理列表或出现发布成功提示。
 
-## 🔧 技术原理
+## 技术说明
 
-### CDP 文件上传（核心操作）
+微信视频号后台使用 WUJIE 微前端，上传控件在 `<wujie-app>` 的 Shadow DOM 中。普通 DOM 查询通常找不到文件输入框，所以本 skill 使用 CDP 穿透 Shadow DOM：
 
-视频号后台使用 **WUJIE 微前端框架**，所有表单元素都在 `<wujie-app>` 的 **Shadow DOM** 中。常规的 DOM API 无法访问，必须通过 CDP 协议：
-
-```
-DOM.getDocument (depth=0, pierce=true)
-  → DOM.querySelector ('wujie-app')
-    → DOM.describeNode (pierce=true, depth=1)
-      → DOM.querySelector ('input[type="file"]')
-        → DOM.setFileInputFiles (files=["本地路径"])
+```text
+DOM.getDocument -> wujie-app -> shadowRoot -> input[type=file] -> DOM.setFileInputFiles
 ```
 
-### 内容注入
+仓库内置脚本可自动发现当前视频号 tab：
 
-- **描述框**：通过 `evaluate()` 操作 Shadow DOM 中的 `div.input-editor`
-- **短标题**：通过 `browser.act()` 操作 `input[placeholder*="短标题"]`
-- **发布**：点击"发表"按钮，页面自动跳转到视频管理列表
+```powershell
+node skills/deepsop-wechatvideo/scripts/cdp-upload.js "C:/path/to/video.mp4"
+```
 
-## 📖 完整文档
+如果自动发现失败，可手动指定 target：
 
-- [SKILL.md](SKILL.md) — 完整 skill 规范
+```powershell
+node skills/deepsop-wechatvideo/scripts/cdp-upload.js "C:/path/to/video.mp4" --target <target-id>
+```
 
----
+## 安全边界
 
-## 🔒 安全审计报告
-
-> 本技能已通过 `skill-vetter` 安全审计工具的完整审查，可放心安装使用。
-
-| 字段 | 内容 |
-| --- | --- |
-| **审计日期** | 2026-06-26 |
-| **审计工具** | skill-vetter (clawhub@latest) |
-| **来源** | ClawdHub |
-| **审查文件数** | 2（SKILL.md、README.md） |
-| **可疑模式** | ✖ 无 |
-| **网络访问** | 通过 OpenClaw 内置浏览器访问 `channels.weixin.qq.com` |
-| **凭据处理** | 不内嵌任何凭据；登录态由用户浏览器 Cookie 维持 |
-| **文件访问** | 仅读取用户指定的本地视频文件用于上传 |
-| **依赖命令** | OpenClaw 内置浏览器 + CDP 协议 |
-| **风险等级** | 🟢 LOW |
-| **审计结论** | ✅ **SAFE — 低风险，安全可用** |
-
-**审计要点：** 本技能仅操作微信视频号官方后台页面，所有操作用户可见可审计。不调用任何第三方 API，不安装额外依赖，不内嵌凭据。
-
-> 完整的多技能审计报告见仓库根目录 `SKILL_VETTING_REPORT.md`。
+- 不保存、不索取微信账号密码。
+- 登录和授权都在用户可见的官方微信视频号页面完成。
+- 只读取用户指定的视频文件用于上传。
+- 遇到二维码、验证码、风控或二次确认时，交给用户在浏览器中处理。

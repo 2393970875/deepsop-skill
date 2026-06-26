@@ -1,89 +1,88 @@
-# 视频号发布流程参考
+# 微信视频号发布流程参考
 
-## 完整操作流程
+## 总流程
 
+```text
+用户下达发布需求
+  -> 收集/推断 video_path、title、description、tags、short_title
+  -> 启动或复用 OPClaw 内置浏览器 target=host
+  -> 打开 https://channels.weixin.qq.com
+  -> 用户扫码登录/授权
+  -> 检查登录状态
+     -> 未登录：继续等待或提示用户扫码
+     -> 已登录：进入 /platform/post/create
+  -> CDP 上传视频文件
+  -> 等待上传/处理完成
+  -> 填写描述、话题、短标题
+  -> 根据用户意图发表或停在发布页
+  -> 验证发布成功
 ```
-用户指令
-    │
-    ▼
-启动 OpenClaw 内置浏览器 (target="host")
-    │
-    ▼
-导航到 https://channels.weixin.qq.com/platform/post/create
-    │
-    ▼
-检查页面快照 → 已登录?
-    ├── 否 → 告知用户手动扫码登录
-    │
-    ▼
-   是
-    │
-    ▼
-CDP上传：DOM.setFileInputFiles（WUJIE Shadow DOM）
-    │
-    ▼
-等待上传完成（检查页面预览元素）
-    │
-    ▼
-填写视频描述（div.input-editor, contenteditable）
-    │
-    ▼
-设置短标题（input[placeholder*="短标题"]）
-    │
-    ▼
-点击"发表"按钮
-    │
-    ▼
-验证：页面跳转到 /platform/post/list ✓
+
+## 登录授权检查
+
+先访问根地址：
+
+```text
+https://channels.weixin.qq.com
 ```
+
+不要一开始就直接上传。页面仍显示登录二维码时，向用户说明：
+
+```text
+我已打开微信视频号平台，请在浏览器中扫码登录/授权。完成后我会继续发布。
+```
+
+可通过 `browser.snapshot()` 判断页面状态。以下信号通常表示已登录：
+
+- 账号头像或昵称可见
+- 创作者后台/内容管理/发表动态等入口可见
+- 访问 `/platform/post/create` 后出现上传区域和发布表单
+
+以下信号表示不能继续自动化：
+
+- 登录二维码仍可见
+- 页面提示扫码确认
+- 跳转到登录页
+- 出现验证码、风控或二次确认弹窗
 
 ## 页面元素映射
 
-| 功能 | DOM 选择器 | 所在位置 |
+| 功能 | 选择器/方式 | 位置 |
 | --- | --- | --- |
-| 文件上传 | `input[type="file"][accept*="video"]` | WUJIE Shadow DOM |
-| 视频描述 | `div.input-editor`（contenteditable） | WUJIE Shadow DOM |
-| 短标题 | `input[placeholder*="短标题"]` | 主 DOM（表单外层） |
-| 话题标签 | `#话题` 按钮 | WUJIE Shadow DOM |
-| 发表按钮 | `button:has-text("发表")` | 主 DOM |
-| 保存草稿 | `button:has-text("保存草稿")` | 主 DOM |
-
-> 注意：文件上传和描述编辑在 Shadow DOM 中，短标题和发表按钮在主 DOM 中。
+| 文件上传 | `input[type="file"][accept*="video"]` 或 `input[type="file"]` | WUJIE Shadow DOM |
+| 视频描述 | `div.input-editor` / `[contenteditable="true"]` | WUJIE Shadow DOM |
+| 短标题 | `input[placeholder*="短标题"]` | 主 DOM 或 Shadow DOM |
+| 发表按钮 | snapshot 中的“发表”按钮 ref | 主 DOM |
+| 保存草稿 | snapshot 中的“保存草稿”按钮 ref | 主 DOM |
 
 ## 描述格式
 
-在 `div.input-editor` 中设置 `innerHTML`：
+建议把描述和话题写成两段：
 
-```html
-视频标题
-#标签1 #标签2 #标签3
+```text
+视频标题或正文描述
+#话题1 #话题2 #话题3
 ```
 
-示例：
-```html
-快速生成数字人带货视频<br>#AI #数字人 #带货 #短视频
-```
+如果用户提供同目录 `.txt` 元数据：
 
-使用 `<br>` 或 `\n` 换行均可。
+- 第一行作为标题。
+- 后续非空行合并为描述。
+- 以 `#` 开头的词保留为话题。
 
-## 短标题
+## 发布策略
 
-目的：获得更多流量推荐
-- 同标题时可复用视频标题
-- 最多约 20 字
+- 用户明确要求“发布/自动发布/直接发”：填写完成后点击“发表”。
+- 用户要求“发布前确认/先填好”：停在发布页，不点击“发表”。
+- 用户要求定时发布：先配置定时选项，再发表；如页面控件变化导致无法可靠配置，停下让用户确认。
+- 遇到平台弹窗、风控、验证码、授权确认：停止自动点击，让用户处理后继续。
 
-## 发布模式
+## 成功验证
 
-- **立即发布**：默认，选 "不定时"
-- **定时发布**：选 "定时" 并设置时间
+发布后检查：
 
-## 验证发布成功
+1. URL 跳转到 `/platform/post/list`。
+2. 页面出现发布成功提示。
+3. 列表顶部出现刚发布视频或审核中状态。
 
-1. 点击"发表"后，页面 URL 跳转到 `/platform/post/list`（视频管理列表）
-2. 列表顶部出现刚发布的视频
-3. 状态显示 "发表成功"
-
-## 重复发布
-
-- 同样视频可以重复发布，视频号允许
-- 建议修改标题/描述以区分不同版本
+满足任一强信号即可向用户报告成功；若只有弱信号，应说明仍需在浏览器中确认平台状态。
