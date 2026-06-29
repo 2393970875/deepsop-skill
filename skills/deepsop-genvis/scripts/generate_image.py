@@ -889,7 +889,7 @@ VIDEO_FIELD_SUPPORT_BY_MT = {
     # Negative prompt: V3.1 Fast/Pro + Wan series (mt 5,6,7,8,9,14,15,16)
     "negativePrompt": {"5", "6", "7", "8", "9", "14", "15", "16"},
     # Audio toggle: S1.5Pro, V3.1 Fast/Pro, klingV3Omni, Seedance2.0 family
-    "generateAudio": {"2", "5", "6", "10", "17", "18", "20", "21"},
+    "generateAudio": {"2", "5", "6", "10", "17", "18", "20", "21", "22"},
     # English enhancement: V3.1 series (mt 3,4,5,6)
     "enhancePrompt": {"3", "4", "5", "6"},
     # Smart rewrite: Wan series (mt 7,8,9,14,15,16)
@@ -901,9 +901,9 @@ VIDEO_FIELD_SUPPORT_BY_MT = {
     # Shot mode: Wan2.6 + klingV3Omni  (mt 7,8,9,10)
     "shotType": {"7", "8", "9", "10"},
     # Duration switch (manual/intelligent): S1.5Pro, Seedance2.0 family
-    "durationSwitch": {"2", "17", "18", "20", "21"},
+    "durationSwitch": {"2", "17", "18", "20", "21", "22"},
     # Web search toggle: Seedance2.0 family
-    "webSearch": {"17", "18", "20", "21"},
+    "webSearch": {"17", "18", "20", "21", "22"},
     # klingV3Omni exclusives (mt 10)
     "mode": {"10"},
     "multiShot": {"10"},
@@ -916,12 +916,12 @@ VIDEO_FIELD_SUPPORT_BY_MT = {
     # Audio control mode (auto / origin): HappyHorse only, EDIT generationType  (mt 19)
     "audioSetting": {"19"},
     # Reference-video list: W2.6r / W2.7r / Seedance2.0 family
-    "videoUrlList": {"9", "16", "17", "18", "20", "21"},
+    "videoUrlList": {"9", "16", "17", "18", "20", "21", "22"},
     # Audio URL (single): Wan text/image/W2.7 series  (mt 7,8,14,15,16).
     # NOTE: Seedance2.0 family uses audioUrlList instead.
     "audioUrl": {"7", "8", "14", "15", "16"},
     # Audio URL list (multi): Seedance2.0 family
-    "audioUrlList": {"17", "18", "20", "21"},
+    "audioUrlList": {"17", "18", "20", "21", "22"},
 }
 
 
@@ -999,6 +999,7 @@ VIDEO_RATIOS_BY_MT = {
     "19": ["1:1", "4:3", "3:4", "5:4", "4:5", "16:9", "9:16", "21:9", "9:21"],
     "20": ["adaptive", "1:1", "4:3", "3:4", "16:9", "9:16", "21:9"],
     "21": ["adaptive", "1:1", "4:3", "3:4", "16:9", "9:16", "21:9"],
+    "22": ["adaptive", "1:1", "4:3", "3:4", "16:9", "9:16", "21:9"],
 }
 VIDEO_RATIOS_DEFAULT = ["adaptive", "1:1", "4:3", "3:4", "7:4", "4:7", "16:9", "9:16", "21:9"]
 
@@ -1019,11 +1020,12 @@ VIDEO_RESOLUTIONS_BY_MT = {
     "14": ["720p", "1080p"],
     "15": ["720p", "1080p"],
     "16": ["720p", "1080p"],
-    "17": ["480p", "720p", "1080p"],
+    "17": ["480p", "720p", "1080p", "4K"],
     "18": ["480p", "720p"],
     "19": ["720p", "1080p"],
-    "20": ["480p", "720p", "1080p"],
+    "20": ["480p", "720p", "1080p", "4K"],
     "21": ["480p", "720p"],
+    "22": ["480p", "720p"],
 }
 VIDEO_RESOLUTIONS_DEFAULT = ["480p", "720p", "1080p", "2K", "4K"]
 
@@ -1108,6 +1110,7 @@ VIDEO_RESTRICTIONS_BY_MT = {
     "19": {"textLength": 2500, "targetMaxSize": 20, "targetMinLength": 400, "targetMaxLength": 6000},
     "20": {"textLength": 1000, "targetMaxSize": 30, "targetMinLength": 300, "targetMaxLength": 6000},
     "21": {"textLength": 1000, "targetMaxSize": 30, "targetMinLength": 300, "targetMaxLength": 6000},
+    "22": {"textLength": 1000, "targetMaxSize": 30, "targetMinLength": 300, "targetMaxLength": 6000},
 }
 
 IMAGE_RESTRICTIONS_BY_MT = {
@@ -1677,6 +1680,25 @@ MODEL_CONFIGS = {
             "durationSwitch": "1",
         }
     },
+    "S2.0Mini": {
+        "media_type": "video",
+        "type": "9",
+        "methodType": "22",
+        "source_name": "DeepSop.S2.0 Mini",
+        "description": "Seedance2.0 Mini 视频生成模型",
+        "extra_params": {
+            "generationType": "TEXT",
+            "imageUrlList": None,
+            "firstImageUrl": None,
+            "lastImageUrl": None,
+            "videoUrlList": [],
+            "audioUrlList": [],
+            "durationList": [],
+            "generateAudio": True,
+            "webSearch": False,
+            "durationSwitch": "1",
+        }
+    },
     "HappyHorse": {
         "media_type": "video",
         "type": "9",
@@ -1905,7 +1927,7 @@ def create_video_task(prompt, model=None, ratio=None, resolution=None,
     wan_ref_mts = {"9", "16"}
     wan_mts = {"7", "8", "9", "14", "15", "16"}
     pixel_size_mts = {"7", "9"}  # only Wan2.6 t2v/r2v use '1280*720' form
-    seedance2_mts = {"17", "18", "20", "21"}
+    seedance2_mts = {"17", "18", "20", "21", "22"}
 
     # S1.5Pro (mt=2): duration 4-12s (frontend matchVideoDurationInfo)
     if method_type == "2":
@@ -1941,7 +1963,7 @@ def create_video_task(prompt, model=None, ratio=None, resolution=None,
         parameter["size"] = effective_ratio
 
     if method_type in seedance2_mts:
-        # Seedance2.0 / Seedance2.0 Fast: duration 4-15s (frontend matchVideoDurationInfo)
+        # Seedance2.0 family: duration 4-15s (frontend matchVideoDurationInfo)
         if effective_duration < 4 or effective_duration > 15:
             print(f"{model} 时长必须是 4-15 秒，当前 {effective_duration} 秒，自动调整为 10 秒",
                   file=sys.stderr)
@@ -2712,11 +2734,11 @@ if __name__ == "__main__":
                         help="[视频] 生成数量 1-4 (methodType 5) | [图片] 生成数量 1-10 (methodType 10)")
     parser.add_argument("--person-generation", default=None, help="[视频] allow_adult/dont_allow (methodType 5/6)")
     parser.add_argument("--resize-mode", default=None, help="[视频] pad/crop (methodType 5/6)")
-    parser.add_argument("--duration-switch", default=None, help="[视频] 1=手选秒数, 2=智能时长 (methodType 2/17/18/20/21)")
+    parser.add_argument("--duration-switch", default=None, help="[视频] 1=手选秒数, 2=智能时长 (methodType 2/17/18/20/21/22)")
     parser.add_argument("--audio-url-list", default=None,
-                        help="[视频] 多音频参考 URL，逗号分隔 (methodType 17/18/20/21)")
+                        help="[视频] 多音频参考 URL，逗号分隔 (methodType 17/18/20/21/22)")
     parser.add_argument("--audio-path-list", default=None,
-                        help="[视频] 多音频本地路径，逗号分隔，自动上传 (methodType 17/18/20/21)")
+                        help="[视频] 多音频本地路径，逗号分隔，自动上传 (methodType 17/18/20/21/22)")
     parser.add_argument("--image-url-list", default=None,
                         help="[视频] 多参考图片 URL，逗号分隔，直接提交为 imageUrlList")
     parser.add_argument("--video-url-list", default=None,

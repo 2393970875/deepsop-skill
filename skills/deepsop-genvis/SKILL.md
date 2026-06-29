@@ -144,11 +144,12 @@ python3 scripts/generate_image.py "x" --poll <task_id> --max-wait 120 --json-out
 | `14` | `FIRST&LAST/CONTINUATION` | 由首帧决定，不提交 ratio | `720p/1080p` | `3-15s` | `CONTINUATION` 必须有 `firstClipUrl` |
 | `15` | `TEXT` | `1:1/4:3/3:4/16:9/9:16` | `720p/1080p` | `3-15s` | 支持 `negativePrompt/promptExtend` |
 | `16` | `REFERENCE` | `1:1/4:3/3:4/16:9/9:16` | `720p/1080p` | 有参考视频时 `3-10s`，否则 `3-15s` | 参考图片+参考视频总数 `1-5` |
-| `17` | `TEXT/FIRST&LAST/REFERENCE` | `adaptive/1:1/4:3/3:4/16:9/9:16/21:9` | `480p/720p/1080p` | `4-15s` | 支持 `durationSwitch`、`webSearch`、参考图片/视频/音频 |
+| `17` | `TEXT/FIRST&LAST/REFERENCE` | `adaptive/1:1/4:3/3:4/16:9/9:16/21:9` | `480p/720p/1080p/4K` | `4-15s` | 支持 `durationSwitch`、`webSearch`、参考图片/视频/音频 |
 | `18` | `TEXT/FIRST&LAST/REFERENCE` | 同 `17` | `480p/720p` | `4-15s` | 同 `17` |
 | `19` | `TEXT/FIRST&LAST/REFERENCE/EDIT` | `1:1/4:3/3:4/5:4/4:5/16:9/9:16/21:9/9:21`，`EDIT` 时隐藏 | `720p/1080p` | `3-15s`；`EDIT` 由视频决定 | 不支持尾帧、`negativePrompt/generateAudio/enhancePrompt/promptExtend/shotType/webSearch`；`EDIT` 必须有 `firstClipUrl` |
-| `20` | `TEXT/FIRST&LAST/REFERENCE` | 同 `17` | `480p/720p/1080p` | `4-15s` | 同 `17` |
+| `20` | `TEXT/FIRST&LAST/REFERENCE` | 同 `17` | `480p/720p/1080p/4K` | `4-15s` | 同 `17` |
 | `21` | `TEXT/FIRST&LAST/REFERENCE` | 同 `17` | `480p/720p` | `4-15s` | 同 `17` |
+| `22` | `TEXT/FIRST&LAST/REFERENCE` | 同 `17` | `480p/720p` | `4-15s` | 同 `17` |
 
 ## 视频素材上传与参数映射
 
@@ -158,8 +159,8 @@ python3 scripts/generate_image.py "x" --poll <task_id> --max-wait 120 --json-out
 | 尾帧图 | JPEG/JPG/PNG/WEBP | `lastImageUrl` | 传尾帧时必须同时传首帧；methodType `8/19` 不支持尾帧 |
 | 参考图 | JPEG/JPG/PNG/WEBP | `imageUrlList` | `REFERENCE` 或多模态参考；methodType `9/16` 与参考视频合计 `1-5` |
 | 参考主体图 | JPEG/JPG/PNG | `elementList` | methodType `10` 的主体参考 |
-| 续写/编辑/参考视频 | MP4/MOV；Wan r2v 通常 100MB、1-30s；methodType `10` 200MB、3-10s；methodType `17/18/20/21` 50MB、2-15s；methodType `19` 100MB、3-60s | `firstClipUrl` 或 `videoUrlList` / `videoList` | `CONTINUATION/EDIT/FEATURE/REFERENCE` |
-| 音频 | WAV/MP3；Wan 单音频 15MB、3-30s；methodType `17/18/20/21` 最多 3 个、2-15s、总时长不超过 15s | `audioUrlList` | methodType `17/18/20/21` 使用音频时，必须同时提供参考图或参考视频 |
+| 续写/编辑/参考视频 | MP4/MOV；Wan r2v 通常 100MB、1-30s；methodType `10` 200MB、3-10s；methodType `17/18/20/21/22` 50MB、2-15s；methodType `19` 100MB、3-60s | `firstClipUrl` 或 `videoUrlList` / `videoList` | `CONTINUATION/EDIT/FEATURE/REFERENCE` |
+| 音频 | WAV/MP3；Wan 单音频 15MB、3-30s；methodType `17/18/20/21/22` 最多 3 个、2-15s、总时长不超过 15s | `audioUrlList` | methodType `17/18/20/21/22` 使用音频时，必须同时提供参考图或参考视频 |
 
 ## 输出契约
 
