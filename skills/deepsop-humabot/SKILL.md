@@ -1113,6 +1113,7 @@ x-api-key: $DEEPSOP_API_KEY
 > - **必须**通过 heredoc（`<<'TASK_BODY_EOF'` ... `TASK_BODY_EOF`）把请求体喂给 stdin；**禁止**用 argv 传 JSON（如 `python3 submit_task.py "$(echo {...})"`），argv 仍受 shell 编码影响。
 > - heredoc 定界符**必须用单引号包裹**（`'TASK_BODY_EOF'` 而不是 `TASK_BODY_EOF`），否则 bash 会做变量展开，破坏 JSON 中的 `$` 字符。
 > - 若运行时不支持 heredoc（极少见），退路：用 `python3 -c` 把 body 写到 UTF-8 文件，再 `python3 scripts/submit_task.py --file /tmp/task_body.json`。
+> - 提交前如果请求体预览或脚本输出中出现连续 `???`、`???????` 或 `�`，说明中文已经被上游非 UTF-8 通道替换，**必须停止并重建请求体**；不要把这些问号当作正常内容提交。`submit_task.py` 会在 HTTP 前自动拦截此类编码损坏。
 > - 脚本输出单行 JSON：`{ok, stage, status, summary, response, body_preview, errors?}`；退出码 `0`=成功、`1`=校验失败、`2`=网络失败、`3`=服务端非 2xx、`4`=输入格式错误。
 > - 退出码 ≠ 0 时，**必须**把 `summary` + `errors`/`response` 原样回复给用户，不得直接重试或假装成功。
 

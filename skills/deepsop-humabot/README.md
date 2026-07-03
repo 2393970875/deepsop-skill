@@ -47,6 +47,7 @@
 - 提交 `agentSubmitTask` **必须**走 `scripts/submit_task.py`（脚本内置 UTF-8 安全提交 + 参数预校验）
 - 创建/审核电话场景 **必须**走 `scripts/submit_script_review.py`（同样 UTF-8 安全 + 预校验 + 自动轮询审核状态）
 - **禁止**直接写 `curl` 命令（Windows cp936 代码页会导致 prompt/openingPrompt 中文乱码）
+- 如果请求体或提交结果预览里出现连续 `???` / `???????` / `�`，说明中文已被编码通道破坏，必须停止并重建请求体；`submit_task.py` 会在 HTTP 前自动拦截，避免后台落库乱码。
 
 ---
 

@@ -69,6 +69,7 @@ API_URL = api_paths.build_url("preset_employee_submit_task")
 api_paths.assert_url_matches(API_URL, "preset_employee_submit_task")
 TIMEOUT_SEC = 30
 API_KEY_ENV = "DEEPSOP_API_KEY"
+MAX_ENCODING_DAMAGE_ERRORS = 20
 
 
 def _read_env_file_value(path: Path, key: str) -> str | None:
@@ -209,6 +210,55 @@ def parse_body(raw: str) -> dict:
     return json.loads(raw)
 
 
+def _iter_text_values(value, path: str = "<root>"):
+    if isinstance(value, dict):
+        for key, child in value.items():
+            child_path = f"{path}.{key}" if path != "<root>" else str(key)
+            yield from _iter_text_values(child, child_path)
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            yield from _iter_text_values(child, f"{path}[{index}]")
+    elif isinstance(value, str):
+        yield path, value
+
+
+def _looks_like_encoding_damage(text: str) -> bool:
+    if "\ufffd" in text:
+        return True
+    return "???" in text
+
+
+def run_encoding_damage_check(body: dict) -> dict | None:
+    """Reject text that has already lost Chinese characters before submission."""
+    errors = []
+    for path, text in _iter_text_values(body):
+        if not _looks_like_encoding_damage(text):
+            continue
+        errors.append({
+            "path": path,
+            "code": "ENCODING_DAMAGE",
+            "msg": "检测到连续问号或替换字符，疑似中文在提交前已被非 UTF-8 通道破坏",
+            "valuePreview": text[:80],
+            "suggestion": (
+                "停止提交，重新生成请求体；必须通过 submit_task.py 的 stdin heredoc 或 "
+                "--file UTF-8 文件提交，禁止 curl/Invoke-RestMethod/argv 传中文 JSON。"
+            ),
+        })
+        if len(errors) >= MAX_ENCODING_DAMAGE_ERRORS:
+            break
+
+    if not errors:
+        return None
+
+    return {
+        "ok": False,
+        "stage": "validate",
+        "phase": "encoding_damage",
+        "summary": f"检测到 {len(errors)} 处疑似中文编码损坏，已阻止提交，避免后台出现问号乱码",
+        "errors": errors,
+    }
+
+
 def run_employee_params_check(body: dict) -> dict | None:
     """跑结构层校验。失败时返回 errors payload；成功返回 None。"""
     result = vep.run(body)
@@ -308,6 +358,12 @@ def main() -> int:
             "summary": f"body JSON 解析失败：{exc}",
         })
         return 4
+
+    # Pre-flight 0: 编码损坏拦截。出现连续 ??? 时，中文通常已被上游非 UTF-8 通道替换，无法恢复。
+    err_payload = run_encoding_damage_check(body)
+    if err_payload is not None:
+        emit(err_payload)
+        return 1
 
     # Pre-flight 1: 结构 / 取值
     err_payload = run_employee_params_check(body)
