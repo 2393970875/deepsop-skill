@@ -1908,6 +1908,14 @@ def create_video_task(prompt, model=None, ratio=None, resolution=None,
     # --- Duration rules (aligned with frontend `matchVideoDurationInfo`) ---
     # V3.1 Lite (mt=3/4): fixed 8 seconds
     if method_type in {"3", "4"}:
+        if method_type == "3" and parameter.get("resolution") != "720p":
+            print(
+                f"{model} 固定只支持 720p，当前 {parameter.get('resolution')}，自动调整为 720p",
+                file=sys.stderr,
+            )
+            parameter["resolution"] = "720p"
+            if "quality" in parameter:
+                parameter["quality"] = "720p"
         if effective_duration != 8:
             print(f"{model} 时长固定为 8 秒，当前 {effective_duration} 秒，自动调整为 8 秒")
             effective_duration = 8
