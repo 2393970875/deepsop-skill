@@ -30,8 +30,10 @@ FILE_UPLOAD_URL = f"{API_PREFIX.rstrip('/')}/system/fileUpload/upload"
 ESTIMATE_COST_URL = f"{BASE_URL}/estimate/cost"
 MODEL_LIST_URL = f"{BASE_URL}/consumeSource/list?pageNum=1&pageSize=999"
 RECHARGE_URL = "https://ai.deepsop.com/"
+MODEL_SOURCE_TYPES = ["IMAGE_MODEL", "VIDEO_MODEL", "HUMAN_MODEL"]
 
 _MODEL_NAME_TOKEN_RE = re.compile(r"[a-z0-9]+", re.IGNORECASE)
+_MODEL_DESC_SPLIT_RE = re.compile(r"[\s,，。；;、/|()（）\[\]【】]+")
 
 def _normalize_model_name(value):
     """Normalize API/local model names for loose matching without exposing them as rules."""
@@ -48,6 +50,30 @@ def _model_name_matches(row, local_key):
     needles = [n for n in (_normalize_model_name(v) for v in needle_values) if n]
     haystack = " ".join(_normalize_model_name(v) for v in haystack_values if v)
     return any(n and n in haystack for n in needles)
+
+
+def _score_prompt_model_match(prompt, entry):
+    """Score how well a live model row matches the user's prompt."""
+    if not prompt:
+        return 0
+    prompt_text = str(prompt).lower()
+    metadata = " ".join(
+        str(entry.get(key) or "")
+        for key in ("sourceName", "description", "sourceDescription", "remark", "sourceKey", "key")
+    ).lower()
+    if not metadata:
+        return 0
+
+    score = 0
+    for token in _MODEL_DESC_SPLIT_RE.split(metadata):
+        token = token.strip()
+        if len(token) >= 2 and token in prompt_text:
+            score += len(token)
+
+    prompt_words = set(_MODEL_NAME_TOKEN_RE.findall(prompt_text))
+    metadata_words = set(_MODEL_NAME_TOKEN_RE.findall(metadata))
+    score += sum(len(word) for word in prompt_words & metadata_words if len(word) >= 2)
+    return score
 
 
 # In-process cache for the model list (TTL seconds). Models can be toggled
@@ -397,7 +423,7 @@ def fetch_model_list(force_refresh=False):
     try:
         response = requests.post(
             MODEL_LIST_URL,
-            json={"sourceTypeList": ["IMAGE_MODEL", "VIDEO_MODEL"]},
+            json={"sourceTypeList": MODEL_SOURCE_TYPES},
             headers=get_headers(),
             timeout=15,
         )
@@ -505,7 +531,7 @@ def _infer_media_type(prompt):
     return "image"
 
 
-def _get_default_model(media_type):
+def _get_default_model(media_type, prompt=None):
     """Pick the first active non-'auto' model of the given media_type from the
     API, mirroring the frontend behavior:
 
@@ -521,6 +547,7 @@ def _get_default_model(media_type):
         print(f"[warn] 获取默认模型失败：{e}", file=sys.stderr)
         return None
 
+    candidates = []
     for entry in active:
         # Same filter as frontend: !['auto'].includes(sourceValue) && hiddenState === '0'
         sval = str(entry.get("sourceValue") or "")
@@ -528,11 +555,25 @@ def _get_default_model(media_type):
             continue
         # Prefer entries the script knows how to dispatch
         if entry.get("key"):
-            return entry["key"]
+            candidates.append((entry, entry["key"]))
+            continue
         # Otherwise translate sourceValue → friendly key (in case caller passes raw mt)
         resolved = _resolve_model_key(sval, media_type=media_type)
         if resolved:
-            return resolved
+            candidates.append((entry, resolved))
+
+    best = None
+    best_score = 0
+    for entry, key in candidates:
+        score = _score_prompt_model_match(prompt, entry)
+        if score > best_score:
+            best = key
+            best_score = score
+    if best:
+        return best
+
+    if candidates:
+        return candidates[0][1]
 
     print(f"[warn] 服务端未返回可用的{media_type}模型（请查看 --list-models）", file=sys.stderr)
     return None
@@ -645,6 +686,8 @@ def list_active_models():
             "sourceName": row.get("sourceName"),
             "sourceValue": value,
             "description": row.get("sourceDescription") or "",
+            "remark": row.get("remark") or "",
+            "sourceKey": row.get("sourceKey") or "",
         })
     return {
         "image": active_by_type["IMAGE_MODEL"],
@@ -1802,7 +1845,7 @@ def create_video_task(prompt, model=None, ratio=None, resolution=None,
     # API-driven default: when caller omits `model`, pick the first active
     # non-'auto' video model from consumeSource/list (no hardcoded fallback).
     if model is None:
-        model = _get_default_model("video")
+        model = _get_default_model("video", prompt=prompt)
         if model is None:
             print(
                 "无法从接口获取可用的视频模型，请显式通过 model 参数指定，或检查服务端状态。",
@@ -2254,7 +2297,7 @@ def generate_video(prompt, model=None, ratio=None, resolution=None,
     
     display_model = model
     if display_model is None:
-        display_model = _get_default_model("video")
+        display_model = _get_default_model("video", prompt=prompt)
         if display_model is None:
             print(
                 "无法从接口获取可用的视频模型，请显式通过 model 参数指定，或检查服务端状态。",
@@ -2358,7 +2401,7 @@ def create_generation_task(prompt, quality=None, size=None, model=None,
     # API-driven default: when caller omits `model`, pick the first active
     # non-'auto' image model from consumeSource/list (no hardcoded fallback).
     if model is None:
-        model = _get_default_model("image")
+        model = _get_default_model("image", prompt=prompt)
         if model is None:
             print(
                 "无法从接口获取可用的图片模型，请显式通过 model 参数指定，或检查服务端状态。",
@@ -2605,7 +2648,7 @@ def generate_image(prompt, quality=None, size=None, poll_interval=5,
     """
     display_model = model
     if display_model is None:
-        display_model = _get_default_model("image")
+        display_model = _get_default_model("image", prompt=prompt)
         if display_model is None:
             print(
                 "无法从接口获取可用的图片模型，请显式通过 model 参数指定，或检查服务端状态。",
@@ -2804,7 +2847,7 @@ if __name__ == "__main__":
     if args.model is None:
         ensure_api_key_for_network()
         inferred = _infer_media_type(args.prompt)
-        args.model = _get_default_model(inferred)
+        args.model = _get_default_model(inferred, prompt=args.prompt)
         if args.model is None:
             parser.error(
                 f"无法从接口获取可用的{inferred}模型，请运行 --list-models 检查服务端状态，"

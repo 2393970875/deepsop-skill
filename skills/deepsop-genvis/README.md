@@ -2,10 +2,10 @@
 
 基于 AI Artist API 的图片/视频异步生成技能。
 
-本技能不维护、声明或向用户展示模型名称清单、可用模型清单、展示顺序或本地默认模型。模型列表和运行时默认选中值都从 `consumeSource/list` 获取：
+本技能不维护、声明或向用户展示模型名称清单、可用模型清单、展示顺序或本地默认模型。模型列表和运行时选中值都从 `consumeSource/list` 获取：
 
-- 图片：未指定模型时，取接口中图片类型、`sourceValue != "auto"`、`hiddenState == "0"` 的返回顺序第一项作为本次运行的选中值。
-- 视频：未指定模型时，取接口中视频类型、`sourceValue != "auto"`、`hiddenState == "0"` 的返回顺序第一项作为本次运行的选中值。
+- 脚本请求 `IMAGE_MODEL`、`VIDEO_MODEL`、`HUMAN_MODEL` 三类来源。
+- 图片/视频：未指定模型时，先按用户 prompt 匹配接口返回的 `sourceName/sourceDescription/remark/sourceKey`；没有匹配项时，再取对应类型中 `sourceValue != "auto"`、`hiddenState == "0"` 的返回顺序第一项作为本次运行的选中值。
 - 用户选中模型后，用接口返回的 `sourceValue` 作为 `methodType`，触发本地参数规则；这些规则不等同于模型清单。
 
 ## API Key

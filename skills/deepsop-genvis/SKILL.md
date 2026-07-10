@@ -3,7 +3,7 @@ name: deepsop-genvis
 description: |
   DeepSOP AI 图片与视频生成技能。用于调用 AI Artist API 创建图片或视频任务、上传参考图片/视频/音频、预估费用、轮询结果，并按 Vue 前端规则根据接口返回的 sourceValue/methodType 校验 generationType、ratio、resolution、duration、参考素材数量、搜索开关、音频开关等参数约束。
 
-  本技能不维护、声明或向用户展示模型名称清单、可用模型清单、展示顺序或固定默认模型。模型列表与默认选中值全部来自服务端 consumeSource/list；生成图片默认取 IMAGE_MODEL 列表第一个可用模型，生成视频默认取 VIDEO_MODEL 列表第一个可用模型。methodType 规则仅用于根据接口返回模型的 sourceValue 生成/校验请求参数，不代表本技能内置了哪些模型、当前可用哪些模型或固定默认使用哪个模型。
+  本技能不维护、声明或向用户展示模型名称清单、可用模型清单、展示顺序或固定默认模型。模型列表与运行时选中值全部来自服务端 consumeSource/list；未指定模型时，生成图片/视频先按用户描述匹配接口返回模型的 sourceName/sourceDescription/remark/sourceKey，匹配不到再取对应类型第一个可用模型。methodType 规则仅用于根据接口返回模型的 sourceValue 生成/校验请求参数，不代表本技能内置了哪些模型、当前可用哪些模型或固定默认使用哪个模型。
 
 ---
 
@@ -31,8 +31,8 @@ DEEPSOP_API_KEY=sk-your_api_key_here
 ## 必须遵守
 
 - OPClaw 项目运行时使用项目设置里的 `DEEPSOP_API_KEY`；非 OPClaw 运行时，让用户授权后设置共享 `DEEPSOP_API_KEY`。
-- 模型列表、模型名称、模型顺序、默认模型只来自 `consumeSource/list`；不要在对用户回复中枚举或承诺本地文档、README、脚本常量、示例命令里的模型清单/默认模型。
-- 未指定模型时，先按 prompt 判断图片或视频；生成图片取 `IMAGE_MODEL` 列表中 `sourceValue != "auto"` 且 `hiddenState == "0"` 的接口返回顺序第一个，生成视频取 `VIDEO_MODEL` 列表中 `sourceValue != "auto"` 且 `hiddenState == "0"` 的接口返回顺序第一个。不得在技能里说明或暗示图片/视频固定默认是某个模型。
+- 模型列表、模型名称、模型顺序、默认模型只来自 `consumeSource/list`；请求体包含 `IMAGE_MODEL`、`VIDEO_MODEL`、`HUMAN_MODEL`。不要在对用户回复中枚举或承诺本地文档、README、脚本常量、示例命令里的模型清单/默认模型。
+- 未指定模型时，先按 prompt 判断图片或视频；再用用户 prompt 匹配接口返回的 `sourceName/sourceDescription/remark/sourceKey`。匹配不到时，生成图片取 `IMAGE_MODEL` 列表中 `sourceValue != "auto"` 且 `hiddenState == "0"` 的接口返回顺序第一个，生成视频取 `VIDEO_MODEL` 列表中 `sourceValue != "auto"` 且 `hiddenState == "0"` 的接口返回顺序第一个。不得在技能里说明或暗示图片/视频固定默认是某个模型。
 - 每次发起费用预估、提交任务、只提交任务前，都必须以本次 `consumeSource/list` 返回结果为准校验当前请求的模型仍存在且 `hiddenState == "0"`；如果列表不存在该 `sourceValue` 或 `hiddenState != "0"`，必须停止并反馈实际状态，不得继续提交。
 - 指定模型时，仅使用获取模型列表接口返回的 `sourceValue/methodType`；脚本保留友好别名只是兼容旧调用，不作为技能文档依据，也不要主动向用户推荐。
 - 用户明确指定某个模型名/别名（例如文本里出现 V3.1FB）并要求生成时，先用获取模型列表接口在对应媒介类型里确认该名称/`sourceValue` 的最新状态；如果接口显示启用，就按该接口返回项提交，不要因为本地同 `sourceValue` 的图片模型、旧别名或旧缓存显示停用而拦截。
@@ -86,7 +86,7 @@ python3 scripts/generate_image.py "x" --poll <task_id> --max-wait 120 --json-out
 - 多镜头：确认单镜头、智能分镜或自定义分镜；自定义分镜必须有每个镜头的描述和时长。
 - 如果用户请求是“查看/列出/告诉我/有什么参数/支持什么分辨率/所有模型列表/包括停用模型”等信息查询，即使查询结果发现某个先前提到的模型可用，也必须停在回答信息查询，不要自动恢复或发起之前的生成任务。
 
-用户说“随便/快速来一个”时，可以按接口返回值和脚本默认参数直接生成；结果里只说明本次实际使用的 `methodType/sourceValue` 和关键参数，不宣称存在固定默认模型。
+用户说“随便/快速来一个”时，可以按接口返回值和脚本自动选择结果直接生成；结果里只说明本次实际使用的 `methodType/sourceValue` 和关键参数，不宣称存在固定默认模型。
 
 ## 图片 methodType/sourceValue 内部规则
 
