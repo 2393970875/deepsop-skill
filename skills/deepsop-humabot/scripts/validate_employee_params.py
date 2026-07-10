@@ -34,11 +34,15 @@ validate_employee_params.py
 
 import json
 import sys
+from pathlib import Path
 from typing import Any
 
 
 VALID_EMPLOYEES = {"AiWa", "Frank", "Fran", "Lisa"}
 INTERNAL_VARS = {"employeeList", "language", "totalTarget"}
+ADMIN_DIVISION_FILE = Path(__file__).resolve().parent / "admin_divisions" / "province_city_area.json"
+MUNICIPALITIES = {"北京市", "上海市", "天津市", "重庆市"}
+REGION_WORDS = ("地区", "区域", "周边")
 
 
 # ── 通用工具 ────────────────────────────────────────────────────────────────
@@ -89,6 +93,81 @@ def detect_camel_typo(actual: str, valid_set: set[str]) -> str | None:
         if a == vl or a.startswith(vl) or vl.startswith(a):
             return v
     return None
+
+
+def _add_unique_alias(aliases: dict[str, tuple[str, str, str] | None], alias: str, target: tuple[str, str, str]) -> None:
+    alias = alias.strip()
+    if not alias:
+        return
+    current = aliases.get(alias)
+    if current is None and alias in aliases:
+        return
+    if current is not None and current != target:
+        aliases[alias] = None
+        return
+    aliases[alias] = target
+
+
+def _name_aliases(name: str, *, with_region_words: bool = False) -> list[str]:
+    name = (name or "").strip()
+    if not name:
+        return []
+    aliases = {name}
+    for suffix in ("特别行政区", "壮族自治区", "回族自治区", "维吾尔自治区", "自治区", "自治州", "地区", "省", "市", "区", "县"):
+        if name.endswith(suffix) and len(name) > len(suffix):
+            aliases.add(name[:-len(suffix)])
+            break
+    if with_region_words:
+        base_values = list(aliases)
+        for base in base_values:
+            for word in REGION_WORDS:
+                aliases.add(f"{base}{word}")
+    return list(aliases)
+
+
+def _load_admin_division_aliases() -> dict[str, tuple[str, str, str] | None]:
+    aliases: dict[str, tuple[str, str, str] | None] = {}
+    try:
+        data = json.loads(ADMIN_DIVISION_FILE.read_text(encoding="utf-8-sig"))
+    except Exception:
+        return aliases
+    if not isinstance(data, list):
+        return aliases
+
+    for province_item in data:
+        if not isinstance(province_item, dict):
+            continue
+        province = str(province_item.get("province") or "").strip()
+        if not province:
+            continue
+        for alias in _name_aliases(province):
+            _add_unique_alias(aliases, alias, (province, "", ""))
+
+        for city_item in province_item.get("citys") or []:
+            if not isinstance(city_item, dict):
+                continue
+            city = str(city_item.get("city") or "").strip()
+            if not city:
+                continue
+            city_target = (province, "", "") if province in MUNICIPALITIES and city == province else ("", city, "")
+            for alias in _name_aliases(city, with_region_words=True):
+                _add_unique_alias(aliases, alias, city_target)
+
+            for area_item in city_item.get("areas") or []:
+                if not isinstance(area_item, dict):
+                    continue
+                county = str(area_item.get("area") or "").strip()
+                if not county:
+                    continue
+                if county == city:
+                    continue
+                county_target = (province, county, "") if province in MUNICIPALITIES else ("", city, county)
+                for alias in _name_aliases(county):
+                    _add_unique_alias(aliases, alias, county_target)
+    return aliases
+
+
+ADMIN_DIVISION_ALIASES = _load_admin_division_aliases()
 
 
 # ── 顶层结构校验 ─────────────────────────────────────────────────────────────
@@ -465,6 +544,18 @@ def validate_aiwa(p: dict, errors: list) -> None:
                     "TYPE_ADDRESS_CONFLICT",
                     "type=0 时 province/city/county 必须全为 \"\"，地址放在 address 字段",
                 )
+            if t == 0:
+                address = str(item.get("address") or "").strip()
+                structured = ADMIN_DIVISION_ALIASES.get(address)
+                if structured:
+                    province, city, county = structured
+                    err(
+                        errors,
+                        f"{ip}.address",
+                        "CITY_ALIAS_SHOULD_BE_STRUCTURED",
+                        f"{address!r} 是可确定的城市层级地址，不应作为自由文本 address",
+                        f"改为 {{\"type\":1,\"province\":\"{province}\",\"city\":\"{city}\",\"county\":\"{county}\",\"address\":\"\"}}",
+                    )
 
 
 # ── Frank ───────────────────────────────────────────────────────────────────

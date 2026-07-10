@@ -1006,7 +1006,7 @@ SCRIPT_BODY_EOF
 - 优先识别并排除所有出现在公司名称、品牌名称、企业全称、组织机构名称、店铺名中的地理位置，如【巨龙光学（福建）有限公司】中的"福建"、【XX上海分公司】中的"上海"。
 - 排除后，从剩余描述中提取国家层级之下的所有地理位置。提取时，按【省/直辖市/自治区】、【市/地级市/自治州/地区】、【县/区/县级市】三个层级识别。
 - 中国直辖市北京、上海、天津、重庆作为一级地址；其下区县作为二级地址。浙江省义乌市这类县级市应归入三级地址：浙江省义乌市输出"浙江省,,义乌市"，浙江省金华市义乌市输出"浙江省,金华市,义乌市"。
-- 仅提及"杭州"且能确定为杭州市时，输出",杭州市"；"我要找杭州关于环保的公司"输出",杭州市"。
+- 仅提及明确中国省/市/区县简称且能根据内置 `scripts/admin_divisions/province_city_area.json` 省市区数据确定层级时，必须补全为结构化地址，不得放入 `detailedAddress`。例如："杭州"、"杭州地区"输出",杭州市"；"我要找杭州关于环保的公司"输出",杭州市"；"苏州"、"苏州地区"、"苏州区域"、"苏州周边"均输出",苏州市"。
 - `addressObjList` 输出格式为"一级地址,二级地址,三级地址"，若无某级地址则保留逗号占位以保持层级对应。例如仅提及"金华市"输出",金华市"；"浙江省杭州市"输出"浙江省,杭州市"；"浙江省杭州市余杭区"输出"浙江省,杭州市,余杭区"。
 - 如果不能非常确定该地址属于一级/二级/三级，`addressObjList` 必须返回空字符串，改由 `detailedAddress` 返回原文中剩余的详细地址信息。
 - 若 `addressObjList` 已经非常确定并成功输出，`detailedAddress` 返回空字符串；若没有任何有效详细地址，二者都返回空字符串。
@@ -1474,11 +1474,12 @@ curl -s -H "x-api-key: $DEEPSOP_API_KEY" 'https://ai.deepsop.com/prod-api/ai/use
 - `excludeCountry`：Step 2 的 excludeCountry，**无则填 `null`，不得填 `""`**；未识别到排除国家时可省略该键以兼容旧后端，但若 Step 2 非空则必须放入 AiWa。
 - `excludeCountryCodeList`：Step 2 的 excludeCountryCodeList **必须用 `.split(",")` 拆分成数组**，无则填 `[]`；未识别到排除国家时可省略该键以兼容旧后端，但若 Step 2 非空则必须放入 AiWa。
 - `addressObjList`：根据 Step 2 的 `addressObjList` 与 `detailedAddress` 字符串构建数组，逻辑对齐前端 `getAiWaAddressObjList`：
-  - **情况 1（`detailedAddress` 非空）**：说明详细地址无法非常确定层级。必须填自由文本对象 `[{"type":0,"province":"","city":"","county":"","address":"{detailedAddress}"}]`，并且不得同时填 province/city/county。
+  - **情况 1（`detailedAddress` 非空）**：说明详细地址无法非常确定层级。必须填自由文本对象 `[{"type":0,"province":"","city":"","county":"","address":"{detailedAddress}"}]`，并且不得同时填 province/city/county。但如果 `detailedAddress` 只是可由内置省市区 JSON 确定层级的省/市/区县简称或区域词（如 `"苏州"`、`"苏州地区"`、`"杭州地区"`），必须纠正为情况 2 的结构化地址，不能提交 `type=0`。
   - **情况 2（`detailedAddress` 为空，`addressObjList` 非空）**：按英文逗号 `,` 拆成 `[province, city, county]`，保留空位占位，构造单个 `type=1` 对象。例如：
     - `"浙江省,,义乌市"` → `{"type":1,"province":"浙江省","city":"","county":"义乌市","address":""}`
     - `"浙江省,金华市,义乌市"` → `{"type":1,"province":"浙江省","city":"金华市","county":"义乌市","address":""}`
     - `",杭州市"` → `{"type":1,"province":"","city":"杭州市","county":"","address":""}`
+    - `",苏州市"` → `{"type":1,"province":"","city":"苏州市","county":"","address":""}`
   - **情况 3（`detailedAddress` 与 `addressObjList` 都为空）**：Step 2 未识别到任何地址。必须填占位 `[{"type":1,"province":"","city":"","county":"","address":""}]`，**不得填 `[]`**。
   - **`type` 取值语义**：`1` = 中文结构化拆分地址（仅填 `province/city/county`）；`0` = 自由文本地址（仅填 `address`）。**禁止两者同时填**（`type=1` 时 `address` 必须为 `""`；`type=0` 时 `province/city/county` 必须全为 `""`），违反 `validate_employee_params.py` 会以 `TYPE_ADDRESS_CONFLICT` 拦截。
 - `industryList`：Step 2 的 industryList **必须用 `.split(",")` 拆分成数组**
