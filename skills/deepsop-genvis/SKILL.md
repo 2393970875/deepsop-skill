@@ -32,6 +32,7 @@ DEEPSOP_API_KEY=sk-your_api_key_here
 
 - OPClaw 项目运行时使用项目设置里的 `DEEPSOP_API_KEY`；非 OPClaw 运行时，让用户授权后设置共享 `DEEPSOP_API_KEY`。
 - 模型列表、模型名称、模型顺序、默认模型只来自 `consumeSource/list`；请求体包含 `IMAGE_MODEL`、`VIDEO_MODEL`、`HUMAN_MODEL`。不要在对用户回复中枚举或承诺本地文档、README、脚本常量、示例命令里的模型清单/默认模型。
+- 用户询问“用什么模型 / 适合哪个模型 / 某类视频或图片对应什么模型 / 数字人带货视频用什么模型”等模型咨询时，必须调用 `scripts/generate_image.py "<用户原话>" --recommend-model --json-output`，依据接口返回模型的 `sourceName/sourceValue/sourceDescription` 回答；不得凭记忆、外部旧名称或本地示例回答。
 - 未指定模型时，先按 prompt 判断图片或视频；再用用户 prompt 匹配接口返回的 `sourceName/sourceDescription/remark/sourceKey`。匹配不到时，生成图片取 `IMAGE_MODEL` 列表中 `sourceValue != "auto"` 且 `hiddenState == "0"` 的接口返回顺序第一个，生成视频取 `VIDEO_MODEL` 列表中 `sourceValue != "auto"` 且 `hiddenState == "0"` 的接口返回顺序第一个。不得在技能里说明或暗示图片/视频固定默认是某个模型。
 - 每次发起费用预估、提交任务、只提交任务前，都必须以本次 `consumeSource/list` 返回结果为准校验当前请求的模型仍存在且 `hiddenState == "0"`；如果列表不存在该 `sourceValue` 或 `hiddenState != "0"`，必须停止并反馈实际状态，不得继续提交。
 - 指定模型时，仅使用获取模型列表接口返回的 `sourceValue/methodType`；脚本保留友好别名只是兼容旧调用，不作为技能文档依据，也不要主动向用户推荐。

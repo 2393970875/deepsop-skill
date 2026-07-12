@@ -108,3 +108,56 @@ def test_default_model_prefers_prompt_description_match(monkeypatch):
     selected = module._get_default_model("image", prompt="生成角色一致性的产品海报")
 
     assert selected == "Image2"
+
+
+def test_default_video_model_prefers_digital_human_sales_description(monkeypatch):
+    module = load_module()
+
+    rows = [
+        {
+            "sourceType": "VIDEO_MODEL",
+            "sourceValue": "20",
+            "hiddenState": "0",
+            "sourceName": "DeepSop.S2.0 Evo",
+            "sourceDescription": "影视级真人视频生成，数字人讲解视频",
+            "remark": "",
+            "sourceKey": "",
+        },
+        {
+            "sourceType": "VIDEO_MODEL",
+            "sourceValue": "21",
+            "hiddenState": "0",
+            "sourceName": "DeepSop.S2.0 Fast Evo",
+            "sourceDescription": "可快速制作真人视频，数字人带货视频，输出画面基础流畅，音画同步效果出色，兼容15秒竖屏视频规格",
+            "remark": "",
+            "sourceKey": "",
+        },
+    ]
+    monkeypatch.setattr(module, "fetch_model_list", lambda: rows)
+
+    selected = module._get_default_model("video", prompt="数字人带货视频你用什么模型")
+
+    assert selected == "S2.0FastEvo"
+
+
+def test_recommend_model_for_prompt_returns_live_description(monkeypatch):
+    module = load_module()
+
+    rows = [
+        {
+            "sourceType": "VIDEO_MODEL",
+            "sourceValue": "21",
+            "hiddenState": "0",
+            "sourceName": "DeepSop.S2.0 Fast Evo",
+            "sourceDescription": "可快速制作真人视频，数字人带货视频，输出画面基础流畅，音画同步效果出色，兼容15秒竖屏视频规格",
+            "remark": "",
+            "sourceKey": "",
+        },
+    ]
+    monkeypatch.setattr(module, "fetch_model_list", lambda: rows)
+
+    recommendation = module.recommend_model_for_prompt("数字人带货视频你用什么模型")
+
+    assert recommendation["sourceValue"] == "21"
+    assert recommendation["key"] == "S2.0FastEvo"
+    assert "数字人带货视频" in recommendation["description"]

@@ -579,6 +579,28 @@ def _get_default_model(media_type, prompt=None):
     return None
 
 
+def recommend_model_for_prompt(prompt, media_type=None):
+    """Return the best live model metadata match for an informational prompt."""
+    inferred = media_type or _infer_media_type(prompt)
+    active = list_active_models().get(inferred, [])
+    best = None
+    best_score = 0
+    for entry in active:
+        if str(entry.get("sourceValue") or "").lower() == "auto":
+            continue
+        if not entry.get("key") and not _resolve_model_key(entry.get("sourceValue"), media_type=inferred):
+            continue
+        score = _score_prompt_model_match(prompt, entry)
+        if score > best_score:
+            best = dict(entry)
+            best_score = score
+    if not best:
+        return None
+    best["mediaType"] = inferred
+    best["matchScore"] = best_score
+    return best
+
+
 def _resolve_model_key(value, media_type=None):
     """Accept either a friendly key (e.g. 'HappyHorse') or a methodType
     string/int (e.g. '19', 19) and return the friendly key used internally.
@@ -1709,7 +1731,7 @@ MODEL_CONFIGS = {
         "type": "9",
         "methodType": "21",
         "source_name": "DeepSop.S2.0 Fast Evo",
-        "description": "Seedance2.0 Fast Evo 快速生成 基础流畅 音画同步 支持15秒竖屏视频",
+        "description": "可快速制作真人视频，数字人带货视频，输出画面基础流畅，音画同步效果出色，兼容15秒竖屏视频规格",
         "extra_params": {
             "generationType": "TEXT",
             "imageUrlList": None,
@@ -2737,6 +2759,8 @@ if __name__ == "__main__":
                         help="生成提示词（使用 --list-models 时可省略）")
     parser.add_argument("--list-models", action="store_true",
                         help="列出当前服务端激活的可用模型 (hiddenState=0) 后退出")
+    parser.add_argument("--recommend-model", action="store_true",
+                        help="仅根据 prompt 和服务端模型描述推荐模型，不创建生成任务")
     parser.add_argument("--model", default=None,
                         metavar="MODEL",
                         help="生成模型。推荐传接口 sourceValue/methodType（如 19）；旧友好别名仅用于兼容。"
@@ -2834,6 +2858,27 @@ if __name__ == "__main__":
 
     if not args.prompt:
         parser.error("prompt 为必填参数（查看可用模型请加 --list-models）")
+
+    if args.recommend_model:
+        ensure_api_key_for_network()
+        recommendation = recommend_model_for_prompt(args.prompt)
+        if not recommendation:
+            message = "未从当前服务端可用模型描述中匹配到合适模型"
+            if args.json_output:
+                print(json.dumps({"status": "NOT_FOUND", "message": message}, ensure_ascii=False), flush=True)
+            else:
+                print(message, file=sys.stderr)
+            sys.exit(1)
+        if args.json_output:
+            print(json.dumps({"status": "SUCCESS", "model": recommendation}, ensure_ascii=False), flush=True)
+        else:
+            print(
+                f"{recommendation.get('sourceName')} "
+                f"[sourceValue={recommendation.get('sourceValue')}, key={recommendation.get('key')}]"
+            )
+            if recommendation.get("description"):
+                print(recommendation["description"])
+        sys.exit(0)
 
     # Toggle dry-run globally so all downstream task creators honor it
     if args.dry_run:
