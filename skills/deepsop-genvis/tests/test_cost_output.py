@@ -161,3 +161,34 @@ def test_recommend_model_for_prompt_returns_live_description(monkeypatch):
     assert recommendation["sourceValue"] == "21"
     assert recommendation["key"] == "S2.0FastEvo"
     assert "数字人带货视频" in recommendation["description"]
+
+
+def test_recommend_model_searches_all_source_types_and_prefers_description_match(monkeypatch):
+    module = load_module()
+
+    rows = [
+        {
+            "sourceType": "HUMAN_MODEL",
+            "sourceValue": "1",
+            "hiddenState": "0",
+            "sourceName": "DeepSop.Video-digital human",
+            "sourceDescription": "根据用户上传的视频片段 + 音频，生成与视频主体嘴型同步、表情自然的数字人视频。",
+            "remark": "",
+            "sourceKey": "",
+        },
+        {
+            "sourceType": "VIDEO_MODEL",
+            "sourceValue": "21",
+            "hiddenState": "0",
+            "sourceName": "DeepSop.S2.0 Fast Evo",
+            "sourceDescription": "可快速制作真人视频，数字人带货视频，输出画面基础流畅，音画同步效果出色，兼容15秒竖屏视频规格",
+            "remark": "",
+            "sourceKey": "",
+        },
+    ]
+    monkeypatch.setattr(module, "fetch_model_list", lambda: rows)
+
+    recommendation = module.recommend_model_for_prompt("数字人带货视频你用什么模型")
+
+    assert recommendation["sourceType"] == "VIDEO_MODEL"
+    assert recommendation["sourceValue"] == "21"

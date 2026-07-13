@@ -31,9 +31,18 @@ ESTIMATE_COST_URL = f"{BASE_URL}/estimate/cost"
 MODEL_LIST_URL = f"{BASE_URL}/consumeSource/list?pageNum=1&pageSize=999"
 RECHARGE_URL = "https://ai.deepsop.com/"
 MODEL_SOURCE_TYPES = ["IMAGE_MODEL", "VIDEO_MODEL", "HUMAN_MODEL"]
+MODEL_SOURCE_TYPE_TO_MEDIA = {
+    "IMAGE_MODEL": "image",
+    "VIDEO_MODEL": "video",
+    "HUMAN_MODEL": "human",
+}
 
 _MODEL_NAME_TOKEN_RE = re.compile(r"[a-z0-9]+", re.IGNORECASE)
 _MODEL_DESC_SPLIT_RE = re.compile(r"[\s,，。；;、/|()（）\[\]【】]+")
+_MODEL_MATCH_TERMS = (
+    "数字人", "带货", "真人", "口型", "嘴型", "音频", "人像", "虚拟形象", "动漫角色",
+    "视频", "图片", "参考", "音画同步", "竖屏", "讲解",
+)
 
 def _normalize_model_name(value):
     """Normalize API/local model names for loose matching without exposing them as rules."""
@@ -69,6 +78,10 @@ def _score_prompt_model_match(prompt, entry):
         token = token.strip()
         if len(token) >= 2 and token in prompt_text:
             score += len(token)
+
+    for term in _MODEL_MATCH_TERMS:
+        if term in prompt_text and term in metadata:
+            score += len(term) * 2
 
     prompt_words = set(_MODEL_NAME_TOKEN_RE.findall(prompt_text))
     metadata_words = set(_MODEL_NAME_TOKEN_RE.findall(metadata))
@@ -581,14 +594,13 @@ def _get_default_model(media_type, prompt=None):
 
 def recommend_model_for_prompt(prompt, media_type=None):
     """Return the best live model metadata match for an informational prompt."""
-    inferred = media_type or _infer_media_type(prompt)
-    active = list_active_models().get(inferred, [])
+    inferred = media_type or "all"
+    active_models = list_active_models()
+    active = active_models.get(inferred, []) if inferred != "all" else active_models.get("all", [])
     best = None
     best_score = 0
     for entry in active:
         if str(entry.get("sourceValue") or "").lower() == "auto":
-            continue
-        if not entry.get("key") and not _resolve_model_key(entry.get("sourceValue"), media_type=inferred):
             continue
         score = _score_prompt_model_match(prompt, entry)
         if score > best_score:
@@ -596,7 +608,6 @@ def recommend_model_for_prompt(prompt, media_type=None):
             best_score = score
     if not best:
         return None
-    best["mediaType"] = inferred
     best["matchScore"] = best_score
     return best
 
@@ -681,18 +692,20 @@ def _validate_local_against_api():
 
 
 def list_active_models():
-    """Return active (hiddenState == '0') models grouped by image/video.
+    """Return active (hiddenState == '0') models grouped by media type.
 
     Cross-references the server's consumeSource/list with local MODEL_CONFIGS
-    so only models the script actually knows how to dispatch are listed.
+    for image/video dispatch keys. HUMAN_MODEL is retained for informational
+    recommendation even though this script does not submit human-model tasks.
     """
     rows = fetch_model_list()
-    active_by_type = {"IMAGE_MODEL": [], "VIDEO_MODEL": []}
+    active_by_media = {"image": [], "video": [], "human": [], "all": []}
     for row in rows:
         if str(row.get("hiddenState")) != "0":
             continue
         stype = row.get("sourceType")
-        if stype not in active_by_type:
+        media = MODEL_SOURCE_TYPE_TO_MEDIA.get(stype)
+        if media is None:
             continue
         value = str(row.get("sourceValue"))
         # match back to a MODEL_CONFIGS key
@@ -703,18 +716,19 @@ def list_active_models():
                   or (cfg["media_type"] == "video" and stype == "VIDEO_MODEL"))),
             None,
         )
-        active_by_type[stype].append({
+        entry = {
             "key": local_key,
             "sourceName": row.get("sourceName"),
             "sourceValue": value,
+            "sourceType": stype,
+            "mediaType": media,
             "description": row.get("sourceDescription") or "",
             "remark": row.get("remark") or "",
             "sourceKey": row.get("sourceKey") or "",
-        })
-    return {
-        "image": active_by_type["IMAGE_MODEL"],
-        "video": active_by_type["VIDEO_MODEL"],
-    }
+        }
+        active_by_media[media].append(entry)
+        active_by_media["all"].append(entry)
+    return active_by_media
 
 
 def print_active_models():
