@@ -1585,6 +1585,11 @@ curl -s -H "x-api-key: $DEEPSOP_API_KEY" 'https://ai.deepsop.com/prod-api/ai/use
 - `scriptId`：前置 A 第 2 步用户选定的场景库 `scriptId`
 - `agentProfileId`：前置 A 第 2 步 `data.chatbotIdList[0]`
 
+> 🔒 **前端链路对齐硬约束（Fran）：**
+> 1. 前端协作任务先在 Analysis 阶段生成完整 `employeeParams.Fran`，再在 Content/Fran 步骤只把 `{scriptId, agentProfileId}` 合并回同一个 Fran 对象。OPClaw 必须模拟这个顺序：**合并，不覆盖**。
+> 2. 最终提交时 `employeeParams.Fran` 不能只剩 `scriptId` / `agentProfileId`。如果只提交内容步骤返回值，后台生成的 `franInitParams` 会缺少 `incrementalTarget`，并连带缺少 `upstreamCustomerPoolId/customerPoolId/contactType` 的复制链路上下文，Fran 节点会在真正打电话前失败。
+> 3. `upstreamCustomerPoolId` / `customerPoolId` / `contactType` 不要求手动写入请求体，它们由后台按完整任务链路生成；但前提是本请求体必须同时包含完整 `employeeParams.Fran` 和符合组合规则的 `sourceSettings`。
+
 > ⛔ **Fran 结构强约束：**
 > 1. 子对象 key 必须是 **`Fran`**（首字母大写、4 个字母原样），不是 `fran` / `FRAN` / `franParam` / `franParams`。
 > 2. 必须嵌在 `collaborationSubmitTaskParam.employeeParams.Fran` 之下。
@@ -1715,11 +1720,13 @@ curl -s -H "x-api-key: $DEEPSOP_API_KEY" 'https://ai.deepsop.com/prod-api/ai/use
 > - **含 AiWa**：含 `Fran` 或 `Lisa` → `sourceSettings` 为完整对象（含 `cascader` / `aiMining` 等键，见 Fran/Lisa 示例）；其他子组合 → `sourceSettings` 为 `null`。
 > - **不含 AiWa 且含 `Frank`/`Fran`/`Lisa` 任一**：`sourceSettings` **必须**为 Step 1.6 产出的客户来源对象（含 `fileList` / `addressFileList` / `suppurIds` 等键，**不要**带 `cascader` / `aiMining` 等 AiWa 联合场景的旧键），且 `fileList` / `addressFileList` / `suppurIds` 三者至少一个非空。
 > - **既不含 AiWa 也不含 `Frank`/`Fran`/`Lisa`**：`sourceSettings` 为 `null`。
+> - **AiWa + Fran/Lisa 联合场景完整 sourceSettings 键集**：必须包含 `groupId` / `stageId` / `labelId` / `level` / `seasGroupIds` / `addressId` / `fileList` / `updateSupport` / `cascader` / `aiMining` / `customerMining` / `seasMining` / `uploadMining` / `countryId` / `addressMining`，缺任意一项都禁止提交。
 
 > 🚫 **组合场景常见错例：**
 >
 > 1. 仅 AiWa 任务把 `currentModule` 写成 `"analysis"`：错。**任何组合**都必须 `"content"`。
 > 2. AiWa+Fran 联合任务把 `sourceSettings` 写成 `null`：错。含 Fran 必须填完整对象。
+> 3. AiWa+Fran 联合任务把 `employeeParams.Fran` 写成 `{"scriptId":"...","agentProfileId":"..."}`：错。这只是 Content/Fran 步骤返回值，必须合并回 Analysis 阶段已有的 Fran 执行参数，不能覆盖。
 > 4. 多员工组合时把不同员工塞进同一个员工 key（如 `employeeParams.AiWaFrank: {...}`）：错。每个员工是 `employeeParams` 下独立的同级 key。
 > 5. 多员工组合时漏掉某个员工的子对象（仅在 `employeeList` 字符串里出现，但 `employeeParams` 里没有对应键）：错。`employeeList` 里写了的员工，`employeeParams` 必须有对应子对象。
 

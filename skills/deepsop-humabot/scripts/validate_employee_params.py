@@ -43,6 +43,23 @@ INTERNAL_VARS = {"employeeList", "language", "totalTarget"}
 ADMIN_DIVISION_FILE = Path(__file__).resolve().parent / "admin_divisions" / "province_city_area.json"
 MUNICIPALITIES = {"北京市", "上海市", "天津市", "重庆市"}
 REGION_WORDS = ("地区", "区域", "周边")
+AIWA_SALES_SOURCE_REQUIRED = [
+    "groupId",
+    "stageId",
+    "labelId",
+    "level",
+    "seasGroupIds",
+    "addressId",
+    "fileList",
+    "updateSupport",
+    "cascader",
+    "aiMining",
+    "customerMining",
+    "seasMining",
+    "uploadMining",
+    "countryId",
+    "addressMining",
+]
 
 
 # ── 通用工具 ────────────────────────────────────────────────────────────────
@@ -338,6 +355,25 @@ def validate_source_settings(cstp: dict, ep: dict, errors: list) -> None:
                     f"...sourceSettings.{arr_key}",
                     "WRONG_TYPE",
                     f"{arr_key} 必须是数组",
+                )
+
+        if needs_full:
+            for key in AIWA_SALES_SOURCE_REQUIRED:
+                if key not in ss:
+                    err(
+                        errors,
+                        f"...sourceSettings.{key}",
+                        "MISSING_KEY",
+                        f"AiWa 联合 Fran/Lisa 时 sourceSettings 缺少必填 {key!r}",
+                        "按前端协作链路补齐完整联合 sourceSettings 对象；否则后台无法为 Fran/Lisa 复制上游客户池并生成完整 initParams",
+                    )
+            if "updateSupport" in ss and (ss["updateSupport"] not in (0, 1) or isinstance(ss["updateSupport"], bool)):
+                err(
+                    errors,
+                    "...sourceSettings.updateSupport",
+                    "WRONG_VALUE",
+                    f"sourceSettings.updateSupport 必须是数字 0 或 1，当前为 {ss['updateSupport']!r}",
+                    "按前端默认值填 1",
                 )
 
         # fileList / addressFileList 元素必须是 {name, url} 对象（ExcelFile）
@@ -645,6 +681,14 @@ FRAN_REQUIRED = [
 
 def validate_fran(p: dict, errors: list) -> None:
     base = "...employeeParams.Fran"
+    if set(p.keys()).issubset({"scriptId", "agentProfileId"}) and any(k not in p for k in FRAN_REQUIRED):
+        err(
+            errors,
+            base,
+            "FRAN_CONTENT_STEP_ONLY",
+            "Fran 参数只包含内容步骤返回的 scriptId/agentProfileId，缺少 Analysis 阶段的外呼执行参数；这会导致后台 franInitParams 只有 scriptId，无法进入真正打电话",
+            "按前端链路保留并合并完整 employeeParams.Fran：ringingDuration/incrementalTarget/upperLimitTarget/minConcurrency/priority/callingNumber/scriptId/agentProfileId",
+        )
     for k in FRAN_REQUIRED:
         if k not in p:
             err(errors, f"{base}.{k}", "MISSING_KEY", f"Fran 缺少必填 {k!r}")
