@@ -37,6 +37,7 @@ def test_v31fb_forces_720p_even_if_allowed_table_drifts(monkeypatch, capsys):
     task_id = module.create_video_task(
         "生成一个测试AI视频",
         model="V3.1FB",
+        generation_type="TEXT",
         resolution="1080p",
         ratio="16:9",
         duration=8,
@@ -47,9 +48,62 @@ def test_v31fb_forces_720p_even_if_allowed_table_drifts(monkeypatch, capsys):
     marker = '{\n  "type": "9"'
     payload = json.loads(output[output.index(marker):])
     parameter = json.loads(payload["parameter"])
+    assert payload["saveToDatabase"] is True
     assert parameter["methodType"] == "3"
     assert parameter["resolution"] == "720p"
     assert parameter["duration"] == 8
+
+
+def test_v31fb_default_generation_type_matches_frontend_reference(capsys):
+    module = load_module()
+    module.DRY_RUN = True
+
+    task_id = module.create_video_task(
+        "让参考图中的人物轻微点头",
+        model="V3.1FB",
+        image_url_list=["https://example.com/ref.png"],
+    )
+
+    assert task_id == "DRY_RUN_TASK_ID"
+    output = capsys.readouterr().err
+    marker = '{\n  "type": "9"'
+    payload = json.loads(output[output.index(marker):])
+    parameter = json.loads(payload["parameter"])
+    assert payload["saveToDatabase"] is True
+    assert parameter["methodType"] == "3"
+    assert parameter["generationType"] == "REFERENCE"
+    assert parameter["imageUrlList"] == ["https://example.com/ref.png"]
+
+
+def test_human_video_model_payload_matches_frontend(capsys):
+    module = load_module()
+    module.DRY_RUN = True
+
+    task_id = module.create_human_task(
+        model="1",
+        video_url="https://example.com/person.mp4",
+        audio_url="https://example.com/audio.mp3",
+        duration=12.5,
+    )
+
+    assert task_id == "DRY_RUN_TASK_ID"
+    output = capsys.readouterr().err
+    marker = '{\n  "type": "12"'
+    payload = json.loads(output[output.index(marker):])
+    parameter = json.loads(payload["parameter"])
+    assert payload["saveToDatabase"] is True
+    assert payload["methodType"] == "1"
+    assert parameter == {
+        "req_key": "jimeng_realman_avatar_picture_omni_v15",
+        "methodType": "1",
+        "prompt": "",
+        "image_url": None,
+        "video_url": "https://example.com/person.mp4",
+        "audio_url": "https://example.com/audio.mp3",
+        "duration": 12.5,
+        "output_resolution": "720",
+        "pe_fast_mode": True,
+    }
 
 
 def test_fetch_model_list_requests_image_video_and_human_models(monkeypatch):

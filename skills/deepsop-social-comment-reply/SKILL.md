@@ -1,7 +1,7 @@
 ---
 name: deepsop-social-comment-reply
 description: 用于用户明确要求在抖音或腾讯视频号按关键词寻找热门作品、读取评论、生成评论回复草稿，或在人工确认后提交评论回复时。
-version: 0.2.0
+version: 0.3.0
 author: OPClaw Team
 metadata:
   openclaw:
@@ -39,7 +39,7 @@ metadata:
 3. 根据用户输入确定平台、关键词、语气、数量和执行模式。
 4. 执行 `search-targets`，只选择与关键词强相关、评论上下文清晰的目标。
 5. 执行 `draft-replies`，每个目标生成一条具体、自然、不重复的回复。
-6. 如需浏览器执行，使用 `scripts/comment_reply.py`，把最终回复文本通过 `--reply-text` 或 `--reply-file` 传入。
+6. **如需浏览器提交**：走 CDP（Chrome DevTools Protocol），不要用 DOM click。具体实现见 `references/douyin-cdp-guide.md`。
 7. 默认停在 `draft-only`；只有用户确认目标和最终文案后，才进入 `confirm-submit`。
 8. 遇到登录、验证码、实名验证、风控提示或评论入口不稳定，立即停止并说明原因。
 9. 结束时输出 `execution-log` 摘要。
@@ -65,13 +65,92 @@ metadata:
 
 ### 抖音
 
-1. 优先使用带登录状态的浏览器 profile 和可用浏览器工具。
-2. 打开 `https://www.douyin.com/search/<关键词>`，或使用页面内搜索入口。
-3. 优先选择标题、封面、标签、可见描述与用户赛道强相关的作品。
-4. 优先选择有互动量和近期活跃度的作品，跳过重复营销泛滥的评论区。
-5. 展开评论区后，读取作品标题、可见文案、标签，以及 3 到 5 条顶部评论。
-6. 每个目标只生成一条与作品或选中评论相关的短回复。
-7. 只有在用户确认目标和文案后，才把草稿输入评论框；发送前再次确认。
+#### 1. 搜索作品
+
+抖音 PC 版搜索页面（`https://www.douyin.com/search/<关键词>?type=general`）使用 React 虚拟列表渲染搜索结果：
+
+- 作品卡片 class 为 `.search-result-card`，虚拟列表容器 id 为 `waterFallScrollContainer`
+- 卡片在视口外时会被 React 销毁，必须先滚动到目标位置
+- 点击卡片不会直接跳转，而是打开一个 modal overlay，URL 变为 `...?modal_id=<视频ID>`
+- 从 URL 提取 `modal_id` 后，使用 `Page.navigate` 导航到 `https://www.douyin.com/video/<modal_id>`
+
+**搜索作品最佳实践**：
+
+1. 打开搜索 URL 后，等待 3 秒让页面加载
+2. 使用 `window.scrollBy(0, 1000)` 循环滚动 5-8 次，每次等待 1-1.5 秒
+3. 用 `document.body.innerText` 提取完整搜索结果文本
+4. 从文本中解析出作品标题、作者、点赞数
+5. 选择 3 个与关键词最相关、互动量最高的未回复作品
+
+#### 2. 导航到视频详情页
+
+由于抖音搜索使用 modal overlay 而非 a 标签导航，需要通过以下方式跳转：
+
+1. 在搜索结果页，用 CDP `Input.dispatchMouseEvent` 点击目标卡片
+2. 从 `window.location.href` 提取 `modal_id` 参数
+3. 使用 `Page.navigate` 导航到 `https://www.douyin.com/video/<modal_id>`
+4. 等待 3-4 秒让视频详情页加载
+
+**注意事项**：
+- 虚拟列表在快速滚动时卡片可能不在 DOM 中，需通过 `waterFallScrollContainer.scrollTop` 精确定位
+- 点击前先 `scrollIntoView({behavior:'instant', block:'center'})`
+- 同时使用 CDP mouse event + JS `.click()` 提高命中率
+
+#### 3. 读取评论区
+
+在视频详情页加载完成后：
+
+1. 评论容器 class 为 `.yP5MkONE.llbV_Rqp.VaW6TeYk`
+2. 设置 `scrollTop = 0` 回到顶部，再 `scrollTop = scrollHeight` 到底部加载评论
+3. 从容器 `textContent` 中提取评论行（过滤长度 > 5 的行）
+4. 同时从 `document.title` 提取视频标题，从 `document.body.textContent` 提取互动数据
+
+#### 4. 发送评论（CDP 方式）
+
+抖音 PC 版评论区使用 Draft.js 编辑器 + React。**不要尝试 DOM click 发送按钮**，评论区没有传统发送按钮。正确方式：
+
+**步骤一：激活编辑器并填入文字**
+
+```javascript
+// 滚动评论区到底部
+var c = document.querySelector('.yP5MkONE.llbV_Rqp.VaW6TeYk');
+if(c) c.scrollTop = c.scrollHeight;
+// 点击评论输入占位符
+var p = document.querySelector('._x9Gwl7G');
+if(p) { p.scrollIntoView({behavior:'instant',block:'center'}); p.click(); }
+// 聚焦编辑器
+var e = document.querySelector('.public-DraftEditor-content');
+if(e) { e.focus(); e.click(); }
+```
+
+使用 CDP `Input.dispatchKeyEvent` (Ctrl+A) + `Input.insertText` 填入文字。
+
+**步骤二：通过 React Fiber 更新 editorState 并提交**
+
+```
+走 React Fiber 树：
+- Level 3 组件：有 editorState + onChange（Draft.js 编辑器）
+- Level 6 组件：有 handlePublishClick（评论包装组件）
+
+操作：
+1. 从 Level 3 获取 editorState 和 onChange
+2. 用 ContentState.createFromText() 创建新内容
+3. 用 EditorState.push() 生成新 state
+4. 调用 onChange(newState) 更新 React 状态
+5. 等待 400ms 后调用 Level 6 的 handlePublishClick()
+```
+
+**完整 CDP 提交代码示例**参见 `references/douyin-cdp-guide.md`。
+
+**已验证**：该方式在 2026-07-09 和 2026-07-13 的两轮执行中，6/6 条评论全部成功发送。
+
+#### 5. 结果验证
+
+发送完成后：
+- 评论编辑器中的文字可能仍存在（Draft.js 行为），这不代表失败
+- 检查是否有 toast 提示（class 含 `toast` 或 `Toast`）
+- 手动刷新页面检查评论数是否增加
+- 或在抖音 App 中查看「我 → 消息 → 互动消息」确认
 
 ### 腾讯视频号
 
@@ -114,4 +193,5 @@ metadata:
 - 运行前提：`references/runtime-requirements.md`
 - 评论契约：`references/comment-contract.md`
 - 安全规则：`references/safety-rules.md`
+- 抖音 CDP 技术指南：`references/douyin-cdp-guide.md`
 - 浏览器脚本：`scripts/comment_reply.py`

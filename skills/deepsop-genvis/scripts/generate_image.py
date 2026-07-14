@@ -36,6 +36,11 @@ MODEL_SOURCE_TYPE_TO_MEDIA = {
     "VIDEO_MODEL": "video",
     "HUMAN_MODEL": "human",
 }
+MEDIA_TYPE_TO_MODEL_SOURCE_TYPE = {
+    "image": "IMAGE_MODEL",
+    "video": "VIDEO_MODEL",
+    "human": "HUMAN_MODEL",
+}
 
 _MODEL_NAME_TOKEN_RE = re.compile(r"[a-z0-9]+", re.IGNORECASE)
 _MODEL_DESC_SPLIT_RE = re.compile(r"[\s,，。；;、/|()（）\[\]【】]+")
@@ -473,7 +478,7 @@ def check_model_available(model_key):
         print(f"未知模型：{model_key}", file=sys.stderr)
         return False
     config = MODEL_CONFIGS[model_key]
-    want_type = "IMAGE_MODEL" if config["media_type"] == "image" else "VIDEO_MODEL"
+    want_type = MEDIA_TYPE_TO_MODEL_SOURCE_TYPE.get(config["media_type"])
     want_value = str(config["methodType"])
 
     # Explicit model checks must not rely on disk cache: stale hiddenState data
@@ -658,14 +663,14 @@ def _validate_local_against_api():
     seen_remote = set()  # set of (sourceType, sourceValue)
     for row in rows:
         stype = row.get("sourceType")
-        if stype not in ("IMAGE_MODEL", "VIDEO_MODEL"):
+        if stype not in MODEL_SOURCE_TYPE_TO_MEDIA:
             continue
         sval = str(row.get("sourceValue"))
         seen_remote.add((stype, sval))
         if str(row.get("hiddenState")) != "0":
             continue
         # Find local key
-        media = "image" if stype == "IMAGE_MODEL" else "video"
+        media = MODEL_SOURCE_TYPE_TO_MEDIA[stype]
         match = next(
             (k for k, cfg in MODEL_CONFIGS.items()
              if cfg["media_type"] == media and str(cfg["methodType"]) == sval),
@@ -681,7 +686,7 @@ def _validate_local_against_api():
 
     # Reverse drift: local models the server no longer exposes
     for key, cfg in MODEL_CONFIGS.items():
-        stype = "IMAGE_MODEL" if cfg["media_type"] == "image" else "VIDEO_MODEL"
+        stype = MEDIA_TYPE_TO_MODEL_SOURCE_TYPE.get(cfg["media_type"])
         if (stype, str(cfg["methodType"])) not in seen_remote:
             print(
                 f"[drift] 本地模型 {key} (sourceType={stype}, "
@@ -695,8 +700,7 @@ def list_active_models():
     """Return active (hiddenState == '0') models grouped by media type.
 
     Cross-references the server's consumeSource/list with local MODEL_CONFIGS
-    for image/video dispatch keys. HUMAN_MODEL is retained for informational
-    recommendation even though this script does not submit human-model tasks.
+    for image/video/human dispatch keys.
     """
     rows = fetch_model_list()
     active_by_media = {"image": [], "video": [], "human": [], "all": []}
@@ -712,8 +716,7 @@ def list_active_models():
         local_key = next(
             (k for k, cfg in MODEL_CONFIGS.items()
              if str(cfg["methodType"]) == value
-             and ((cfg["media_type"] == "image" and stype == "IMAGE_MODEL")
-                  or (cfg["media_type"] == "video" and stype == "VIDEO_MODEL"))),
+             and cfg["media_type"] == media),
             None,
         )
         entry = {
@@ -742,6 +745,12 @@ def print_active_models():
             print(f"    {m['description']}")
     print("\n=== 当前可用的视频模型 (hiddenState=0) ===")
     for m in data["video"]:
+        key_hint = f"  key={m['key']}" if m["key"] else "  (脚本未注册)"
+        print(f"- {m['sourceName']} [sourceValue={m['sourceValue']}]{key_hint}")
+        if m["description"]:
+            print(f"    {m['description']}")
+    print("\n=== 当前可用的数字人模型 (hiddenState=0) ===")
+    for m in data["human"]:
         key_hint = f"  key={m['key']}" if m["key"] else "  (脚本未注册)"
         print(f"- {m['sourceName']} [sourceValue={m['sourceValue']}]{key_hint}")
         if m["description"]:
@@ -1282,16 +1291,29 @@ IMAGE_BASE_DEFAULTS = {
     "n": 1,
 }
 
+HUMAN_BASE_DEFAULTS = {
+    "req_key": "jimeng_realman_avatar_picture_omni_v15",
+    "methodType": None,
+    "prompt": "",
+    "image_url": None,
+    "video_url": None,
+    "audio_url": None,
+    "duration": None,
+    "output_resolution": "720",
+    "pe_fast_mode": True,
+}
+
+HUMAN_RESTRICTIONS_BY_MT = {
+    "0": {"textLength": 300, "targetMaxSize": 5, "targetMaxLength": 4096},
+    "1": {},
+}
+
 # Frontend `case 'methodType'` (moduleKey '9') sets generationType based on the
 # new model's methodType:
-#   ['3', '7', '15']                 → 'TEXT'
+#   ['7', '15']                      → 'TEXT'
 #   ['1', '4', '5', '6', '8', '14']  → 'FIRST&LAST'
 #   else                             → 'REFERENCE'
-#
-# V3.1FB (methodType=3) supports TEXT/FIRST&LAST/REFERENCE; use TEXT as the
-# safe default so explicit "FB video" text-only requests do not get blocked by
-# REFERENCE's required image input.
-_VIDEO_GEN_TYPE_TEXT = {"3", "7", "15"}
+_VIDEO_GEN_TYPE_TEXT = {"7", "15"}
 _VIDEO_GEN_TYPE_FIRST_LAST = {"1", "4", "5", "6", "8", "14"}
 
 
@@ -1841,6 +1863,24 @@ MODEL_CONFIGS = {
         "source_name": "DeepSop·Sora2 Pro Evolink",
         "description": "原生视频生成，具备帧级动态控制、音画同步等视频专属能力",
         "extra_params": {}
+    },
+
+    # ===== Human models (type=12) =====
+    "ImageDigitalHuman": {
+        "media_type": "human",
+        "type": "12",
+        "methodType": "0",
+        "source_name": "DeepSop.Image-digital human",
+        "description": "上传人像图片和参考音频生成数字人视频",
+        "extra_params": {}
+    },
+    "VideoDigitalHuman": {
+        "media_type": "human",
+        "type": "12",
+        "methodType": "1",
+        "source_name": "DeepSop.Video-digital human",
+        "description": "上传人像视频和参考音频生成数字人视频",
+        "extra_params": {}
     }
 }
 
@@ -2237,7 +2277,8 @@ def create_video_task(prompt, model=None, ratio=None, resolution=None,
     payload = {
         "type": config["type"],
         "methodType": config["methodType"],
-        "parameter": json.dumps(parameter)
+        "parameter": json.dumps(parameter),
+        "saveToDatabase": True,
     }
 
     if DRY_RUN:
@@ -2272,6 +2313,165 @@ def create_video_task(prompt, model=None, ratio=None, resolution=None,
         message = _creation_failure_message(model, f"网络错误：{e}", "视频任务")
         print(message, file=sys.stderr)
         raise GenerationTaskCreationError(message) from e
+
+
+def create_human_task(model=None, prompt="", image_url=None, video_url=None,
+                      audio_url=None, duration=None, output_resolution=None,
+                      pe_fast_mode=None):
+    """Create a digital-human generation task matching frontend type=12 payload."""
+    url = f"{BASE_URL}/AiArtistRecord"
+
+    if model is None:
+        model = _get_default_model("human", prompt=prompt)
+        if model is None:
+            print(
+                "无法从接口获取可用的数字人模型，请显式通过 model 参数指定，或检查服务端状态。",
+                file=sys.stderr,
+            )
+            return None
+
+    resolved = _resolve_model_key(model, media_type="human")
+    if resolved is None or MODEL_CONFIGS.get(resolved, {}).get("media_type") != "human":
+        print(f"不支持的数字人模型：{model}", file=sys.stderr)
+        return None
+
+    model = resolved
+    config = MODEL_CONFIGS[model]
+    method_type = str(config["methodType"])
+
+    if not DRY_RUN and not check_model_available(model):
+        return None
+
+    if method_type == "0" and not image_url:
+        raise GenerationTaskCreationError(_creation_failure_message(model, "methodType=0 必须上传人像图片 image_url", "数字人任务"))
+    if method_type == "1" and not video_url:
+        raise GenerationTaskCreationError(_creation_failure_message(model, "methodType=1 必须上传人像视频 video_url", "数字人任务"))
+    if not audio_url:
+        raise GenerationTaskCreationError(_creation_failure_message(model, "必须上传参考音频 audio_url", "数字人任务"))
+
+    restriction = HUMAN_RESTRICTIONS_BY_MT.get(method_type, {})
+    prompt = _check_text_length(prompt or "", restriction.get("textLength"), "prompt", model)
+    effective_output_resolution = str(output_resolution or HUMAN_BASE_DEFAULTS["output_resolution"])
+    if effective_output_resolution not in {"720", "1080"}:
+        effective_output_resolution = "720"
+    effective_pe_fast_mode = (
+        effective_output_resolution == "720"
+        if pe_fast_mode is None
+        else bool(pe_fast_mode)
+    )
+
+    parameter = dict(HUMAN_BASE_DEFAULTS)
+    parameter.update({
+        "methodType": method_type,
+        "prompt": prompt or "",
+        "image_url": image_url,
+        "video_url": video_url,
+        "audio_url": audio_url,
+        "duration": duration,
+        "output_resolution": effective_output_resolution,
+        "pe_fast_mode": effective_pe_fast_mode,
+    })
+    _apply_restriction(parameter, restriction)
+
+    payload = {
+        "type": config["type"],
+        "methodType": config["methodType"],
+        "parameter": json.dumps(parameter),
+        "saveToDatabase": True,
+    }
+
+    if DRY_RUN:
+        _progress("[dry-run] 数字人任务 payload（未提交）:")
+        _progress(json.dumps(payload, ensure_ascii=False, indent=2))
+        return "DRY_RUN_TASK_ID"
+
+    if not estimate_generation_cost(payload):
+        message = _creation_failure_message(
+            model, _LAST_ESTIMATE_FAILURE_REASON or "费用预估未通过", "数字人任务"
+        )
+        raise GenerationTaskCreationError(message)
+
+    try:
+        response = requests.post(url, json=payload, headers=get_headers(), timeout=30)
+        response.raise_for_status()
+        result = response.json()
+
+        if result.get("code") == 200 and result.get("data"):
+            return result["data"][0]
+
+        reason = result.get("msg", "未知错误")
+        message = _creation_failure_message(model, reason, "数字人任务")
+        print(message, file=sys.stderr)
+        raise GenerationTaskCreationError(message)
+
+    except requests.exceptions.HTTPError as e:
+        message = _creation_failure_message(model, _explain_http_error(e, context="创建数字人任务"), "数字人任务")
+        print(message, file=sys.stderr)
+        raise GenerationTaskCreationError(message) from e
+    except requests.exceptions.RequestException as e:
+        message = _creation_failure_message(model, f"网络错误：{e}", "数字人任务")
+        print(message, file=sys.stderr)
+        raise GenerationTaskCreationError(message) from e
+
+
+def generate_human(prompt="", model=None, image_url=None, video_url=None,
+                   audio_url=None, image_path=None, video_path=None,
+                   audio_path=None, duration=None, output_resolution=None,
+                   pe_fast_mode=None, poll_interval=5, max_wait=1200,
+                   submit_only=False):
+    """Generate a digital-human video from image/video + reference audio."""
+    if image_path and not image_url:
+        image_url = upload_file(image_path)
+    if video_path and not video_url:
+        video_url = upload_file(video_path)
+    if audio_path and not audio_url:
+        audio_url = upload_file(audio_path)
+
+    display_model = model
+    if display_model is None:
+        display_model = _get_default_model("human", prompt=prompt)
+        if display_model is None:
+            print(
+                "无法从接口获取可用的数字人模型，请显式通过 model 参数指定，或检查服务端状态。",
+                file=sys.stderr,
+            )
+            return None
+        print(f"[auto] 使用接口返回的第一个可用数字人模型 {display_model}", file=sys.stderr)
+
+    resolved_model = _resolve_model_key(display_model, media_type="human")
+    _progress(f"正在生成数字人视频：{prompt or ''}")
+    _progress(f"   模型：{resolved_model or display_model}")
+
+    try:
+        task_id = create_human_task(
+            model=resolved_model or display_model,
+            prompt=prompt or "",
+            image_url=image_url,
+            video_url=video_url,
+            audio_url=audio_url,
+            duration=duration,
+            output_resolution=output_resolution,
+            pe_fast_mode=pe_fast_mode,
+        )
+    except GenerationTaskCreationError as e:
+        return {"status": "FAILED", "url": None, "message": str(e), "model": resolved_model or display_model}
+    if not task_id:
+        return None
+
+    _progress(f"   任务 ID: {task_id}")
+
+    if submit_only:
+        return {"status": "SUBMITTED", "task_id": task_id, "url": None, "message": "任务已提交，使用 --poll 轮询结果"}
+
+    _progress(f"   开始轮询任务结果（间隔 {poll_interval}s，最长等待 {max_wait}s）…")
+    result = poll_task_status(task_id, interval=poll_interval, max_wait=max_wait)
+
+    if result and result["status"] == "SUCCESS":
+        _progress(f"数字人视频生成成功！链接：{result['url']}")
+    else:
+        print(f"数字人视频生成失败：{result.get('message', '未知错误')}", file=sys.stderr)
+
+    return result
 
 
 def generate_video(prompt, model=None, ratio=None, resolution=None,
@@ -2561,7 +2761,8 @@ def create_generation_task(prompt, quality=None, size=None, model=None,
     payload = {
         "type": config["type"],
         "methodType": config["methodType"],
-        "parameter": json.dumps(parameter)
+        "parameter": json.dumps(parameter),
+        "saveToDatabase": True,
     }
 
     if DRY_RUN:
@@ -2780,6 +2981,8 @@ if __name__ == "__main__":
                         help="生成模型。推荐传接口 sourceValue/methodType（如 19）；旧友好别名仅用于兼容。"
                              "未指定时根据 prompt 自动推断媒介，并使用接口返回的第一个可用模型。"
                              "查看可用模型：--list-models")
+    parser.add_argument("--media-type", choices=["image", "video", "human"], default=None,
+                        help="显式指定媒介类型，用于 disambiguate 数字 methodType（如 human 的 methodType=1）")
     # 图片专属参数
     parser.add_argument("--quality", default=None, help="[图片] 图片质量，不传则按 methodType 默认值")
     parser.add_argument("--size", default=None, help="[图片] 图片尺寸，不传则使用模型默认值")
@@ -2836,6 +3039,17 @@ if __name__ == "__main__":
                         help="[视频] 续写/编辑/参考视频 URL (methodType 10/14/19 等)")
     parser.add_argument("--audio-setting", default=None, choices=["auto", "origin"],
                         help="[视频] 声音控制：auto=由模型控制 / origin=保留原声 (仅 methodType 19 EDIT)")
+    # 数字人专属参数
+    parser.add_argument("--human-image-url", default=None, help="[数字人] 人像图片 URL (methodType 0)")
+    parser.add_argument("--human-video-url", default=None, help="[数字人] 人像视频 URL (methodType 1)")
+    parser.add_argument("--human-audio-url", default=None, help="[数字人] 参考音频 URL")
+    parser.add_argument("--human-image", default=None, help="[数字人] 人像图片本地路径，自动上传")
+    parser.add_argument("--human-video", default=None, help="[数字人] 人像视频本地路径，自动上传")
+    parser.add_argument("--human-audio", default=None, help="[数字人] 参考音频本地路径，自动上传")
+    parser.add_argument("--human-duration", type=float, default=None,
+                        help="[数字人] 参考音频时长，允许小数秒")
+    parser.add_argument("--output-resolution", default=None, choices=["720", "1080"],
+                        help="[数字人] 渲染质量，前端值为 720 或 1080")
     # 通用参数
     parser.add_argument("--interval", type=int, default=5, help="轮询间隔秒数")
     parser.add_argument("--max-wait", type=int, default=1200, help="任务轮询最长等待秒数 (默认 1200)")
@@ -2870,7 +3084,7 @@ if __name__ == "__main__":
         print_active_models()
         sys.exit(0)
 
-    if not args.prompt:
+    if not args.prompt and args.media_type != "human":
         parser.error("prompt 为必填参数（查看可用模型请加 --list-models）")
 
     if args.recommend_model:
@@ -2905,7 +3119,7 @@ if __name__ == "__main__":
     # with a clear error rather than silently submitting to a stale model.
     if args.model is None:
         ensure_api_key_for_network()
-        inferred = _infer_media_type(args.prompt)
+        inferred = args.media_type or _infer_media_type(args.prompt)
         args.model = _get_default_model(inferred, prompt=args.prompt)
         if args.model is None:
             parser.error(
@@ -2920,7 +3134,7 @@ if __name__ == "__main__":
         # Resolve friendly-name | methodType to the canonical friendly key.
         # Numeric methodTypes are ambiguous across image/video, so infer the
         # requested media from the prompt before resolving.
-        inferred = _infer_media_type(args.prompt)
+        inferred = args.media_type or _infer_media_type(args.prompt)
         resolved = _resolve_model_key(args.model, media_type=inferred)
         if resolved is None:
             parser.error(f"未知模型：{args.model}（可运行 --list-models 查看可用模型）")
@@ -2934,6 +3148,27 @@ if __name__ == "__main__":
 
     if not args.dry_run:
         ensure_api_key_for_network()
+
+    if media_type == "human":
+        result = generate_human(
+            prompt=args.prompt or "",
+            model=args.model,
+            image_url=args.human_image_url,
+            video_url=args.human_video_url,
+            audio_url=args.human_audio_url,
+            image_path=args.human_image,
+            video_path=args.human_video,
+            audio_path=args.human_audio,
+            duration=args.human_duration if args.human_duration is not None else args.duration,
+            output_resolution=args.output_resolution,
+            poll_interval=args.interval,
+            max_wait=args.max_wait,
+            submit_only=args.submit_only,
+        )
+        if FEISHU_WEBHOOK_URL and result and result.get("status") != "SUBMITTED":
+            send_feishu_message(args.prompt or "数字人视频", result, media_type="video")
+        _emit_cli_result(result, args, markdown_label=args.prompt or "数字人视频")
+        sys.exit(0 if (result and result.get("status") in ("SUCCESS", "SUBMITTED")) else 1)
 
     if media_type == "video":
         # Resolve audio flag

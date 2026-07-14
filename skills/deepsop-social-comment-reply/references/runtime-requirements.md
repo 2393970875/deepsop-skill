@@ -6,12 +6,23 @@
 
 | 项目 | 要求 |
 | --- | --- |
-| 浏览器会话 | 优先使用用户已登录的浏览器 profile |
+| 浏览器会话 | 优先使用用户已登录的浏览器 profile（通过 OPClaw browser 工具或 CDP 连接） |
 | 登录方式 | 用户自行扫码或账号登录，agent 不代填密码 |
-| 平台入口 | 抖音网页、腾讯视频号可访问入口 |
-| 自动化能力 | 以可见控件、页面文本、稳定选择器为准 |
+| 平台入口 | 抖音网页版（douyin.com）、腾讯视频号可访问入口 |
+| 自动化能力 | 基于 CDP（Chrome DevTools Protocol），不依赖 Playwright |
 | 风控处理 | 登录、验证码、实名、异常验证、风险提示出现时立即停止 |
-| 脚本依赖 | `scripts/comment_reply.py` 需要 Python Playwright 和 Chromium 浏览器内核 |
+| CDP 端口 | 默认使用 localhost:18800（OPClaw 浏览器自动管理） |
+
+## 抖音执行方式
+
+抖音评论发送使用 CDP + React Fiber 方式（**不是 Playwright**），详细技术实现见 `references/douyin-cdp-guide.md`。
+
+脚本 `scripts/comment_reply.py` 使用 Python websockets + urllib 通过 CDP 协议操作浏览器，无需额外安装 Playwright：
+
+```bash
+# 依赖检查
+python -c "import websockets; print('ok')"
+```
 
 ## check-session
 
@@ -25,23 +36,13 @@
 
 检查失败时，不继续自动化操作，向用户说明需要人工处理或换用 `draft-only`。
 
-## 脚本运行
-
-`scripts/comment_reply.py` 使用 Python Playwright。运行浏览器自动化前确认：
-
-```bash
-python -c "import playwright"
-python -m playwright install chromium
-```
-
-如果需要复用用户已登录状态，传入 `--user-data-dir <profile-dir>`。不要要求用户提供 Cookie。
-
 ## 平台限制
 
 - 抖音页面结构可能变化，不依赖固定坐标或固定屏幕位置。
 - 腾讯视频号入口在不同环境中差异较大；如果评论区无法稳定展示，停止执行。
 - 页面只展示部分评论时，只基于可见评论生成回复，不猜测隐藏上下文。
 - 搜索结果排序和热度由平台决定，本技能只做可见结果筛选。
+- 抖音搜索页使用 React 虚拟列表，部分卡片在 DOM 中不可见时需通过滚动定位。
 
 ## 人工介入场景
 
