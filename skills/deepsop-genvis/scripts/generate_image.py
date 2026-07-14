@@ -2480,6 +2480,7 @@ def generate_video(prompt, model=None, ratio=None, resolution=None,
                    generation_type=None, enhance_prompt=None, prompt_extend=None,
                    first_image_path=None, last_image_path=None, audio_url=None,
                    image_url_list=None, video_url_list=None, audio_path=None,
+                   image_path_list=None, video_path_list=None, first_clip_path=None,
                    mode=None, keep_original_sound=None, shot_type=None,
                    element_list=None, first_clip_url=None, multi_shot=None,
                    n=None, person_generation=None, resize_mode=None,
@@ -2509,7 +2510,10 @@ def generate_video(prompt, model=None, ratio=None, resolution=None,
         audio_url: URL of audio file (WAN series)
         audio_path: Local path to audio file (auto-uploaded, WAN series)
         image_url_list: List of image URLs for reference (WAN *r / multimodal)
+        image_path_list: List of local image paths, uploaded into image_url_list
         video_url_list: List of video URLs for reference (WAN *r)
+        video_path_list: List of local video paths, uploaded into video_url_list
+        first_clip_path: Local video path, uploaded into first_clip_url
 
     Returns:
         dict with 'status', 'url', 'message'
@@ -2530,6 +2534,24 @@ def generate_video(prompt, model=None, ratio=None, resolution=None,
                 uploaded.append(u)
         if uploaded:
             audio_url_list = (audio_url_list or []) + uploaded
+    if image_path_list:
+        uploaded = []
+        for p in image_path_list:
+            u = upload_file(p)
+            if u:
+                uploaded.append(u)
+        if uploaded:
+            image_url_list = (image_url_list or []) + uploaded
+    if video_path_list:
+        uploaded = []
+        for p in video_path_list:
+            u = upload_file(p)
+            if u:
+                uploaded.append(u)
+        if uploaded:
+            video_url_list = (video_url_list or []) + uploaded
+    if first_clip_path and not first_clip_url:
+        first_clip_url = upload_file(first_clip_path)
     
     display_model = model
     if display_model is None:
@@ -3027,16 +3049,26 @@ if __name__ == "__main__":
     parser.add_argument("--person-generation", default=None, help="[视频] allow_adult/dont_allow (methodType 5/6)")
     parser.add_argument("--resize-mode", default=None, help="[视频] pad/crop (methodType 5/6)")
     parser.add_argument("--duration-switch", default=None, help="[视频] 1=手选秒数, 2=智能时长 (methodType 2/17/18/20/21/22)")
+    parser.add_argument("--audio-url", default=None,
+                        help="[video] single reference audio URL; submit as audioUrl")
+    parser.add_argument("--audio", default=None,
+                        help="[video] local reference audio path; upload and write to audioUrl")
     parser.add_argument("--audio-url-list", default=None,
                         help="[视频] 多音频参考 URL，逗号分隔 (methodType 17/18/20/21/22)")
     parser.add_argument("--audio-path-list", default=None,
                         help="[视频] 多音频本地路径，逗号分隔，自动上传 (methodType 17/18/20/21/22)")
     parser.add_argument("--image-url-list", default=None,
                         help="[视频] 多参考图片 URL，逗号分隔，直接提交为 imageUrlList")
+    parser.add_argument("--image-path-list", default=None,
+                        help="[video] local image paths, comma-separated; upload and append to imageUrlList")
     parser.add_argument("--video-url-list", default=None,
                         help="[视频] 多参考视频 URL，逗号分隔，直接提交为 videoUrlList")
+    parser.add_argument("--video-path-list", default=None,
+                        help="[video] local video paths, comma-separated; upload and append to videoUrlList")
     parser.add_argument("--first-clip-url", default=None,
                         help="[视频] 续写/编辑/参考视频 URL (methodType 10/14/19 等)")
+    parser.add_argument("--first-clip", default=None,
+                        help="[video] local first clip path; upload and write to firstClipUrl")
     parser.add_argument("--audio-setting", default=None, choices=["auto", "origin"],
                         help="[视频] 声音控制：auto=由模型控制 / origin=保留原声 (仅 methodType 19 EDIT)")
     # 数字人专属参数
@@ -3203,12 +3235,17 @@ if __name__ == "__main__":
             person_generation=args.person_generation,
             resize_mode=args.resize_mode,
             duration_switch=args.duration_switch,
+            audio_url=args.audio_url,
+            audio_path=args.audio,
             audio_url_list=[u.strip() for u in args.audio_url_list.split(",") if u.strip()] if args.audio_url_list else None,
             audio_path_list=[p.strip() for p in args.audio_path_list.split(",") if p.strip()] if args.audio_path_list else None,
             image_url_list=[u.strip() for u in args.image_url_list.split(",") if u.strip()] if args.image_url_list else None,
+            image_path_list=[p.strip() for p in args.image_path_list.split(",") if p.strip()] if args.image_path_list else None,
             video_url_list=[u.strip() for u in args.video_url_list.split(",") if u.strip()] if args.video_url_list else None,
+            video_path_list=[p.strip() for p in args.video_path_list.split(",") if p.strip()] if args.video_path_list else None,
             web_search=args.web_search,
             first_clip_url=args.first_clip_url,
+            first_clip_path=args.first_clip,
             audio_setting=args.audio_setting,
             max_wait=args.max_wait,
             submit_only=args.submit_only,

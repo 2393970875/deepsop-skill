@@ -1,5 +1,7 @@
 import importlib.util
 import json
+import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -132,6 +134,59 @@ def test_fetch_model_list_requests_image_video_and_human_models(monkeypatch):
     assert calls[0] == {
         "sourceTypeList": ["IMAGE_MODEL", "VIDEO_MODEL", "HUMAN_MODEL"]
     }
+
+
+def test_generate_video_uploads_local_reference_paths(monkeypatch):
+    module = load_module()
+    calls = {}
+
+    def fake_upload_file(path):
+        return f"https://files.example/{Path(path).name}"
+
+    def fake_create_video_task(prompt, model=None, ratio=None, resolution=None, duration=None, **kwargs):
+        calls["prompt"] = prompt
+        calls["model"] = model
+        calls["kwargs"] = kwargs
+        return "TASK_ID"
+
+    monkeypatch.setattr(module, "upload_file", fake_upload_file)
+    monkeypatch.setattr(module, "create_video_task", fake_create_video_task)
+
+    result = module.generate_video(
+        "参考素材生成视频",
+        model="W2.6r",
+        image_url_list=["https://existing.example/ref.png"],
+        image_path_list=[r"D:\tmp\local-image.png"],
+        video_url_list=["https://existing.example/ref.mp4"],
+        video_path_list=[r"D:\tmp\local-video.mp4"],
+        audio_path=r"D:\tmp\voice.mp3",
+        first_clip_path=r"D:\tmp\base-clip.mp4",
+        submit_only=True,
+    )
+
+    assert result["task_id"] == "TASK_ID"
+    assert calls["kwargs"]["image_url_list"] == [
+        "https://existing.example/ref.png",
+        "https://files.example/local-image.png",
+    ]
+    assert calls["kwargs"]["video_url_list"] == [
+        "https://existing.example/ref.mp4",
+        "https://files.example/local-video.mp4",
+    ]
+    assert calls["kwargs"]["audio_url"] == "https://files.example/voice.mp3"
+    assert calls["kwargs"]["first_clip_url"] == "https://files.example/base-clip.mp4"
+
+
+def test_cli_exposes_single_audio_reference_params():
+    result = subprocess.run(
+        [sys.executable, str(SCRIPT_PATH), "--help"],
+        check=True,
+        capture_output=True,
+    )
+    stdout = result.stdout.decode("utf-8", errors="ignore")
+
+    assert "--audio-url AUDIO_URL" in stdout
+    assert "--audio AUDIO" in stdout
 
 
 def test_default_model_prefers_prompt_description_match(monkeypatch):

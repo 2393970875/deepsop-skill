@@ -129,6 +129,7 @@ python scripts/generate_image.py --media-type human --model 1 \
 - `methodType=3` 固定 `resolution=720p`、`duration=8`。
 - `FIRST&LAST` 必须有 `firstImageUrl`，传 `lastImageUrl` 时也必须有 `firstImageUrl`。
 - `REFERENCE` 按对应 methodType 要求传 `imageUrlList`、`videoUrlList` 或 `firstClipUrl`。
+- 本地参考素材可以直接传路径：`--image-path-list` 上传后写入 `imageUrlList`，`--video-path-list` 上传后写入 `videoUrlList`，`--first-clip` 上传后写入 `firstClipUrl`，`--audio` 上传后写入 `audioUrl`。已有网络素材可分别用 `--image-url-list`、`--video-url-list`、`--first-clip-url`、`--audio-url`。
 - `methodType=10` 的多镜头 `shotType=multi` 提交时转为 `shotType=intelligence`，有 `firstClipUrl` 时构造 `videoList` 并关闭 `generateAudio`。
 - 小云雀 `23/24/25/26/27` 暂不接入；即使前端有分支，本技能不要提交这些业务 payload。
 
@@ -139,6 +140,19 @@ python scripts/generate_image.py "让参考图中的人物轻微点头" \
   --model V3.1FB \
   --generation-type REFERENCE \
   --image-url-list "https://example.com/ref.png" \
+  --json-output
+```
+
+本地参考素材示例：
+
+```bash
+python scripts/generate_image.py "参考本地素材生成视频" \
+  --media-type video \
+  --model 9 \
+  --image-path-list "D:\tmp\ref1.png,D:\tmp\ref2.png" \
+  --video-path-list "D:\tmp\ref.mp4" \
+  --first-clip "D:\tmp\base.mp4" \
+  --audio "D:\tmp\voice.mp3" \
   --json-output
 ```
 
