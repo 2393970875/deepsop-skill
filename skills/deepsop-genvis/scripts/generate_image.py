@@ -2687,9 +2687,13 @@ def create_generation_task(prompt, quality=None, size=None, model=None,
     if not DRY_RUN and not check_model_available(model):
         return None
 
-    # Apply per-methodType prompt length cap
+    # Preserve the user's image prompt verbatim; reject instead of truncating.
     image_restriction = IMAGE_RESTRICTIONS_BY_MT.get(method_type, {})
-    prompt = _check_text_length(prompt, image_restriction.get("textLength"), "prompt", model)
+    prompt_limit = image_restriction.get("textLength")
+    if prompt_limit and len(str(prompt)) > prompt_limit:
+        raise GenerationTaskCreationError(
+            f"{model} 提示词长度 {len(str(prompt))} 超过限制 {prompt_limit}，未提交生成任务"
+        )
 
     # Defaults follow the frontend pattern: BASE_DEFAULTS + handleMethodTypeChange.
     # No model-specific default_quality / default_size overrides.
@@ -2929,8 +2933,15 @@ def generate_image(prompt, quality=None, size=None, poll_interval=5,
             effective_size = _image_size_to_pixels(effective_quality, effective_size, pixel_sep)
 
     # Upload reference image if local path provided
-    if reference_image_path and not reference_image_url:
+    if reference_image_path:
         reference_image_url = upload_file(reference_image_path)
+        if not reference_image_url:
+            return {
+                "status": "FAILED",
+                "url": None,
+                "message": "参考图上传失败，未提交生成任务",
+                "model": resolved_model or display_model,
+            }
 
     _progress(f"正在生成：{prompt}")
     _progress(f"   模型：{resolved_model or display_model} | 质量：{effective_quality} | 尺寸：{effective_size}")

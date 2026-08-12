@@ -167,6 +167,10 @@ python scripts/generate_image.py "参考本地素材生成视频" \
 关键约束：
 
 - `prompt` 必填。
+- 当用户明确要求“参考图”“照着这张图”“保持模板/人物/风格”等参考生成，且当前消息包含上传图片时，必须使用本轮上传的原始图片路径，并通过 `--reference-image "<本地路径>"` 传给脚本。不得只把视觉理解结果或图片描述写进 prompt 来替代原始参考图。
+- 参考图上传失败时不得提交生成任务；必须向用户说明参考图未进入请求，避免退化为纯文字生成并继续扣费。
+- 用户未明确要求扩写、润色或改写时，必须逐字保留用户原始提示词；可以补充 CLI 参数，但不得自行改写 `prompt` 内容。
+- 若用户明确要求参考生成，但当前上下文没有可用的本轮原始图片路径，应先要求用户重新上传图片，不得用历史图片描述、缩略图或占位内容提交任务。
 - 基础字段包括 `methodType`、`prompt`、`image`、`quality`、`size`、`webSearch`、`imageSearch`、`ratiocination`、`n`。
 - `methodType=0/4` 的 `size` 提交为 `WxH`。
 - `methodType=6/7` 的 `size` 提交为 `W*H`。
@@ -184,6 +188,18 @@ python scripts/generate_image.py "产品宣传图，现代科技风" \
   --ratiocination high \
   --json-output
 ```
+
+Image2 使用本轮本地参考图：
+
+```bash
+python scripts/generate_image.py "把参考图里的报价慢一天 单子少一年改成：AI落地到底能省多少钱？" \
+  --media-type image \
+  --model 10 \
+  --reference-image "D:\path\to\current-upload.png" \
+  --json-output
+```
+
+执行后必须确认脚本输出了“参考图”上传 URL；没有该输出或上传失败时，停止执行，不得创建无参考图的 Image2 任务。
 
 ## 输出要求
 

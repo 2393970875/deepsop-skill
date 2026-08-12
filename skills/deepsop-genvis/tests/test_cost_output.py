@@ -5,8 +5,11 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 
 SCRIPT_PATH = Path(__file__).resolve().parents[1] / "scripts" / "generate_image.py"
+SKILL_PATH = Path(__file__).resolve().parents[1] / "SKILL.md"
 
 
 def load_module():
@@ -14,6 +17,21 @@ def load_module():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def test_skill_requires_current_uploaded_image_as_image2_reference():
+    skill = SKILL_PATH.read_text(encoding="utf-8")
+
+    assert "本轮上传的原始图片路径" in skill
+    assert "--reference-image" in skill
+    assert "不得只把视觉理解结果或图片描述写进 prompt" in skill
+
+
+def test_skill_blocks_submission_when_reference_upload_fails_and_preserves_prompt():
+    skill = SKILL_PATH.read_text(encoding="utf-8")
+
+    assert "参考图上传失败时不得提交生成任务" in skill
+    assert "必须逐字保留用户原始提示词" in skill
 
 
 def test_json_output_includes_cost_in_compute_units(capsys):
@@ -175,6 +193,98 @@ def test_generate_video_uploads_local_reference_paths(monkeypatch):
     ]
     assert calls["kwargs"]["audio_url"] == "https://files.example/voice.mp3"
     assert calls["kwargs"]["first_clip_url"] == "https://files.example/base-clip.mp4"
+
+
+def test_generate_image_stops_when_local_reference_upload_fails(monkeypatch):
+    module = load_module()
+    monkeypatch.setattr(
+        module,
+        "create_generation_task",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("task must not be submitted")),
+    )
+    monkeypatch.setattr(module, "upload_file", lambda path: None)
+
+    result = module.generate_image(
+        "保持用户原始提示词",
+        model="Image2",
+        reference_image_path=r"D:\tmp\reference.png",
+        submit_only=True,
+    )
+
+    assert result == {
+        "status": "FAILED",
+        "url": None,
+        "message": "参考图上传失败，未提交生成任务",
+        "model": "Image2",
+    }
+
+
+def test_generate_image_submits_uploaded_reference_and_original_prompt(monkeypatch):
+    module = load_module()
+    calls = {}
+
+    def fake_create_task(prompt, quality=None, size=None, model=None, reference_image_url=None, **kwargs):
+        calls["prompt"] = prompt
+        calls["reference_image_url"] = reference_image_url
+        return "TASK_ID"
+
+    monkeypatch.setattr(
+        module,
+        "upload_file",
+        lambda path: "https://files.example/reference.png",
+    )
+    monkeypatch.setattr(module, "create_generation_task", fake_create_task)
+
+    original_prompt = "把参考图里的报价慢一天 单子少一年改成：AI落地到底能省多少钱？"
+    result = module.generate_image(
+        original_prompt,
+        model="Image2",
+        reference_image_path=r"D:\tmp\reference.png",
+        submit_only=True,
+    )
+
+    assert result["task_id"] == "TASK_ID"
+    assert calls["prompt"] == original_prompt
+    assert calls["reference_image_url"] == "https://files.example/reference.png"
+
+
+def test_generate_image_prefers_local_reference_over_existing_url(monkeypatch):
+    module = load_module()
+    calls = {}
+
+    monkeypatch.setattr(
+        module,
+        "upload_file",
+        lambda path: "https://files.example/current-upload.png",
+    )
+
+    def fake_create_task(prompt, quality=None, size=None, model=None, reference_image_url=None, **kwargs):
+        calls["reference_image_url"] = reference_image_url
+        return "TASK_ID"
+
+    monkeypatch.setattr(module, "create_generation_task", fake_create_task)
+
+    result = module.generate_image(
+        "保持用户原始提示词",
+        model="Image2",
+        reference_image_path=r"D:\tmp\current-upload.png",
+        reference_image_url="https://files.example/stale-reference.png",
+        submit_only=True,
+    )
+
+    assert result["task_id"] == "TASK_ID"
+    assert calls["reference_image_url"] == "https://files.example/current-upload.png"
+
+
+def test_create_image_task_rejects_overlong_prompt_without_truncating(capsys):
+    module = load_module()
+    module.DRY_RUN = True
+    prompt = "原" * 16001
+
+    with pytest.raises(module.GenerationTaskCreationError, match="提示词长度.*超过限制 16000"):
+        module.create_generation_task(prompt, model="Image2")
+
+    assert '"type": "10"' not in capsys.readouterr().err
 
 
 def test_cli_exposes_single_audio_reference_params():
