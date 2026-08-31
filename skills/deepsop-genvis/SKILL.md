@@ -173,7 +173,14 @@ python scripts/generate_image.py "参考本地素材生成视频" \
 - 若用户明确要求参考生成，但当前上下文没有可用的本轮原始图片路径，应先要求用户重新上传图片，不得用历史图片描述、缩略图或占位内容提交任务。
 - 基础字段包括 `methodType`、`prompt`、`image`、`quality`、`size`、`webSearch`、`imageSearch`、`ratiocination`、`n`。
 - `methodType=0/4` 的 `size` 提交为 `WxH`。
+- `methodType=4`（doubao-seedream-5-0-260128）必须使用前端 `getImageResolution` 的质量/比例映射；例如 `2K + 16:9` 是 `2560x1440`，不能按“长边 2048”自行计算为 `2048x1152`。显式像素尺寸至少需要 `3686400` 像素。
 - `methodType=6/7` 的 `size` 提交为 `W*H`。
+- `methodType=1/2/3/5/8/9` 为比例型图像模型，提交 `size` 时只能使用模型和前端允许的比例，不能传 `WxH` 或 `W*H`；历史像素尺寸只有在能精确约化为允许比例时才转换，否则提交前拒绝。
+- `methodType=5`（gemini-3.1-flash-image-preview）不要传 `auto` 或 `1024x1024`；正方形应提交 `1:1`，横竖图应提交对应的比例值。
+- `methodType=10/11`（GPT Image 2 系列）的 `size` 默认使用 `auto`；比例值（例如 `1:1`、`16:9`）原样提交，不得转换为视频模型的 `W*H` 格式。
+- `methodType=10/11` 如需显式像素尺寸，必须使用 `WxH`（例如 `1792x1024`）；`W*H` 仅允许作为历史调用的兼容输入，脚本提交前会自动规范化为 `WxH`，不得直接透传。
+- `methodType=10/11` 的显式 `WxH` 必须满足：宽高为正整数且均能被 16 整除，总像素数为 `0.64MP-8.29MP`，最长边不超过 `3840`，宽高比不超过 `3:1`。
+- `methodType=10/11` 的比例或 `auto` 必须使用供应商支持的值；不支持的尺寸在提交前直接拒绝，不自动切换模型或继续扣费。
 - `methodType=10/11` 参考图最多 16 张、单张 50MB，`prompt` 最长 16000 字。
 - `methodType=10` 支持 `ratiocination=low|medium|high` 和 `n=1..10`。
 - 字段必须按前端显隐白名单过滤，不要把不支持的字段传给后端。

@@ -25,6 +25,10 @@ def test_skill_requires_current_uploaded_image_as_image2_reference():
     assert "本轮上传的原始图片路径" in skill
     assert "--reference-image" in skill
     assert "不得只把视觉理解结果或图片描述写进 prompt" in skill
+    assert "仅允许作为历史调用的兼容输入" in skill
+    assert "均能被 16 整除" in skill
+    assert "2K + 16:9` 是 `2560x1440`" in skill
+    assert "正方形应提交 `1:1`" in skill
 
 
 def test_skill_blocks_submission_when_reference_upload_fails_and_preserves_prompt():
@@ -283,6 +287,130 @@ def test_create_image_task_rejects_overlong_prompt_without_truncating(capsys):
 
     with pytest.raises(module.GenerationTaskCreationError, match="提示词长度.*超过限制 16000"):
         module.create_generation_task(prompt, model="Image2")
+
+    assert '"type": "10"' not in capsys.readouterr().err
+
+
+def _dry_run_image_parameter(module, capsys, **kwargs):
+    module.DRY_RUN = True
+    task_id = module.create_generation_task("测试图片", **kwargs)
+    assert task_id == "DRY_RUN_TASK_ID"
+    output = capsys.readouterr().err
+    marker = '{\n  "type": "10"'
+    payload = json.loads(output[output.index(marker):])
+    return json.loads(payload["parameter"])
+
+
+def test_image2_normalizes_legacy_star_pixel_size_to_provider_format(capsys):
+    module = load_module()
+
+    parameter = _dry_run_image_parameter(
+        module,
+        capsys,
+        model="Image2",
+        size="1792*1024",
+    )
+
+    assert parameter["methodType"] == "10"
+    assert parameter["size"] == "1792x1024"
+
+
+def test_image2_keeps_auto_and_ratio_sizes(capsys):
+    module = load_module()
+
+    auto_parameter = _dry_run_image_parameter(module, capsys, model="Image2")
+    ratio_parameter = _dry_run_image_parameter(
+        module,
+        capsys,
+        model="Image2",
+        size="16:9",
+    )
+
+    assert auto_parameter["size"] == "auto"
+    assert ratio_parameter["size"] == "16:9"
+
+
+def test_pixel_form_image_models_keep_star_separator(capsys):
+    module = load_module()
+
+    parameter = _dry_run_image_parameter(
+        module,
+        capsys,
+        model="6",
+        size="1792x1024",
+    )
+
+    assert parameter["methodType"] == "6"
+    assert parameter["size"] == "1792*1024"
+
+
+@pytest.mark.parametrize(
+    "size, message",
+    [
+        ("1000x1000", "能被 16 整除"),
+        ("512x1024", "0.64MP 到 8.29MP"),
+        ("3840x1024", "最长边不得超过 3840"),
+    ],
+)
+def test_image2_rejects_provider_invalid_pixel_sizes(capsys, size, message):
+    module = load_module()
+    module.DRY_RUN = True
+
+    with pytest.raises(module.GenerationTaskCreationError, match=message):
+        module.create_generation_task("测试图片", model="Image2", size=size)
+
+    assert '"type": "10"' not in capsys.readouterr().err
+
+
+def test_seedream5_uses_frontend_resolution_for_wide_ratio(capsys):
+    module = load_module()
+
+    parameter = _dry_run_image_parameter(
+        module,
+        capsys,
+        model="4",
+        quality="2K",
+        size="16:9",
+    )
+
+    assert parameter["methodType"] == "4"
+    assert parameter["size"] == "2560x1440"
+
+
+def test_seedream5_rejects_pixel_size_below_provider_minimum(capsys):
+    module = load_module()
+    module.DRY_RUN = True
+
+    with pytest.raises(module.GenerationTaskCreationError, match="至少需要 3686400 像素"):
+        module.create_generation_task(
+            "测试图片",
+            model="4",
+            size="1024x1024",
+        )
+
+    assert '"type": "10"' not in capsys.readouterr().err
+
+
+def test_gemini_image_normalizes_pixel_size_to_supported_ratio(capsys):
+    module = load_module()
+
+    parameter = _dry_run_image_parameter(
+        module,
+        capsys,
+        model="5",
+        size="1024x1024",
+    )
+
+    assert parameter["methodType"] == "5"
+    assert parameter["size"] == "1:1"
+
+
+def test_gemini_image_rejects_auto_size(capsys):
+    module = load_module()
+    module.DRY_RUN = True
+
+    with pytest.raises(module.GenerationTaskCreationError, match="不支持 size='auto'"):
+        module.create_generation_task("测试图片", model="5", size="auto")
 
     assert '"type": "10"' not in capsys.readouterr().err
 

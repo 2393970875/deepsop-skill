@@ -21,6 +21,7 @@ import os
 import base64
 import getpass
 import re
+from fractions import Fraction
 from pathlib import Path
 
 # Configuration
@@ -1376,8 +1377,46 @@ def _build_image_defaults(method_type):
     return params
 
 
-# Mapping quality → long-side pixel count (matches frontend getImageResolution).
-_IMAGE_QUALITY_LONG_SIDE = {"1K": 1024, "2K": 2048, "3K": 3072, "4K": 4096}
+# Exact quality/ratio dimensions from frontend `getImageResolution`.
+_IMAGE_RESOLUTION_BY_QUALITY = {
+    "1K": {
+        "1:1": (1024, 1024), "16:9": (1920, 1080), "9:16": (1080, 1920),
+        "3:4": (768, 1024), "4:3": (1024, 768), "2:3": (682, 1024),
+        "3:2": (1024, 682), "4:5": (1024, 1280), "5:4": (1280, 1024),
+        "1:4": (512, 2048), "4:1": (2048, 512), "1:8": (362, 2896),
+        "8:1": (2896, 362), "21:9": (2560, 1080),
+    },
+    "2K": {
+        "1:1": (2048, 2048), "16:9": (2560, 1440), "9:16": (1440, 2560),
+        "3:4": (1728, 2304), "4:3": (2304, 1728), "2:3": (1664, 2496),
+        "3:2": (2496, 1664), "4:5": (1843, 2304), "5:4": (2304, 1843),
+        "1:4": (1024, 4096), "4:1": (4096, 1024), "1:8": (724, 5792),
+        "8:1": (5792, 724), "21:9": (3584, 1536),
+    },
+    "3K": {
+        "1:1": (3072, 3072), "16:9": (4096, 2304), "9:16": (2304, 4096),
+        "3:4": (2592, 3456), "4:3": (3456, 2592), "2:3": (2496, 3744),
+        "3:2": (3744, 2496), "4:5": (2884, 3605), "5:4": (3605, 2884),
+        "1:4": (1536, 6144), "4:1": (6144, 1536), "1:8": (1088, 8704),
+        "8:1": (8704, 1088), "21:9": (4704, 2016),
+    },
+    "4K": {
+        "1:1": (4096, 4096), "16:9": (3840, 2160), "9:16": (2160, 3840),
+        "3:4": (3072, 4096), "4:3": (4096, 3072), "2:3": (2730, 4096),
+        "3:2": (4096, 2730), "4:5": (3277, 4096), "5:4": (4096, 3277),
+        "1:4": (2048, 8192), "4:1": (8192, 2048), "1:8": (1448, 11584),
+        "8:1": (11584, 1448), "21:9": (5040, 2160),
+    },
+}
+
+_IMAGE_RATIO_ONLY_METHOD_TYPES = {"1", "2", "3", "5", "8", "9"}
+_IMAGE_RATIO_VALUES = {
+    "1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9",
+    "21:9", "9:21", "1:2", "2:1", "1:3", "3:1", "1:4", "4:1", "1:8", "8:1",
+}
+_SEEDREAM5_METHOD_TYPES = {"4"}
+_SEEDREAM5_MIN_PIXELS = 3_686_400
+_IMAGE_PIXEL_SIZE_RE = re.compile(r"^\s*(\d+)\s*([x*])\s*(\d+)\s*$", re.IGNORECASE)
 
 
 def _image_size_to_pixels(quality, ratio, sep):
@@ -1387,15 +1426,18 @@ def _image_size_to_pixels(quality, ratio, sep):
     methodType ∈ {'0','4'} (sep='x') and '2048*2048' for {'6','7'} (sep='*').
     Falls back to `ratio` unchanged if it cannot be parsed.
     """
-    long_side = _IMAGE_QUALITY_LONG_SIDE.get(quality, 2048)
     if not ratio or ":" not in str(ratio):
         return ratio
+    dimensions = _IMAGE_RESOLUTION_BY_QUALITY.get(quality, {}).get(str(ratio))
+    if dimensions:
+        return f"{dimensions[0]}{sep}{dimensions[1]}"
     try:
         a, b = [int(x) for x in str(ratio).split(":", 1)]
     except (ValueError, TypeError):
         return ratio
     if a <= 0 or b <= 0:
         return ratio
+    long_side = {"1K": 1024, "2K": 2048, "3K": 3072, "4K": 4096}.get(quality, 2048)
     if a >= b:
         w, h = long_side, round(long_side * b / a)
     else:
@@ -1405,6 +1447,106 @@ def _image_size_to_pixels(quality, ratio, sep):
 
 # methodType → pixel-size separator for image models that submit pixel form.
 _IMAGE_PIXEL_SEP_BY_MT = {"0": "x", "4": "x", "6": "*", "7": "*"}
+_IMAGE2_METHOD_TYPES = {"10", "11"}
+_IMAGE2_SUPPORTED_SIZES = {
+    "auto", "1:1", "1:2", "2:1", "1:3", "3:1", "2:3", "3:2",
+    "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9", "9:21",
+}
+
+
+def _image_ratio_from_pixels(width, height, method_type, model, original_size):
+    """Convert an exact supported pixel ratio back to the frontend ratio value."""
+    ratio = Fraction(width, height)
+    excluded = set(IMAGE_SIZE_EXCLUDED_BY_MT.get(str(method_type), []))
+    for candidate in _IMAGE_RATIO_VALUES:
+        if candidate in excluded:
+            continue
+        numerator, denominator = (int(part) for part in candidate.split(":", 1))
+        if ratio == Fraction(numerator, denominator):
+            return candidate
+    raise GenerationTaskCreationError(
+        f"{model} 不支持像素尺寸 size={original_size!r}，只能提交前端支持的比例"
+    )
+
+
+def _validate_seedream5_pixels(width, height, model, original_size):
+    if width <= 0 or height <= 0:
+        raise GenerationTaskCreationError(
+            f"{model} 的 size={original_size!r} 非法，宽高必须为正整数"
+        )
+    if width * height < _SEEDREAM5_MIN_PIXELS:
+        raise GenerationTaskCreationError(
+            f"{model} 的 size={original_size!r} 非法，至少需要 {_SEEDREAM5_MIN_PIXELS} 像素"
+        )
+
+
+def _normalize_image_size(size, method_type, quality, model):
+    """Normalize image size to the separator and value format expected by the model."""
+    method_type = str(method_type)
+    size_text = str(size).strip()
+    pixel_match = _IMAGE_PIXEL_SIZE_RE.fullmatch(size_text)
+
+    if pixel_match:
+        width, separator, height = pixel_match.groups()
+        width = int(width)
+        height = int(height)
+
+        if method_type in _IMAGE2_METHOD_TYPES:
+            if width <= 0 or height <= 0:
+                raise GenerationTaskCreationError(
+                    f"{model} 的 size={size!r} 非法，宽高必须为正整数"
+                )
+            area = width * height
+            aspect_ratio = max(width, height) / min(width, height)
+            if width % 16 or height % 16:
+                raise GenerationTaskCreationError(
+                    f"{model} 的 size={size!r} 非法，宽高必须能被 16 整除"
+                )
+            if area < 640_000 or area > 8_290_000:
+                raise GenerationTaskCreationError(
+                    f"{model} 的 size={size!r} 非法，像素数必须在 0.64MP 到 8.29MP 之间"
+                )
+            if max(width, height) > 3840 or aspect_ratio > 3:
+                raise GenerationTaskCreationError(
+                    f"{model} 的 size={size!r} 非法，最长边不得超过 3840，宽高比不得超过 3:1"
+                )
+            if separator == "*":
+                print(
+                    f"{model} 兼容旧尺寸格式 size={size!r}，已规范化为 {width}x{height!s}",
+                    file=sys.stderr,
+                )
+            return f"{width}x{height}"
+
+        if method_type in _SEEDREAM5_METHOD_TYPES:
+            _validate_seedream5_pixels(width, height, model, size)
+
+        if method_type in _IMAGE_RATIO_ONLY_METHOD_TYPES:
+            return _image_ratio_from_pixels(width, height, method_type, model, size)
+
+        expected_separator = _IMAGE_PIXEL_SEP_BY_MT.get(method_type)
+        if expected_separator:
+            return f"{width}{expected_separator}{height}"
+        return size_text
+
+    if method_type in _IMAGE2_METHOD_TYPES:
+        if size_text not in _IMAGE2_SUPPORTED_SIZES:
+            raise GenerationTaskCreationError(
+                f"{model} 不支持 size={size!r}，请使用 auto、支持的比例或 WxH 像素尺寸"
+            )
+        excluded = IMAGE_SIZE_EXCLUDED_BY_MT.get(method_type, [])
+        if size_text in excluded:
+            raise GenerationTaskCreationError(
+                f"{model} 不支持 size={size!r}，请使用 auto、支持的比例或 WxH 像素尺寸"
+            )
+        return size_text
+
+    excluded = IMAGE_SIZE_EXCLUDED_BY_MT.get(method_type, [])
+    if size_text in excluded:
+        raise GenerationTaskCreationError(
+            f"{model} 不支持 size={size!r}，请使用前端允许的尺寸或比例"
+        )
+
+    return size_text
 
 # Backward-compatible aliases accepted by --model. Canonical keys should match
 # current sourceName/sourceValue semantics where possible.
@@ -2712,24 +2854,17 @@ def create_generation_task(prompt, quality=None, size=None, model=None,
         base_quality, "quality", model,
     )
 
-    # Validate ratio-style size (e.g. "16:9"); pixel sizes contain 'x' or '*'.
-    is_pixel_size = ("x" in str(size) and any(c.isdigit() for c in str(size).split("x")[0])) \
-                    or ("*" in str(size) and any(c.isdigit() for c in str(size).split("*")[0]))
-    if not is_pixel_size:
-        excluded = IMAGE_SIZE_EXCLUDED_BY_MT.get(method_type, [])
-        if size in excluded:
-            print(
-                f"{model} 不支持 size={size!r}（被排除：{excluded}），"
-                f"自动调整为默认值 {base_size!r}",
-                file=sys.stderr,
-            )
-            size = base_size
+    # Normalize model-specific size syntax before building the payload. Image2
+    # accepts auto/ratios/WxH; legacy W*H is converted to WxH and validated.
+    size = _normalize_image_size(size, method_type, quality, model)
+    is_pixel_size = bool(_IMAGE_PIXEL_SIZE_RE.fullmatch(str(size)))
 
     # Pixel-size models (mt 0,4 → 'x'; mt 6,7 → '*'): if caller passed a ratio
     # like '1:1', convert to a pixel string matching frontend buildImageParams.
     pixel_sep = _IMAGE_PIXEL_SEP_BY_MT.get(str(method_type))
     if pixel_sep and not is_pixel_size:
         size = _image_size_to_pixels(quality, size, pixel_sep)
+        size = _normalize_image_size(size, method_type, quality, model)
 
     # Build image array - support reference image for image-to-image
     image_array = []
@@ -2926,11 +3061,30 @@ def generate_image(prompt, quality=None, size=None, poll_interval=5,
     effective_quality = quality or defaults["quality"]
     effective_size = size or defaults["size"]
     if config:
-        is_pixel_size = ("x" in str(effective_size) and any(c.isdigit() for c in str(effective_size).split("x")[0])) \
-                        or ("*" in str(effective_size) and any(c.isdigit() for c in str(effective_size).split("*")[0]))
+        try:
+            effective_size = _normalize_image_size(
+                effective_size,
+                config["methodType"],
+                effective_quality,
+                resolved_model or display_model,
+            )
+        except GenerationTaskCreationError as e:
+            return {
+                "status": "FAILED",
+                "url": None,
+                "message": str(e),
+                "model": resolved_model or display_model,
+            }
+        is_pixel_size = bool(_IMAGE_PIXEL_SIZE_RE.fullmatch(str(effective_size)))
         pixel_sep = _IMAGE_PIXEL_SEP_BY_MT.get(str(config["methodType"]))
         if pixel_sep and not is_pixel_size:
             effective_size = _image_size_to_pixels(effective_quality, effective_size, pixel_sep)
+            effective_size = _normalize_image_size(
+                effective_size,
+                config["methodType"],
+                effective_quality,
+                resolved_model or display_model,
+            )
 
     # Upload reference image if local path provided
     if reference_image_path:
