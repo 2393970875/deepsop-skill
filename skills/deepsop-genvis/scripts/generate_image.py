@@ -23,6 +23,7 @@ import getpass
 import re
 from fractions import Fraction
 from pathlib import Path
+from urllib.parse import urlparse
 
 # Configuration
 API_PREFIX = "https://ai.deepsop.com/prod-api/"
@@ -759,7 +760,15 @@ def print_active_models():
     print("\n默认模型来自接口的第一个非 auto 可用模型（无本地硬编码兜底）。")
 
 
-_UPLOAD_SOFT_LIMIT_MB = 100  # generous cap; specific per-model caps are checked separately
+_UPLOAD_SOFT_LIMIT_MB = 100  # generous cap for video/audio; image refs use the stricter limit below
+_REFERENCE_IMAGE_MAX_BYTES = 10 * 1024 * 1024
+_REFERENCE_IMAGE_MIME_TYPES = {
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "image/gif",
+}
+_REFERENCE_IMAGE_SUFFIXES = {".jpeg", ".jpg", ".png", ".webp", ".gif"}
 
 
 def _explain_http_error(exc, context=""):
@@ -824,6 +833,86 @@ def upload_file(file_path):
     except Exception as e:
         print(f"文件上传错误：{e}", file=sys.stderr)
         return None
+
+
+def _validate_local_image_reference(file_path):
+    """Validate a local image reference against the provider's upload limits."""
+    if not os.path.isfile(file_path):
+        return None
+
+    suffix = Path(file_path).suffix.lower()
+    if suffix not in _REFERENCE_IMAGE_SUFFIXES:
+        return "格式不受支持，仅允许 JPG/JPEG、PNG、WebP 或 GIF"
+
+    try:
+        file_size = os.path.getsize(file_path)
+    except OSError as e:
+        return f"无法读取文件大小：{e}"
+
+    if file_size > _REFERENCE_IMAGE_MAX_BYTES:
+        return f"文件大小 {file_size / (1024 * 1024):.2f}MB 超过 10MB"
+    return None
+
+
+def _validate_reference_image_url(url):
+    """Check that a remote reference image is publicly fetchable and valid."""
+    parsed = urlparse(str(url).strip())
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return "URL 必须是可公开访问的 HTTP/HTTPS 地址"
+
+    response = None
+    try:
+        response = requests.get(url, stream=True, timeout=30)
+        response.raise_for_status()
+
+        headers = getattr(response, "headers", {}) or {}
+        content_type = (headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
+        if content_type not in _REFERENCE_IMAGE_MIME_TYPES:
+            return f"内容类型 {content_type or '未提供'} 不是支持的图片格式"
+
+        content_length = headers.get("Content-Length")
+        if content_length:
+            try:
+                if int(content_length) > _REFERENCE_IMAGE_MAX_BYTES:
+                    return "文件大小超过 10MB"
+            except (TypeError, ValueError):
+                pass
+
+        total_bytes = 0
+        signature = bytearray()
+        iterator = getattr(response, "iter_content", None)
+        chunks = iterator(chunk_size=64 * 1024) if callable(iterator) else [getattr(response, "content", b"")]
+        for chunk in chunks:
+            if not chunk:
+                continue
+            total_bytes += len(chunk)
+            if len(signature) < 16:
+                signature.extend(chunk[: 16 - len(signature)])
+            if total_bytes > _REFERENCE_IMAGE_MAX_BYTES:
+                return "文件大小超过 10MB"
+
+        signature = bytes(signature)
+        valid_signature = (
+            signature.startswith(b"\xff\xd8\xff")
+            or signature.startswith(b"\x89PNG\r\n\x1a\n")
+            or signature.startswith((b"GIF87a", b"GIF89a"))
+            or (signature.startswith(b"RIFF") and signature[8:12] == b"WEBP")
+        )
+        if total_bytes == 0 or not valid_signature:
+            return "响应内容不是有效的 JPG/PNG/WebP/GIF 图片"
+        return None
+    except requests.exceptions.HTTPError as e:
+        status = getattr(getattr(e, "response", None), "status_code", None)
+        return f"URL 返回 HTTP {status or '错误'}"
+    except requests.exceptions.RequestException as e:
+        return f"无法访问 URL：{e}"
+    except Exception as e:
+        return f"读取参考图失败：{e}"
+    finally:
+        if response is not None:
+            close = getattr(response, "close", None)
+            if callable(close):
+                close()
 
 
 def download_image(url, output_path=None):
@@ -1213,9 +1302,9 @@ IMAGE_RESTRICTIONS_BY_MT = {
     "7":  {"textLength": 2500,  "targetMaxSize": 20, "targetMaxLength": 8000, "targetMinLength": 240},
     "8":  {"textLength": 1000,  "targetMaxSize": 20, "targetMaxLength": 6000},
     "9":  {"textLength": 1000,  "targetMaxSize": 10, "targetMaxLength": 6000},
-    # GPT Image2 series: large prompt window, no max/min length constraint on refs.
-    "10": {"textLength": 16000, "targetMaxSize": 50},
-    "11": {"textLength": 16000, "targetMaxSize": 50},
+    # GPT Image2 series: references must stay below the provider's 10MB limit.
+    "10": {"textLength": 16000, "targetMaxSize": 10},
+    "11": {"textLength": 16000, "targetMaxSize": 10},
 }
 
 # Render-quality (ratiocination) whitelist for Image2 (imageRenderQualityList).
@@ -2824,6 +2913,13 @@ def create_generation_task(prompt, quality=None, size=None, model=None,
         print(f"模型 {model} 必须提供非空的生成提示词 (prompt)", file=sys.stderr)
         return None
 
+    if reference_image_url and not DRY_RUN:
+        reference_error = _validate_reference_image_url(reference_image_url)
+        if reference_error:
+            raise GenerationTaskCreationError(
+                f"{model} 参考图不可用，未提交生成任务：{reference_error}"
+            )
+
     # Runtime availability check: consumeSource/list 可能随时将模型切成 hiddenState=1.
     # Skip in dry-run so payload debugging works without API credentials/network.
     if not DRY_RUN and not check_model_available(model):
@@ -3088,6 +3184,14 @@ def generate_image(prompt, quality=None, size=None, poll_interval=5,
 
     # Upload reference image if local path provided
     if reference_image_path:
+        local_reference_error = _validate_local_image_reference(reference_image_path)
+        if local_reference_error:
+            return {
+                "status": "FAILED",
+                "url": None,
+                "message": f"参考图校验失败，未提交生成任务：{local_reference_error}",
+                "model": resolved_model or display_model,
+            }
         reference_image_url = upload_file(reference_image_path)
         if not reference_image_url:
             return {

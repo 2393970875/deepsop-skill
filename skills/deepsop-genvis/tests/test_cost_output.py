@@ -280,6 +280,127 @@ def test_generate_image_prefers_local_reference_over_existing_url(monkeypatch):
     assert calls["reference_image_url"] == "https://files.example/current-upload.png"
 
 
+def test_image2_reference_url_is_preflighted_before_submission(monkeypatch):
+    module = load_module()
+    module.DRY_RUN = False
+    calls = {"post": 0}
+
+    class Response:
+        headers = {"Content-Type": "image/png", "Content-Length": "8"}
+        content = b"\x89PNG\r\n\x1a\n"
+
+        def raise_for_status(self):
+            return None
+
+        def iter_content(self, chunk_size=65536):
+            yield self.content
+
+        def close(self):
+            return None
+
+    monkeypatch.setattr(module.requests, "get", lambda *args, **kwargs: Response())
+    monkeypatch.setattr(module, "check_model_available", lambda model: True)
+    monkeypatch.setattr(module, "estimate_generation_cost", lambda payload: True)
+
+    def fake_post(*args, **kwargs):
+        calls["post"] += 1
+        return SimpleNamespace(
+            raise_for_status=lambda: None,
+            json=lambda: {"code": 200, "data": ["TASK_ID"]},
+        )
+
+    monkeypatch.setattr(module.requests, "post", fake_post)
+
+    task_id = module.create_generation_task(
+        "测试参考图",
+        model="Image2",
+        reference_image_url="https://files.example/reference.png",
+    )
+
+    assert task_id == "TASK_ID"
+    assert calls["post"] == 1
+
+
+def test_image2_reference_url_failure_stops_submission(monkeypatch):
+    module = load_module()
+    module.DRY_RUN = False
+    calls = {"post": 0, "estimate": 0}
+
+    class Response:
+        headers = {"Content-Type": "text/html"}
+        content = b"<html>not an image</html>"
+
+        def raise_for_status(self):
+            return None
+
+        def iter_content(self, chunk_size=65536):
+            yield self.content
+
+        def close(self):
+            return None
+
+    monkeypatch.setattr(module.requests, "get", lambda *args, **kwargs: Response())
+    monkeypatch.setattr(module, "check_model_available", lambda model: True)
+    monkeypatch.setattr(
+        module,
+        "estimate_generation_cost",
+        lambda payload: calls.__setitem__("estimate", calls["estimate"] + 1) or True,
+    )
+    monkeypatch.setattr(
+        module.requests,
+        "post",
+        lambda *args, **kwargs: calls.__setitem__("post", calls["post"] + 1),
+    )
+
+    with pytest.raises(module.GenerationTaskCreationError, match="参考图不可用.*内容类型"):
+        module.create_generation_task(
+            "测试参考图",
+            model="Image2",
+            reference_image_url="https://files.example/reference.png",
+        )
+
+    assert calls == {"post": 0, "estimate": 0}
+
+
+def test_image2_reference_url_over_10mb_stops_submission(monkeypatch):
+    module = load_module()
+    module.DRY_RUN = False
+
+    class Response:
+        headers = {
+            "Content-Type": "image/png",
+            "Content-Length": str(10 * 1024 * 1024 + 1),
+        }
+
+        def raise_for_status(self):
+            return None
+
+        def close(self):
+            return None
+
+    monkeypatch.setattr(module.requests, "get", lambda *args, **kwargs: Response())
+    monkeypatch.setattr(module, "check_model_available", lambda model: True)
+    monkeypatch.setattr(
+        module,
+        "estimate_generation_cost",
+        lambda payload: (_ for _ in ()).throw(AssertionError("must not estimate cost")),
+    )
+
+    with pytest.raises(module.GenerationTaskCreationError, match="超过 10MB"):
+        module.create_generation_task(
+            "测试参考图",
+            model="Image2",
+            reference_image_url="https://files.example/large.png",
+        )
+
+
+def test_image2_restriction_matches_provider_reference_limit():
+    module = load_module()
+
+    assert module.IMAGE_RESTRICTIONS_BY_MT["10"]["targetMaxSize"] == 10
+    assert module.IMAGE_RESTRICTIONS_BY_MT["11"]["targetMaxSize"] == 10
+
+
 def test_create_image_task_rejects_overlong_prompt_without_truncating(capsys):
     module = load_module()
     module.DRY_RUN = True
